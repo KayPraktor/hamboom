@@ -22,6 +22,23 @@
  * @see ../../../ARCHITECTURE_DECISIONS.md
  */
 
+/*
+ * بازصادرات کنترل‌شده از موتور بالادست.
+ *
+ * قاعده: هیچ کد هم‌بومی نباید مستقیماً از `@excalidraw/excalidraw` import کند
+ * (به‌جز `engine/` و `elements/mapping.ts`). هرچه از موتور لازم است، از همین‌جا
+ * عبور می‌کند — تا اگر روزی به پله‌ی fork رفتیم، سطح تماس یک فایل باشد.
+ */
+export { FONT_FAMILY, convertToExcalidrawElements } from "@excalidraw/excalidraw";
+
+export { HamboomCanvas } from "./engine/HamboomCanvas";
+export type { HamboomCanvasProps } from "./engine/HamboomCanvas";
+export {
+  configureExcalidrawAssetPath,
+  isAssetPathConfigured,
+  assertAssetPathConfigured,
+} from "./engine/asset-path";
+
 /** شناسه‌ی پکیج — برای تشخیص در لاگ و ابزار توسعه. */
 export const CANVAS_CORE_NAME = "@hamboom/canvas-core";
 

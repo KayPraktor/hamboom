@@ -12,7 +12,6 @@
   --hb-text: #1a1a1a;
   --hb-muted: #6b7280;
   --hb-accent: #5b8def;
-  --hb-sticky-yellow: #fff9b1;
 
   --hb-radius: 10px;
   --hb-space: 16px;
@@ -25,7 +24,8 @@
 }
 
 html,
-body {
+body,
+#root {
   margin: 0;
   padding: 0;
   block-size: 100%;
@@ -40,81 +40,166 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.hb-shell {
-  max-inline-size: 860px;
-  margin-inline: auto;
-  padding-block: calc(var(--hb-space) * 2.5);
+.hb-page {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+}
+
+/* ── نوار وضعیت ─────────────────────────────────────────── */
+
+.hb-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hb-space);
+  padding-block: 10px;
   padding-inline: var(--hb-space);
+  background: var(--hb-surface);
+  border-block-end: 1px solid var(--hb-border);
 }
 
 .hb-title {
   margin: 0;
-  font-size: 40px;
+  font-size: 22px;
   font-weight: 700;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.3px;
 }
 
 .hb-subtitle {
-  margin-block-start: 6px;
+  margin: 0;
+  font-size: 12px;
   color: var(--hb-muted);
 }
 
-.hb-card {
-  margin-block-start: calc(var(--hb-space) * 1.5);
-  padding: var(--hb-space);
-  background: var(--hb-surface);
-  border: 1px solid var(--hb-border);
-  border-radius: var(--hb-radius);
-}
-
-.hb-card > h2 {
-  margin-block: 0 12px;
-  font-size: 16px;
-  font-weight: 600;
-}
-
 .hb-rows {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hb-space);
+  margin: 0;
 }
 
 .hb-row {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
-  gap: var(--hb-space);
-  padding-block: 6px;
-  border-block-end: 1px dashed var(--hb-border);
-}
-
-.hb-row:last-child {
-  border-block-end: none;
+  gap: 6px;
 }
 
 .hb-row > dt {
   color: var(--hb-muted);
+  font-size: 12px;
 }
 
 .hb-row > dd {
   margin: 0;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-size: 13px;
+  font-size: 12px;
   direction: ltr;
   unicode-bidi: isolate;
 }
 
-.hb-note {
-  margin-block-start: calc(var(--hb-space) * 1.5);
-  padding: 12px var(--hb-space);
-  background: var(--hb-sticky-yellow);
-  border-radius: var(--hb-radius);
-  border-inline-start: 4px solid var(--hb-accent);
+/* ── میزبان بوم ─────────────────────────────────────────── */
+
+/*
+ * Excalidraw دقیقاً ۱۰۰٪ ابعاد بلوک دربرگیرنده را می‌گیرد، پس این عنصر
+ * باید ارتفاع غیرصفر داشته باشد. `min-block-size: 0` برای این است که
+ * flex آیتم بتواند از محتوایش کوچک‌تر شود.
+ */
+.hb-canvas-host {
+  position: relative;
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
-.hb-note > p {
+.hb-canvas-loading {
+  display: grid;
+  place-items: center;
+  block-size: 100%;
+  color: var(--hb-muted);
+}
+
+/*
+ * ADR-016 — استثنای بوم: فضای مختصات بوم ریاضی است و RTL ندارد.
+ * موتور رندر داخل خودش LTR کار می‌کند؛ فقط متنِ داخل عناصر و رابط اطراف
+ * بوم RTL اند. این خط همان مرز را صریح می‌کند.
+ */
+.hb-canvas-host .excalidraw {
+  direction: ltr;
+}
+
+/* ── صفحه‌ی spike (گام ۱٫۳) ──────────────────────────────── */
+
+.hb-spike-canvas {
+  flex: 0 0 55vh;
+  border-block-end: 1px solid var(--hb-border);
+}
+
+.hb-spike-results {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: var(--hb-space);
+}
+
+.hb-spike-results h2 {
+  margin-block: var(--hb-space) 8px;
+  font-size: 15px;
+}
+
+.hb-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.hb-table th,
+.hb-table td {
+  padding: 6px 8px;
+  border: 1px solid var(--hb-border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.hb-table th {
+  background: var(--hb-surface);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hb-cell-text {
+  max-inline-size: 320px;
+}
+
+.hb-num {
+  font-family: ui-monospace, Consolas, monospace;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: end;
+  white-space: nowrap;
+}
+
+.hb-dom-samples {
   margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
 }
 
-.hb-note > p + p {
-  margin-block-start: 8px;
+.hb-dom-samples > li {
+  display: flex;
+  gap: var(--hb-space);
+  align-items: baseline;
+  padding-block: 4px;
+  border-block-end: 1px dashed var(--hb-border);
+}
+
+.hb-sample-label {
+  flex: 0 0 200px;
+  color: var(--hb-muted);
+  font-size: 12px;
+}
+
+.hb-sample-text {
+  font-size: 20px;
 }

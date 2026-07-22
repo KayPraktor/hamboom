@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>هم‌بوم — دموی canvas-core</title>
+    <script>
+      // اصل P2 — بدون این خط، Excalidraw فونت‌هایش را از esm.sh دانلود می‌کند.
+      // فایل‌ها را scripts/copy-excalidraw-fonts.mjs اینجا می‌گذارد.
+      // اینلاین است تا تضمین شود قبل از هر ماژولی اجرا می‌شود.
+      window.EXCALIDRAW_ASSET_PATH = "/excalidraw-assets/";
+    </script>
   </head>
   <body>
     <div id="root"></div>

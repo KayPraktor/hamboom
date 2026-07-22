@@ -1,27 +1,65 @@
-import { CANVAS_CORE_NAME, ENGINE_STAGE } from "@hamboom/canvas-core";
+import {
+  CANVAS_CORE_NAME,
+  ENGINE_STAGE,
+  assertAssetPathConfigured,
+  configureExcalidrawAssetPath,
+  isAssetPathConfigured,
+} from "@hamboom/canvas-core";
 import { SYNC_CONTRACT_VERSION } from "@hamboom/canvas-core/sync";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-
-import { App } from "../dev/App";
+import { afterEach, describe, expect, it } from "vitest";
 
 /**
- * تست دود گام ۰٫۲ — این‌ها زیرساخت را می‌آزمایند، نه منطق محصول را.
- * هدف: اگر سیم‌کشی پکیج، alias، jsdom یا RTL خراب شد، همین‌جا بشکند.
+ * تست دود زیرساخت — منطق محصول را نمی‌آزماید.
+ * هدف: اگر سیم‌کشی پکیج، alias، jsdom، RTL یا نگهبان P2 خراب شد، همین‌جا بشکند.
+ *
+ * توجه: `App` عمداً اینجا رندر نمی‌شود؛ از گام ۱٫۱ به بعد بوم واقعی را
+ * می‌سازد و موتور رندر به canvas واقعی نیاز دارد که jsdom ندارد.
+ * تست رندر بوم در گام ۶٫۱ با محیط مرورگر واقعی اضافه می‌شود.
  */
+
 describe("سیم‌کشی پکیج canvas-core", () => {
   it("نقطه‌ی ورود اصلی از طریق نام پکیج قابل import است", () => {
     expect(CANVAS_CORE_NAME).toBe("@hamboom/canvas-core");
   });
 
   it("زیرمسیر sync جدا از نقطه‌ی ورود اصلی قابل import است", () => {
-    // نگاشت exports دو مدخل دارد؛ اگر یکی بشکند این تست می‌گیرد.
     expect(SYNC_CONTRACT_VERSION).toBe(0);
   });
 
   it("از پله‌ی npm در ADR-003 شروع می‌کند", () => {
     // اگر این تست شکست، یعنی کسی پله را عوض کرده — باید در PROGRESS.md ثبت شده باشد.
     expect(ENGINE_STAGE).toBe("npm");
+  });
+});
+
+describe("نگهبان اصل P2 — مسیر دارایی‌های Excalidraw", () => {
+  afterEach(() => {
+    delete window.EXCALIDRAW_ASSET_PATH;
+  });
+
+  it("وقتی مسیر ست نشده، صریح خطا می‌دهد", () => {
+    // بدون این نگهبان، Excalidraw بی‌صدا فونت‌ها را از esm.sh می‌گیرد —
+    // نقض P2 و غیرقابل‌اتکا از داخل ایران.
+    expect(isAssetPathConfigured()).toBe(false);
+    expect(() => assertAssetPathConfigured()).toThrowError(/esm\.sh/);
+  });
+
+  it("رشته‌ی خالی به‌عنوان مسیر معتبر پذیرفته نمی‌شود", () => {
+    configureExcalidrawAssetPath("");
+    expect(isAssetPathConfigured()).toBe(false);
+    expect(() => assertAssetPathConfigured()).toThrowError();
+  });
+
+  it("بعد از تنظیم مسیر، عبور می‌کند", () => {
+    configureExcalidrawAssetPath("/excalidraw-assets/");
+    expect(isAssetPathConfigured()).toBe(true);
+    expect(() => assertAssetPathConfigured()).not.toThrow();
+  });
+
+  it("آرایه‌ای از مسیرها هم پذیرفته می‌شود (پشتیبانی بالادست)", () => {
+    window.EXCALIDRAW_ASSET_PATH = ["/excalidraw-assets/"];
+    expect(isAssetPathConfigured()).toBe(true);
   });
 });
 
@@ -32,13 +70,7 @@ describe("محیط تست (React + jsdom + testing-library)", () => {
   });
 
   it("کامپوننت React رندر می‌شود و متن فارسی قابل جستجوست", () => {
-    render(<App />);
+    render(<h1>هم‌بوم</h1>);
     expect(screen.getByRole("heading", { level: 1, name: "هم‌بوم" })).toBeInTheDocument();
-  });
-
-  it("مقادیر پکیج واقعاً در خروجی رندر می‌آیند", () => {
-    render(<App />);
-    expect(screen.getByText(CANVAS_CORE_NAME)).toBeInTheDocument();
-    expect(screen.getByText(`${CANVAS_CORE_NAME}/sync`)).toBeInTheDocument();
   });
 });

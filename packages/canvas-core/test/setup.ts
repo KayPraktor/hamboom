@@ -3,6 +3,17 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 
+import { installCanvasStub } from "./canvas-stub";
+
+/**
+ * Excalidraw در زمان لود ماژول `getContext("2d")` می‌زند و jsdom آن را ندارد.
+ * بدون این، هر تستی که از canvas-core چیزی import کند در زمان collect می‌ترکد.
+ *
+ * ⚠️ این stub رندر واقعی نمی‌کند — محدودیت‌هایش در `canvas-stub.ts` مستند است.
+ * هر ادعایی درباره‌ی اندازه‌ی متن باید در مرورگر واقعی آزموده شود، نه اینجا.
+ */
+installCanvasStub();
+
 /**
  * پاک‌سازی DOM بین تست‌ها.
  *

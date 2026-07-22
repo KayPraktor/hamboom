@@ -1,0 +1,80 @@
+import { Excalidraw } from "@excalidraw/excalidraw";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import { useEffect, useState } from "react";
+
+import { assertAssetPathConfigured } from "./asset-path";
+import { guardDocumentDirection } from "./document-direction-guard";
+
+import "@excalidraw/excalidraw/index.css";
+
+export interface HamboomCanvasProps {
+  /**
+   * وقتی موتور آماده شد با دسته‌ی امری آن صدا زده می‌شود.
+   * از اینجا می‌شود صحنه را خواند/نوشت، ابزار فعال را عوض کرد و رویدادها را شنید.
+   */
+  onReady?: (api: ExcalidrawImperativeAPI) => void;
+  /** فقط-خواندنی — در گام ۴٫۴ به `CanvasPermissions.canEdit` وصل می‌شود. */
+  viewModeEnabled?: boolean;
+  /** کد زبان رابط موتور. فارسی در گام ۴٫۲ با رابط خودمان جایگزین می‌شود. */
+  langCode?: string;
+}
+
+/**
+ * پوسته‌ی هم‌بوم روی موتور رندر Excalidraw.
+ *
+ * در گام ۱٫۱ این کامپوننت عمداً نازک است: فقط موتور را با تضمین‌های
+ * زیرساختی هم‌بوم بالا می‌آورد. لایه‌های محصولی (عناصر، ابزارها، رابط RTL)
+ * در فازهای ۲ تا ۴ روی همین نقطه می‌نشینند.
+ *
+ * **قواعدی که همین‌جا اعمال می‌شوند:**
+ * - اصل P2 — اگر مسیر دارایی‌ها ست نشده باشد، به‌جای دانلود بی‌صدا از CDN
+ *   خارجی، صریح خطا می‌دهد.
+ * - [ADR-017](../../../../ARCHITECTURE_DECISIONS.md#adr-017) — بوم تا آماده
+ *   شدن فونت‌ها رندر نمی‌شود، وگرنه عرض متن با فونت fallback اندازه‌گیری
+ *   می‌شود و بعداً می‌پرد.
+ *
+ * @see ../../../../TODO.md گام ۱٫۱
+ */
+export function HamboomCanvas({
+  onReady,
+  viewModeEnabled = false,
+  langCode = "fa-IR",
+}: HamboomCanvasProps) {
+  // اگر مسیر دارایی‌ها ست نشده باشد باید همین اول بشکند، نه اینکه بی‌صدا
+  // از اینترنت فونت بگیرد. throw داخل بدنه‌ی رندر تا error boundary بگیردش.
+  assertAssetPathConfigured();
+
+  const [fontsReady, setFontsReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    // ADR-017 — اندازه‌گیری متن روی canvas باید بعد از لود فونت انجام شود.
+    void document.fonts.ready.then(() => {
+      if (!cancelled) setFontsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Excalidraw جهت و زبان کل سند را عوض می‌کند. تا اعمال patch در گام ۱٫۴،
+  // اثرش خنثی می‌شود. توضیح کامل در document-direction-guard.ts
+  useEffect(() => guardDocumentDirection(), []);
+
+  if (!fontsReady) {
+    return (
+      <div className="hb-canvas-loading" role="status" aria-live="polite">
+        در حال آماده‌سازی بوم…
+      </div>
+    );
+  }
+
+  return (
+    <Excalidraw
+      excalidrawAPI={onReady}
+      viewModeEnabled={viewModeEnabled}
+      langCode={langCode}
+      detectScroll={false}
+    />
+  );
+}

@@ -1,4 +1,12 @@
 {
   "$comment": "استثناهای تاییدشده‌ی license-check. هر ورودی باید دلیل و تاییدکننده داشته باشد. اصل P1 — PLAN.md بخش ۱.",
-  "exceptions": []
+  "exceptions": [
+    {
+      "package": "khroma",
+      "license": "MIT",
+      "reason": "pnpm این پکیج را Unknown گزارش می‌کند چون فیلد license در package.json جا افتاده — نه چون لایسنسش مشکل دارد. فایل license خود پکیج با «The MIT License (MIT)» شروع می‌شود و readme.md می‌گوید «MIT © Fabio Spampinato, Andrew Maney». یک باگ بسته‌بندی است، نه یک تصمیم سیاستی. زنجیره: khroma ← mermaid ← @excalidraw/mermaid-to-excalidraw ← @excalidraw/excalidraw.",
+      "approvedBy": "بررسی شواهد در گام ۱٫۱ — تایید نهایی مالک در انتظار",
+      "approvedAt": "2026-07-22"
+    }
+  ]
 }

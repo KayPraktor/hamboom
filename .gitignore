@@ -28,6 +28,9 @@ playwright-report/
 # داده‌ی لوکال کانتینرها
 infra/docker/data/
 
+# دارایی‌های کپی‌شده از پکیج بالادست (۱۴MB فونت) — با pnpm run assets ساخته می‌شوند
+packages/canvas-core/dev/public/excalidraw-assets/
+
 # لاگ
 *.log
 npm-debug.log*

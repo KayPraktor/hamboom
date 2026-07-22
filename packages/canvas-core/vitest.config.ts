@@ -23,5 +23,13 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
     restoreMocks: true,
     clearMocks: true,
+    server: {
+      deps: {
+        // Excalidraw فایل JSON را بدون `with { type: "json" }` وارد می‌کند.
+        // Node در حالت ESM این را رد می‌کند، ولی Vite خودش JSON را هندل می‌کند —
+        // پس باید از مسیر externalize خارج و از پایپ‌لاین Vite رد شود.
+        inline: ["@excalidraw/excalidraw"],
+      },
+    },
   },
 });
