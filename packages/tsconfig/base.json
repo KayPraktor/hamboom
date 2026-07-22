@@ -1,5 +1,32 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "Hamboom Base (re-export)",
-  "extends": "../../tsconfig.base.json"
+  "display": "Hamboom Base",
+  "_comment": "منبع حقیقت تنظیمات TypeScript پروژه. عمداً هیچ extends بیرون از این پکیج ندارد — چون از طریق symlink پنپی‌ام مصرف می‌شود و مسیر نسبی به بیرون پکیج شکننده است.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "incremental": true,
+    "noEmit": true
+  },
+  "exclude": ["node_modules", "dist", "build", "coverage"]
 }

@@ -1,0 +1,120 @@
+/*
+ * استایل اپ دموی canvas-core.
+ *
+ * ADR-016 — فقط logical properties. هیچ margin-left / right / text-align: left.
+ * فونت فعلاً از استک سیستمی می‌آید؛ Vazirmatn در گام ۱٫۲ خودمیزبان می‌شود.
+ */
+
+:root {
+  --hb-bg: #f7f8fa;
+  --hb-surface: #ffffff;
+  --hb-border: #e3e6ea;
+  --hb-text: #1a1a1a;
+  --hb-muted: #6b7280;
+  --hb-accent: #5b8def;
+  --hb-sticky-yellow: #fff9b1;
+
+  --hb-radius: 10px;
+  --hb-space: 16px;
+
+  --hb-font: "Vazirmatn", "Segoe UI", Tahoma, "Iranian Sans", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  block-size: 100%;
+}
+
+body {
+  background: var(--hb-bg);
+  color: var(--hb-text);
+  font-family: var(--hb-font);
+  font-size: 15px;
+  line-height: 1.7; /* فارسی به فضای عمودی بیشتری نیاز دارد */
+  -webkit-font-smoothing: antialiased;
+}
+
+.hb-shell {
+  max-inline-size: 860px;
+  margin-inline: auto;
+  padding-block: calc(var(--hb-space) * 2.5);
+  padding-inline: var(--hb-space);
+}
+
+.hb-title {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.hb-subtitle {
+  margin-block-start: 6px;
+  color: var(--hb-muted);
+}
+
+.hb-card {
+  margin-block-start: calc(var(--hb-space) * 1.5);
+  padding: var(--hb-space);
+  background: var(--hb-surface);
+  border: 1px solid var(--hb-border);
+  border-radius: var(--hb-radius);
+}
+
+.hb-card > h2 {
+  margin-block: 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.hb-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.hb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--hb-space);
+  padding-block: 6px;
+  border-block-end: 1px dashed var(--hb-border);
+}
+
+.hb-row:last-child {
+  border-block-end: none;
+}
+
+.hb-row > dt {
+  color: var(--hb-muted);
+}
+
+.hb-row > dd {
+  margin: 0;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.hb-note {
+  margin-block-start: calc(var(--hb-space) * 1.5);
+  padding: 12px var(--hb-space);
+  background: var(--hb-sticky-yellow);
+  border-radius: var(--hb-radius);
+  border-inline-start: 4px solid var(--hb-accent);
+}
+
+.hb-note > p {
+  margin: 0;
+}
+
+.hb-note > p + p {
+  margin-block-start: 8px;
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@hamboom/tsconfig/react-lib.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@hamboom/canvas-core": ["./src/index.ts"],
+      "@hamboom/canvas-core/sync": ["./src/sync/index.ts"]
+    },
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo"
+  },
+  "include": ["src", "dev", "test", "vite.config.ts", "vitest.config.ts"]
+}

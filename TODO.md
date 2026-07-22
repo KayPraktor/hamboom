@@ -48,13 +48,26 @@
 - Prettier + `.prettierignore` (اسناد فارسی مستثنا — هم‌ترازی جدول prettier برای RTL بدتر است).
 - `git init -b main` و `CLAUDE.md` ریشه (طبق «مرحله صفر» در سند محصول).
 
-### گام ۰٫۲ — پکیج `canvas-core` و دمو
-- [ ] `packages/canvas-core/package.json` — نام `@hamboom/canvas-core`، `type: "module"`, exports با `./` و `./sync`
-- [ ] ساختار پوشه طبق PLAN بخش ۲: `engine/ elements/ tools/ ui/ text/ theme/ sync/`
-- [ ] یک اپ دمو داخل خود پکیج: `packages/canvas-core/dev/` با Vite (این اپ منتشر نمی‌شود، فقط برای توسعه)
-- [ ] Vitest + `@testing-library/react` + `jsdom` راه‌اندازی شود
-- [ ] `packages/canvas-core/CLAUDE.md`: خلاصه‌ی مسئولیت ماژول + لینک به PLAN/ADR + قواعد ۴ و ۵ بالا
-- **معیار پذیرش:** `pnpm --filter @hamboom/canvas-core dev` یک صفحه‌ی خالی با متن «هم‌بوم» راست‌چین بالا می‌آورد
+### گام ۰٫۲ — پکیج `canvas-core` و دمو ✅ (۱۴۰۵/۰۴/۳۱)
+- [x] `packages/canvas-core/package.json` — نام `@hamboom/canvas-core`، `type: "module"`, exports با `./` و `./sync`
+- [x] ساختار پوشه طبق PLAN بخش ۲: `engine/ elements/ tools/ ui/ text/ theme/ sync/`
+- [x] یک اپ دمو داخل خود پکیج: `packages/canvas-core/dev/` با Vite (این اپ منتشر نمی‌شود، فقط برای توسعه)
+- [x] Vitest + `@testing-library/react` + `jsdom` راه‌اندازی شود
+- [x] `packages/canvas-core/CLAUDE.md`: خلاصه‌ی مسئولیت ماژول + لینک به PLAN/ADR + قواعد ۴ و ۵ بالا
+- **معیار پذیرش:** `pnpm --filter @hamboom/canvas-core dev` یک صفحه‌ی خالی با متن «هم‌بوم» راست‌چین بالا می‌آورد — ✅ در مرورگر تایید شد (`dir=rtl`, `lang=fa`, بدون overflow افقی)
+
+**افزوده‌های خارج از چک‌لیست:**
+- هر پوشه‌ی `src/` یک `README.md` با مسئولیت، قواعد ADR مربوطه و گام TODO خودش دارد —
+  تا session بعدی بداند چه چیزی کجا می‌رود بدون خواندن کل PLAN.
+- `test/setup.ts` پاک‌سازی DOM را **صریح** ثبت می‌کند. testing-library فقط با
+  `globals: true` این کار را خودکار می‌کند و ما globals را خاموش نگه داشته‌ایم؛
+  بدون این، رندرهای تست قبلی باقی می‌مانند (همان باگی که در اولین اجرا گرفت).
+- سند تست هم `dir=rtl` می‌گیرد تا رگرسیون RTL در تست دیده شود.
+- قاعده‌ی مرز وابستگی با یک probe واقعی آزموده شد: `import yjs` و `import @hamboom/sdk`
+  هر دو خطا می‌دهند.
+- `.claude/launch.json` برای بالا آوردن دمو از داخل session.
+- `packages/tsconfig` خودبسنده شد (بدون `extends` به بیرون پکیج) چون از طریق symlink
+  پنپی‌ام مصرف می‌شود و مسیر نسبی به بیرون شکننده است.
 
 ---
 

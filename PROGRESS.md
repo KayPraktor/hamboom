@@ -1,72 +1,87 @@
 # PROGRESS — canvas-core
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۴/۳۱ (2026-07-22)
-گام فعلی: ۰٫۱ تمام شد → بعدی ۰٫۲
+گام فعلی: ۰٫۲ تمام شد → بعدی ۱٫۱ (شروع فاز ۱ — دروازه‌ی ریسک)
 
 ## انجام شد
 
-**گام ۰٫۱ — اسکلت مونوریپو (کامل، معیار پذیرش محقق):**
+**گام ۰٫۱ — اسکلت مونوریپو** (کامل، commit `d697903`)
 
-- `pnpm-workspace.yaml` (`apps/*`, `packages/*`) + `turbo.json` (۶ task با `^build`)
-- `tsconfig.base.json` سخت‌گیرانه: `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals/Parameters`,
-  `verbatimModuleSyntax`, `moduleResolution: bundler`, `target: ES2022`
-- `packages/tsconfig` — چهار پیش‌تنظیم: `base`, `node-app`, `react-lib`, `vite-app`
-- `packages/eslint-config` — ESLint 9 flat config، سه export: `base`, `react`, `boundaries`
-- `scripts/license-check.ts` + `scripts/license-exceptions.json` — گیت اصل P1
-- `.gitignore`, `.editorconfig`, `.nvmrc`, `.prettierrc.json`, `.prettierignore`
-- `git init -b main` (بدون commit — منتظر تصمیم مالک)
-- `CLAUDE.md` ریشه
+- `pnpm-workspace.yaml` + `turbo.json` + `tsconfig.base.json` سخت‌گیرانه
+- `packages/tsconfig` (۴ پیش‌تنظیم) و `packages/eslint-config` (۳ export)
+- `scripts/license-check.ts` — گیت سه‌سطحی SPDX با `--self-test`
+- `.gitignore`, `.editorconfig`, `.nvmrc`, prettier, `CLAUDE.md` ریشه
+- `.gitattributes` با `eol=lf` (commit `767b15c`) — چون ریپو روی ویندوز توسعه
+  و داخل کانتینر لینوکسی اجرا می‌شود و اسکریپت شل با CRLF می‌شکند
 
-**راستی‌آزمایی (اجرا شد، همه سبز):**
+**گام ۰٫۲ — پکیج `canvas-core` و دمو** (کامل)
+
+- `@hamboom/canvas-core` با نگاشت `exports` دومدخلی (`.` و `./sync`)
+- ساختار `src/{engine,text,sync,elements,theme,tools,ui}/` — هرکدام با README مسئولیت
+- اپ دموی Vite در `dev/` (root روی همان پوشه، ریشه‌ی پکیج تمیز می‌ماند)
+- Vitest + jsdom + testing-library، ۶ تست دود سبز
+- `CLAUDE.md` و `README.md` پکیج
+- `.claude/launch.json` برای بالا آوردن دمو
+
+**راستی‌آزمایی (همه اجرا شد):**
 
 ```
-pnpm install       → ۱۱۷ پکیج، بدون خطا
-pnpm typecheck     → tsc روی scripts/ سبز + turbo سبز
-pnpm lint:root     → exit 0
-pnpm format:check  → All matched files use Prettier code style
-pnpm license:check → self-test ۱۷/۱۷ سبز، ۱۹۶ پکیج همه مجاز
+pnpm install       → ۴ پروژه، بدون خطا
+pnpm typecheck     → tsc ریشه + turbo (canvas-core) سبز
+pnpm lint          → سبز
+pnpm test          → ۶/۶ سبز
+pnpm format:check  → سبز
+pnpm license:check → self-test ۱۷/۱۷ + همه‌ی پکیج‌ها مجاز
+دموی مرورگر        → dir=rtl، lang=fa، «هم‌بوم» راست‌چین، بدون overflow افقی
+probe مرز وابستگی  → import yjs و @hamboom/sdk هر دو خطا می‌دهند ✓
 ```
 
-توزیع لایسنس درخت وابستگی فعلی: MIT ۱۴۴، Apache-2.0 ۲۴، BSD-2-Clause ۱۲، ISC ۱۱،
-Python-2.0 ۲، BSD-3-Clause ۲، BlueOak-1.0.0 ۱ — هیچ موردی نیازمند استثنا نیست.
+## تصمیم‌های گرفته‌شده (کاندید ADR)
 
-## تصمیم‌های گرفته‌شده (کاندید ADR — هنوز ثبت نشده‌اند چون سطحشان پیاده‌سازی است، نه معماری)
+**از گام ۰٫۱:**
 
-1. **`license-check` سه‌سطحی به‌جای allow/deny دوسطحی.** سطح میانی `REVIEW`
-   (MPL-2.0، EPL-2.0، LGPL، …) لایسنس‌هایی را که ذاتاً ممنوع نیستند ولی شرط دارند،
-   به‌جای رد خودکار، وادار به ثبت صریح در `license-exceptions.json` با دلیل و تاییدکننده می‌کند.
-   دلیل: رد کامل این‌ها بعداً به دور زدن گیت منجر می‌شود؛ ثبت اجباری، تصمیم را قابل‌ردیابی نگه می‌دارد.
-2. **گیت لایسنس `--self-test` دارد.** یک گیت امنیتی/انطباقی که هرگز آزموده نشده، وجود ندارد.
-   ۱۷ مورد SPDX (شامل `MIT AND GPL-3.0-only` → denied و `BSD-3-Clause OR GPL-2.0` → allowed)
-   در هر اجرای `pnpm license:check` قبل از خود بررسی، اجرا می‌شوند.
-3. **دو-پله‌ای بودن بررسی prod/dev.** وابستگی‌های production خطا می‌دهند، dev فقط هشدار
-   (مگر با `--strict`). دلیل: ابزارهای build گاهی لایسنس‌های عجیب دارند ولی در محصول نهایی نمی‌روند.
-4. **ESLint بدون type-checking فعلاً.** `recommendedTypeChecked` به `projectService` در هر پکیج
-   نیاز دارد و کند است. وقتی کدبیس پایدار شد، ارتقا به‌عنوان یک ADR جدا ثبت شود.
-5. **اسناد فارسی از prettier مستثنا شدند.** هم‌ترازی ستون جدول بر اساس تعداد کاراکتر،
-   برای متن RTL نتیجه‌ی بدتری می‌دهد.
+1. **`license-check` سه‌سطحی** (ALLOWED / REVIEW / denied). سطح میانی لایسنس‌های
+   شرط‌دار (MPL-2.0، LGPL، …) را وادار به ثبت صریح در `license-exceptions.json` می‌کند
+   به‌جای رد خودکار — چون رد کامل بعداً به دور زدن گیت منجر می‌شود.
+2. **گیت لایسنس `--self-test` دارد.** ۱۷ مورد SPDX در هر اجرا قبل از خود بررسی می‌دوند.
+3. **prod خطا، dev هشدار** (مگر `--strict`) — ابزارهای build در محصول نهایی نمی‌روند.
+4. **ESLint بدون type-checking فعلاً.** ارتقا به `recommendedTypeChecked` وقتی کدبیس
+   پایدار شد، به‌عنوان ADR جدا.
+5. **اسناد فارسی از prettier مستثنا.** هم‌ترازی ستون جدول برای RTL بدتر است.
+
+**از گام ۰٫۲:**
+
+6. **`canvas-core` یک پکیج JIT است** — `exports` مستقیم به `src/*.ts`، بدون build.
+   همه‌ی مصرف‌کننده‌ها Vite هستند و خودشان transpile می‌کنند. الگوی internal package
+   در Turborepo. اگر روزی مصرف‌کننده‌ی Node خالص اضافه شد، آن‌وقت build لازم می‌شود.
+7. **دو فایل پیکربندی Vite جدا.** `vite.config.ts` با `root: dev/` برای دمو،
+   `vitest.config.ts` با root پکیج برای تست. ادغامشان باعث می‌شود تست‌ها ریشه‌ی
+   اشتباه بگیرند.
+8. **`packages/tsconfig` خودبسنده است** — هیچ `extends` به بیرون پکیج، چون از
+   طریق symlink پنپی‌ام مصرف می‌شود و مسیر نسبی به بیرون شکننده است. حالا
+   `tsconfig.base.json` ریشه است که از آن extends می‌کند، نه برعکس.
+9. **`vitest` بدون `globals`.** import صریح خواناتر است، ولی به‌ازایش cleanup
+   باید دستی در `test/setup.ts` ثبت شود.
+10. **`ENGINE_STAGE` در `src/index.ts`** پله‌ی ADR-003 را به‌صورت کد نگه می‌دارد و
+    یک تست آن را چک می‌کند — تا عبور به fork نتواند بی‌سروصدا اتفاق بیفتد.
 
 ## بلوکه (نیاز به تصمیم مالک)
 
-هیچ موردی. تصمیم‌های بیزینسی (قیمت پلن، VAT، موجودیت حقوقی، درگاه پیامک) طبق توافق
-تا قبل از M4 معلق می‌مانند و مانع پیشرفت M1 نیستند.
+هیچ موردی. تصمیم‌های بیزینسی طبق توافق تا قبل از M4 معلق‌اند.
 
-**یک مورد کوچک برای اطلاع:** `git init` انجام شد ولی هیچ commit ای زده نشده.
-هر وقت خواستی، commit اولیه زده می‌شود.
+## قدم بعدی — فاز ۱، دروازه‌ی ریسک پروژه
 
-## قدم بعدی
+**گام ۱٫۱:** نصب `@excalidraw/excalidraw` با نسخه‌ی **pin شده** (بدون `^` — تا patch های
+احتمالی گام ۱٫۴ تصادفی نشکنند)، ثبت لایسنس در `docs/dependencies.md`، و یک wrapper
+مینیمال `<HamboomCanvas />` در `src/engine/`.
 
-**گام ۰٫۲ — پکیج `canvas-core` و اپ دمو:**
+**گام ۱٫۲:** فونت Vazirmatn خودمیزبان + gate اندازه‌گیری (`awaitFontsReady`).
 
-- `packages/canvas-core/package.json` با نام `@hamboom/canvas-core`
-- ساختار پوشه: `engine/ elements/ tools/ ui/ text/ theme/ sync/`
-- اپ دمو داخلی با Vite در `packages/canvas-core/dev/`
-- Vitest + `@testing-library/react` + jsdom
-- `packages/canvas-core/CLAUDE.md`
-- معیار پذیرش: `pnpm --filter @hamboom/canvas-core dev` یک صفحه‌ی راست‌چین با متن «هم‌بوم» بیاورد
-
-بعد از آن، **فاز ۱ که دروازه‌ی ریسک پروژه است** شروع می‌شود (spike متن فارسی، گام ۱٫۳).
+**گام ۱٫۳ — مهم‌ترین گام ماژول:** spike متن فارسی. خروجی‌اش یک جدول ۶×۷ در
+`docs/spike-persian-text.md` است و جمع‌بندی صریح «پله‌ی A کافی است» یا «باید به B برویم».
+اگر نتیجه «فورک لازم است» شد، **متوقف شو و تایید مالک بگیر** — این تصمیم معماری است.
 
 ## پله‌ی فعلی ADR-003
 
-**A — بسته‌ی npm.** هنوز `@excalidraw/excalidraw` نصب نشده (گام ۱٫۱)، هیچ patch و هیچ فورکی وجود ندارد.
+**A — بسته‌ی npm.** `@excalidraw/excalidraw` هنوز نصب نشده (گام ۱٫۱)، هیچ patch و
+هیچ فورکی وجود ندارد. مقدار در `packages/canvas-core/src/index.ts` → `ENGINE_STAGE`.
