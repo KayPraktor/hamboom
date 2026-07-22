@@ -1,0 +1,22 @@
+# همه‌ی فایل‌های متنی با LF ذخیره و checkout می‌شوند — حتی روی ویندوز.
+# دلیل: همین ریپو روی ویندوز توسعه داده می‌شود ولی داخل کانتینر لینوکسی build
+# و اجرا می‌شود. اسکریپت شل با CRLF در لینوکس خطای «bad interpreter» می‌دهد.
+# این با end_of_line=lf در .editorconfig هم‌خوان است.
+* text=auto eol=lf
+
+# فایل‌های باینری — هرگز تبدیل نشوند
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.ico    binary
+*.pdf    binary
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.otf    binary
+*.zip    binary
+
+# فایل‌های تولیدشده — از diff و آمار زبان ریپو خارج شوند
+pnpm-lock.yaml -diff linguist-generated=true
