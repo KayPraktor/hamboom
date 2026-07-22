@@ -1,0 +1,47 @@
+# وابستگی‌ها
+node_modules/
+.pnpm-store/
+
+# خروجی build
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# کش ابزارها
+.turbo/
+.vite/
+.eslintcache
+.cache/
+
+# تست
+coverage/
+*.lcov
+test-results/
+playwright-report/
+
+# محیط — هرگز commit نشود (اصل P7)
+.env
+.env.*
+!.env.example
+
+# داده‌ی لوکال کانتینرها
+infra/docker/data/
+
+# لاگ
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# سیستم‌عامل و ویرایشگر
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# فایل‌های موقت session های Claude
+PROGRESS.local.md
+scratch/

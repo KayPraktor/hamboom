@@ -1,0 +1,15 @@
+{
+  "name": "@hamboom/tsconfig",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "files": [
+    "base.json",
+    "node-app.json",
+    "react-lib.json",
+    "vite-app.json"
+  ],
+  "publishConfig": {
+    "access": "restricted"
+  }
+}

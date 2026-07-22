@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Hamboom Vite App (web / admin / dev demos)",
+  "extends": "./react-lib.json",
+  "compilerOptions": {
+    "types": ["vite/client"],
+    "allowImportingTsExtensions": true
+  }
+}

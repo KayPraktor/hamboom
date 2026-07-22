@@ -1,0 +1,36 @@
+{
+  "name": "hamboom",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "هم‌بوم — پلتفرم وایت‌بورد همکاری بلادرنگ، فارسی و ریالی",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "lint:root": "eslint .",
+    "typecheck": "tsc -p tsconfig.json && turbo run typecheck",
+    "typecheck:root": "tsc -p tsconfig.json",
+    "test": "turbo run test",
+    "clean": "turbo run clean",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "license:check": "node scripts/license-check.ts --self-test && node scripts/license-check.ts",
+    "license:list": "node scripts/license-check.ts --verbose"
+  },
+  "devDependencies": {
+    "@hamboom/eslint-config": "workspace:*",
+    "@hamboom/tsconfig": "workspace:*",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  }
+}

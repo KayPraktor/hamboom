@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+pnpm-lock.yaml
+vendor/
+patches/
+
+# اسناد فارسی — prettier ستون‌های جدول را بر اساس تعداد کاراکتر هم‌تراز می‌کند
+# که برای متن RTL نتیجه‌ی بدتری می‌دهد. قالب‌بندی این‌ها دستی است.
+*.md
+docs/
