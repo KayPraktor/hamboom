@@ -56,8 +56,16 @@ export {
   isLTRChar,
 } from "./text/bidi";
 export type { TextDirection } from "./text/bidi";
-export { normalizePersian, persianSearchKey } from "./text/normalize";
-export type { NormalizeOptions } from "./text/normalize";
+/*
+ * `normalizePersian` عمداً از اینجا صادر نمی‌شود.
+ *
+ * در گام ۲٫۱ به `@hamboom/shared-types` منتقل شد چون مسئله‌اش مرز ماژول‌هاست،
+ * نه بوم: متن از چند مسیر وارد سیستم می‌شود (بوم، API، قالب، seed) و اگر هر
+ * کدام قاعده‌ی خودش را داشته باشد، جستجو در M3 مچ نمی‌شود.
+ *
+ * مصرف‌کننده‌ها مستقیماً از منبع بخوانند تا دو مسیر import برای یک تابع نداشته
+ * باشیم:  import { normalizePersian } from "@hamboom/shared-types";
+ */
 
 /** شناسه‌ی پکیج — برای تشخیص در لاگ و ابزار توسعه. */
 export const CANVAS_CORE_NAME = "@hamboom/canvas-core";

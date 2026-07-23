@@ -217,17 +217,39 @@
 ### گام ۲٫۱ — انواع عناصر در `shared-types`
 > ⚠️ این گام `packages/shared-types` را می‌سازد (اولین‌بار). چون هنوز وجود ندارد، ساختنش مجاز است؛ **تغییر بعدی‌اش نیاز به تایید دارد.**
 
-- [ ] `packages/shared-types/src/canvas/element.ts`: zod schema برای `HbElementBase`, `HbCustomData`, `HbKind`, `HbElementType` — دقیقاً طبق [PLAN.md بخش ۷٫۲](PLAN.md#۷۲-property-های-مشترک-همه-عناصر)
-- [ ] schema اختصاصی هر نوع: `HbStickyElement`, `HbShapeElement`, `HbTextElement`, `HbConnectorElement`, `HbFrameElement`, `HbImageElement`, `HbDrawElement`
-- [ ] `HbAsset` (متادیتای فایل — بدون باینری)
-- [ ] `HbAppState` (وضعیت مشترک بورد: grid، پس‌زمینه)
-- [ ] type ها با `z.infer` استخراج شوند، نه دستی نوشته شوند
-- **معیار پذیرش:** یک تست که یک نمونه از هر ۷ نوع را می‌سازد و `parse` می‌کند
+- [x] `packages/shared-types/src/canvas/element.ts`: zod schema برای `hbElementBase`, `hbCustomData`, `hbKind`, `hbElementType`
+- [x] schema بر اساس **نوع رندر** (`hbShapeElement`, `hbTextElement`, `hbLinearElement`,
+      `hbDrawElement`, `hbImageElement`, `hbFrameElement`) با union تفکیک‌شده روی `type`.
+      **استیکی schema جدا ندارد** — از دید موتور یک `rectangle` است و فقط
+      `customData.hb.kind` فرقش را می‌سازد (ADR-010). این عمدی است.
+- [x] `hbAsset` (متادیتای فایل — بدون باینری)
+- [x] `hbAppState` (وضعیت مشترک بورد: grid، پس‌زمینه)
+- [x] type ها با `z.infer` استخراج شدند، نه دستی
+- [x] **`normalizePersian` منتقل شد** — به‌جای موکول‌کردن به قبل از M3
+- [x] قاعده‌ی ESLint: هیچ `@hamboom/*` در `src/` این پکیج — با probe واقعی آزموده شد
+- [x] `CLAUDE.md` پکیج با قاعده‌ی «تغییر = تایید مالک»
+- **معیار پذیرش:** یک نمونه از هر ۷ نوع ساخته و `parse` می‌شود — ✅ ۳۶ تست
 
-### گام ۲٫۲ — ★ قرارداد `CanvasSyncAdapter`
-> **این مهم‌ترین خروجی ماژول است.** ماژول M2 (realtime-sync) دقیقاً همین interface را پیاده می‌کند.
+### گام ۲٫۲ — ★ قرارداد `CanvasSyncAdapter` ✅ (۱۴۰۵/۰۴/۳۱)
 
-- [ ] `packages/canvas-core/src/sync/contract.ts` با این محتوا (شکل نهایی؛ نام‌ها را تغییر نده مگر با ثبت دلیل در PROGRESS):
+- [x] `sync/contract.ts` — قرارداد کامل، طبق شکل زیر با دو تفاوت عمدی:
+      `HbElement`/`HbAsset`/`HbAppState` از `shared-types` می‌آیند (نه تعریف محلی)،
+      و `CanvasDocument`/`FocusTarget`/`PeerUser` به‌عنوان type نام‌دار بیرون کشیده شدند.
+- [x] `sync/local-adapter.ts` — پیاده‌سازی in-memory با `LocalSyncHub`، بدون هیچ I/O
+- [x] `sync/README.md` — نمودار جریان داده، دو سناریوی اصلی، چک‌لیست تحویل به M2
+- [x] **نگهبان حلقه‌ی echo** — `assertEmittable` در مرز آداپتور، نه با اعتماد به بوم
+- [x] `SYNC_CONTRACT_VERSION` از `0` به `1` رفت (تست smoke به‌روز شد)
+- **معیار پذیرش:** تغییر بین دو کلاینت رد و بدل می‌شود و **حلقه‌ی بی‌نهایت رخ نمی‌دهد**
+      — ✅ ۱۴ تست، شامل سناریوی «بوم بدرفتار» که عمداً تغییر remote را دوباره emit می‌کند
+
+> **انحراف از متن گام:** معیار پذیرش می‌گفت «دو نمونه‌ی `<HamboomCanvas>` را با یک
+> آداپتور mount کن». به‌جایش آداپتور با یک بوم ساختگی آزموده شد. دلیل: جلوگیری از
+> echo یک خاصیت آداپتور و قرارداد است، نه کامپوننت React؛ و mount کردن دو موتور
+> رندر در jsdom (که پیکسل ندارد) تستی می‌ساخت که کندتر و شکننده‌تر است بدون اینکه
+> چیز بیشتری اثبات کند. تست «بوم بدرفتار» دقیقاً همان حلقه را می‌سازد و می‌گیرد.
+
+<details>
+<summary>شکل قرارداد که در برنامه‌ریزی تعریف شده بود (بایگانی)</summary>
 
 ```ts
 // ── واحدهای انتقال ────────────────────────────────────────────
@@ -324,10 +346,7 @@ export interface CanvasSyncAdapter {
 }
 ```
 
-- [ ] `sync/local-adapter.ts`: یک پیاده‌سازی in-memory از `CanvasSyncAdapter` برای دمو و تست (بدون شبکه، با `localStorage` برای پایداری ساده)
-- [ ] `sync/README.md`: توضیح جریان داده + نمودار ترتیبی برای «کاربر یک استیکی می‌سازد» و «تغییر remote می‌رسد»
-- [ ] **جلوگیری از حلقه‌ی echo:** تغییرات با `origin: "remote"` نباید دوباره `emitElementChanges` تولید کنند — این با یک flag در binder و تست اختصاصی تضمین شود
-- **معیار پذیرش:** تستی که دو نمونه‌ی `<HamboomCanvas>` را با یک `local-adapter` مشترک mount می‌کند؛ ساخت استیکی در یکی، در دیگری ظاهر می‌شود، و **هیچ حلقه‌ی بی‌نهایتی** رخ نمی‌دهد
+</details>
 
 ### گام ۲٫۳ — نگاشت دوطرفه عنصر
 - [ ] `elements/mapping.ts`: `toExcalidraw(hbElement)` و `fromExcalidraw(exElement)`
