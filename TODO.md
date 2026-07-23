@@ -348,11 +348,20 @@ export interface CanvasSyncAdapter {
 
 </details>
 
-### گام ۲٫۳ — نگاشت دوطرفه عنصر
-- [ ] `elements/mapping.ts`: `toExcalidraw(hbElement)` و `fromExcalidraw(exElement)`
-- [ ] `getKind(element)` — تنها راه مجاز خواندن نوع محصولی ([ADR-010](ARCHITECTURE_DECISIONS.md#adr-010))
-- [ ] ESLint rule سفارشی: خطا روی `element.type === "rectangle"` در کد خارج از `elements/mapping.ts`
-- [ ] تست round-trip: `fromExcalidraw(toExcalidraw(x))` باید عیناً `x` بدهد، برای هر ۷ نوع
+### گام ۲٫۳ — نگاشت دوطرفه عنصر ✅ (۱۴۰۵/۰۴/۳۱)
+- [x] `elements/mapping.ts`: `toExcalidraw` و `fromExcalidraw`
+- [x] `getKind(element)` — تنها راه مجاز خواندن نوع محصولی، با fallback برای عناصری
+      که نوار ابزار خودِ موتور ساخته و `customData` ندارند
+- [x] `elementKindDiscipline()` در `eslint-config`: خطا روی `===` و `switch` روی نوع‌های
+      رندر، بیرون از `mapping.ts`. فقط روی نام نوع‌های واقعی تطبیق می‌دهد تا
+      `event.type === "click"` گیر نکند — با probe واقعی هر دو جهت آزموده شد.
+- [x] تست round-trip روی هر ۷ نوع + اعتبارسنجی مجدد با `hbElement.parse` — ۱۹ تست
+
+**یک باگ واقعی که تست round-trip گرفت:** `direction` در مسیر رفت به
+`customData.hb` منتقل می‌شود (تا از serialization موتور جان سالم به در ببرد)، ولی
+`fromExcalidraw` آن را به سطح بالا **کپی** می‌کرد بدون اینکه از `customData`
+بردارد — یعنی دو منبع حقیقت، دقیقاً همان چیزی که این لایه قرار بود جلویش را بگیرد.
+حالا برداشته می‌شود، نه کپی.
 - **معیار پذیرش:** تست property-based روی round-trip سبز است
 
 ---
@@ -484,6 +493,18 @@ export interface CanvasSyncAdapter {
 ## فاز ۶ — تحویل (تخمین: ۱ روز)
 
 ### گام ۶٫۱ — تست و مستندسازی
+
+> **دو کار که از گام‌های قبلی به اینجا موکول شدند.** هر دو در
+> [`src/sync/README.md`](packages/canvas-core/src/sync/README.md) هم به‌عنوان
+> گپ M2 ثبت شده‌اند تا از دو جا قابل پیدا شدن باشند.
+
+- [ ] **G-2 (از گام ۱٫۴):** تست رگرسیون هش پیکسلی جهت متن با Playwright.
+      [ADR-025](ARCHITECTURE_DECISIONS.md#adr-025) روی wrapper `fillText` بنا شده و
+      **بی‌صدا** می‌شکند اگر موتور مسیر رندر را عوض کند. تشخیص فعلی فقط شمارنده‌ی
+      دستی در `#spike` است.
+- [ ] **G-1 (از گام ۲٫۲):** تست دو-نمونه‌ای با بوم **واقعی** — دو `<HamboomCanvas>`
+      با یک آداپتور مشترک. تست فعلی فقط ثابت می‌کند آداپتور بومِ بدرفتار را می‌گیرد،
+      نه اینکه binder واقعی قاعده را رعایت می‌کند. **پیش‌نیاز: binder در M2.**
 - [ ] پوشش تست واحد ≥ ۶۰٪ روی `elements/`, `text/`, `sync/`
 - [ ] تست یکپارچه: سناریوی «باز کردن بوم خالی → ساخت ۵ استیکی و ۲ کانکتور → undo/redo → بازخوانی از آداپتور»
 - [ ] `packages/canvas-core/README.md`: نحوه‌ی مصرف پکیج، props ها، مثال حداقلی

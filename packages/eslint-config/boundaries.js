@@ -38,6 +38,45 @@ export function packageBoundaries(options = {}) {
 }
 
 /**
+ * انضباط ADR-010 — هیچ کدی خارج از لایه‌ی نگاشت روی `element.type` شرط نگذارد.
+ *
+ * `type` چیزی است که موتور رندر می‌فهمد؛ `customData.hb.kind` چیزی است که
+ * محصول می‌فهمد. یک استیکی‌نوت و یک شکل هر دو `rectangle` اند، پس هر شرطی روی
+ * `type` که بخواهد معنای محصولی را تشخیص دهد، **غلط است** — و بدتر: بی‌صدا
+ * غلط است، چون کد کامپایل می‌شود و در حالت‌های ساده هم درست کار می‌کند.
+ *
+ * فقط روی نام نوع‌های واقعی عنصر تطبیق می‌دهد، نه هر `.type ===`ی — تا
+ * `event.type === "click"` و مشابهش گیر نکنند.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function elementKindDiscipline() {
+  const ELEMENT_TYPES = "rectangle|ellipse|diamond|arrow|line|freedraw|frame|magicframe";
+
+  return {
+    name: "hamboom/element-kind-discipline",
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: `BinaryExpression[operator=/^[!=]==$/][right.value=/^(${ELEMENT_TYPES})$/]`,
+          message:
+            "ADR-010: روی element.type شرط نگذار — استیکی و شکل هر دو rectangle اند. " +
+            "از getKind(element) در elements/mapping.ts استفاده کن. " +
+            "اگر واقعاً به نوع رندر نیاز داری، کدت جایش در همان mapping.ts است.",
+        },
+        {
+          selector: `SwitchCase > Literal[value=/^(${ELEMENT_TYPES})$/]`,
+          message:
+            "ADR-010: switch روی element.type بیرون از mapping.ts ممنوع است. " +
+            "از getKind(element) استفاده کن.",
+        },
+      ],
+    },
+  };
+}
+
+/**
  * پیش‌تنظیم برای `packages/canvas-core` — ADR-003 / ADR-021.
  * بوم باید کاملاً آفلاین و بدون شبکه قابل اجرا باشد.
  * @returns {import("eslint").Linter.Config}

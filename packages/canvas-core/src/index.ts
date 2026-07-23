@@ -47,6 +47,8 @@ export {
 } from "./engine/canvas-direction";
 export { guardEditorDirection } from "./engine/editor-direction";
 
+export { getKind, isSticky, getDirection, toExcalidraw, fromExcalidraw } from "./elements/mapping";
+
 export {
   detectBaseDirection,
   resolveDirection,

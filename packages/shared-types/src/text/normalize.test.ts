@@ -1,6 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizePersian, persianSearchKey } from "./normalize";
+import { normalizePersian, normalizePersianPreservingLength, persianSearchKey } from "./normalize";
+
+/**
+ * مجموعه‌ی نمونه — همان تله‌هایی که spike گام ۱٫۳ب روی ویرایشگر واقعی آزمود.
+ * هر رشته‌ای که اینجا اضافه شود، خودبه‌خود در تضمین طول هم آزموده می‌شود.
+ */
+const CORPUS = [
+  "سلام دنیا",
+  "كتابي عربي",
+  "می‌خواهم نیم‌فاصله",
+  "۱۲۳۴۵۶۷۸۹۰",
+  "تعداد ۱۲۳ از 456",
+  "بِسْمِ اللّٰهِ",
+  "بازـــرگانی",
+  "هم‌بوم 🎨 است",
+  "board برای تیم ماست",
+  "The quick brown fox",
+  "مصطفى و ة و ؤ",
+  "",
+];
 
 describe("normalizePersian — تبدیل حروف عربی", () => {
   it("ي عربی را به ی فارسی تبدیل می‌کند", () => {
@@ -59,6 +78,52 @@ describe("normalizePersian — آنچه عمداً دست نمی‌زند", () =
     const text = "كتابي بازـــرگانی می‌خواهم";
     const once = normalizePersian(text);
     expect(normalizePersian(once)).toBe(once);
+  });
+});
+
+/**
+ * ★ این بلوک قاعده‌ی «کجا صدا زده شود» را از یک کامنت به یک تضمین اجرایی
+ * تبدیل می‌کند. تا قبل از این، آن قاعده فقط در JSDoc سرِ ماژول بود و
+ * هیچ‌چیز جلوی صدا زدنش حین تایپ را نمی‌گرفت.
+ */
+describe("تضمین طول — چرا نباید حین تایپ صدا زده شود", () => {
+  it("★ normalizePersian می‌تواند طول رشته را عوض کند", () => {
+    // همین یک خط دلیل کل قاعده است: اگر طول عوض شود و مکان‌نما جابه‌جا نشود،
+    // مکان‌نما می‌پرد — دقیقاً باگ U-1 در patches/README.md.
+    const withTatweel = "بازـــرگانی";
+    expect(normalizePersian(withTatweel).length).toBeLessThan(withTatweel.length);
+  });
+
+  it("★ normalizePersianPreservingLength هرگز طول را عوض نمی‌کند", () => {
+    for (const text of CORPUS) {
+      expect(normalizePersianPreservingLength(text)).toHaveLength(text.length);
+    }
+  });
+
+  it("نسخه‌ی حافظ طول هم ي/ك عربی را درست تبدیل می‌کند", () => {
+    expect(normalizePersianPreservingLength("كتابي")).toBe("کتابی");
+    expect(normalizePersianPreservingLength("مصطفى")).toBe("مصطفی");
+  });
+
+  it("نسخه‌ی حافظ طول کشیده را دست نمی‌زند — همین باعث می‌شود امن بماند", () => {
+    const text = "بازـــرگانی";
+    expect(normalizePersianPreservingLength(text)).toBe(text);
+  });
+
+  it("روی رشته‌ی حاوی جفت جانشین (emoji) هم طول حفظ می‌شود", () => {
+    // `for...of` روی code point پیمایش می‌کند؛ این تست مطمئن می‌شود
+    // شمارش code unit به هم نمی‌ریزد.
+    const text = "هم‌بوم 🎨 كتابي";
+    expect(normalizePersianPreservingLength(text)).toHaveLength(text.length);
+  });
+
+  it("هر دو نسخه idempotent اند", () => {
+    for (const text of CORPUS) {
+      const once = normalizePersian(text);
+      expect(normalizePersian(once)).toBe(once);
+      const safeOnce = normalizePersianPreservingLength(text);
+      expect(normalizePersianPreservingLength(safeOnce)).toBe(safeOnce);
+    }
   });
 });
 
