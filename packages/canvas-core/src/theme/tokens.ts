@@ -77,6 +77,23 @@ export const HB_TYPO = {
   stickyFontRange: { min: 12, max: 48 },
 } as const;
 
+/**
+ * شناسه‌ی عددی فونت در رجیستری موتور.
+ *
+ * عدد است چون موتور فونت را با عدد نگه می‌دارد، نه با نام. `5` همان
+ * `FONT_FAMILY.Excalifont` است — و متن فارسی از طریق ترفند `unicode-range`
+ * در `theme/fonts.css` با Vazirmatn رندر می‌شود، نه با Excalifont
+ * ([ADR-023](../../../../ARCHITECTURE_DECISIONS.md#adr-023)).
+ *
+ * ⚠️ اینجا به‌صورت عدد ثابت است تا `theme/` مجبور به import از موتور نشود.
+ * یک تست در `theme/font-family.test.ts` تضمین می‌کند با مقدار واقعی موتور
+ * یکی بماند — وگرنه یک ارتقای نسخه می‌تواند بی‌صدا فونت را عوض کند.
+ */
+export const HB_FONT_FAMILY = 5;
+
+/** نام خانواده‌ی فونت برای اندازه‌گیری روی canvas. */
+export const HB_FONT_NAME = "Excalifont";
+
 /** اندازه‌ی پیش‌فرض عناصر هنگام ساخت. */
 export const HB_SIZE = {
   sticky: { width: 220, height: 220 },

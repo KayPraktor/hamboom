@@ -52,6 +52,21 @@ export { getKind, isSticky, getDirection, toExcalidraw, fromExcalidraw } from ".
 export * from "./theme/index";
 
 export {
+  createSticky,
+  fitStickyFontSize,
+  wrapTextGreedy,
+  stickyInnerBox,
+  applyStickyPalette,
+  nextStickyPosition,
+} from "./elements/sticky";
+export type { CreateStickyOptions, StickyPair, MeasureLine } from "./elements/sticky";
+
+export { createStickyTool } from "./tools/sticky-tool";
+export type { StickyTool, StickyToolOptions } from "./tools/sticky-tool";
+
+export { createFontString, measureLineWidth, clearMeasureCache } from "./text/measure";
+
+export {
   detectBaseDirection,
   resolveDirection,
   defaultTextAlignFor,

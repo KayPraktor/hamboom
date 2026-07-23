@@ -146,6 +146,37 @@ body {
   font-size: 15px;
 }
 
+/* ── انتخابگر رنگ استیکی (گام ۳٫۲) ───────────────────────── */
+
+.hb-palette-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.hb-chip {
+  inline-size: 22px;
+  block-size: 22px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.hb-chip.is-selected {
+  outline: 2px solid var(--hb-accent);
+  outline-offset: 2px;
+}
+
+kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--hb-border);
+  border-radius: 4px;
+  background: var(--hb-surface);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+}
+
 /* ── صفحه‌ی پالت (گام ۳٫۱) ───────────────────────────────── */
 
 .hb-swatch-grid {
