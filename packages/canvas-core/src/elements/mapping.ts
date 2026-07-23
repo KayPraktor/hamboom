@@ -66,12 +66,18 @@ export function isSticky(element: { type: string; customData?: unknown }): boole
   return getKind(element) === "sticky";
 }
 
-/** جهت متن یک عنصر، اگر داشته باشد. */
-export function getDirection(element: {
-  customData?: unknown;
-  direction?: unknown;
-}): HbTextDirection | undefined {
-  if (typeof element.direction === "string") return element.direction as HbTextDirection;
+/**
+ * جهت متن یک عنصر.
+ *
+ * ★ **`customData.hb` تنها منبع است.** فیلد سطح بالا فقط یک نسخه‌ی راحتی برای
+ * موتور است و اینجا عمداً خوانده نمی‌شود.
+ *
+ * تا قبل از این، این تابع اول سطح بالا را می‌خواند. نتیجه: اگر دو مقدار واگرا
+ * می‌شدند، آنکه از serialization جان سالم به در نمی‌برد برنده می‌شد — یعنی
+ * دقیقاً برعکس چیزی که این لایه برایش ساخته شد. round-trip سبز می‌ماند و
+ * هیچ‌چیز نمی‌گرفتش.
+ */
+export function getDirection(element: { customData?: unknown }): HbTextDirection | undefined {
   const hb = (element.customData as { hb?: EngineHbData } | undefined)?.hb;
   return hb?.direction;
 }
@@ -79,15 +85,23 @@ export function getDirection(element: {
 /**
  * عنصر هم‌بوم → عنصر موتور.
  *
- * `direction` از سطح بالا به `customData.hb` منتقل می‌شود تا از serialization
- * موتور جان سالم به در ببرد.
+ * `direction` **جابه‌جا می‌شود** به `customData.hb`، نه کپی — چون `customData`
+ * تنها فیلدی است که موتور تضمین می‌کند دست‌نخورده نگه دارد.
+ *
+ * ⚠️ فیلد سطح بالا عمداً **حذف** می‌شود. اگر بماند، دو نسخه از یک مقدار در
+ * نمایش موتور زندگی می‌کنند و می‌توانند واگرا شوند بدون اینکه چیزی بگیردشان —
+ * round-trip سبز می‌ماند چون هر دو طرف یک نسخه را می‌خوانند، ولی هر کد دیگری
+ * که سطح بالا را دستکاری کند بی‌صدا مقدار دیگری می‌بیند.
  */
 export function toExcalidraw(element: HbElement): EngineElement {
   const { customData, ...rest } = element;
   const direction = "direction" in element ? element.direction : undefined;
 
-  const mapped: EngineElement = {
-    ...(rest as unknown as EngineElement),
+  const engineFields = rest as unknown as EngineElement & { direction?: unknown };
+  if (direction !== undefined) delete engineFields.direction;
+
+  return {
+    ...engineFields,
     customData: {
       ...customData,
       hb: {
@@ -96,10 +110,6 @@ export function toExcalidraw(element: HbElement): EngineElement {
       },
     },
   };
-
-  // در سطح بالا می‌ماند تا کد بوم بدون رفتن سراغ customData هم بخواندش،
-  // ولی منبع پایدارش همان customData است.
-  return mapped;
 }
 
 /**

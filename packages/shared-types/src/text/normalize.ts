@@ -136,6 +136,11 @@ export function normalizePersianPreservingLength(text: string): string {
  *
  * اعراب را حذف و ارقام را یکسان می‌کند تا «کتاب» و «کِتاب»، و «۱۲۳» و «123»
  * یکدیگر را پیدا کنند. در M3 روی ستون جستجوی Postgres اعمال می‌شود.
+ *
+ * ⚠️ عمداً از {@link normalizePersian} **کامل** استفاده می‌کند، نه از نسخه‌ی
+ * حافظ طول: کلید جستجو قرار نیست با متن اصلی هم‌طول باشد — به‌هرحال نیم‌فاصله
+ * را به فاصله و ارقام را عوض می‌کند. قید حفظ طول فقط برای مسیر ویرایش زنده
+ * معنا دارد، جایی که مکان‌نما اهمیت دارد.
  */
 export function persianSearchKey(text: string): string {
   return normalizePersian(text)

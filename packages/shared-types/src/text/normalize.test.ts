@@ -152,4 +152,17 @@ describe("persianSearchKey — تهاجمی، فقط برای جستجو", () =>
   it("حروف لاتین را کوچک می‌کند", () => {
     expect(persianSearchKey("Board")).toBe("board");
   });
+
+  it("★ از نسخه‌ی کامل استفاده می‌کند، نه حافظ طول — کشیده حذف می‌شود", () => {
+    // اگر روزی کسی این را به `normalizePersianPreservingLength` عوض کند،
+    // «بازـــرگانی» و «بازرگانی» دیگر یک کلید نمی‌دهند و جستجو خاموش می‌شکند.
+    expect(persianSearchKey("بازـــرگانی")).toBe(persianSearchKey("بازرگانی"));
+    expect(persianSearchKey("بازـــرگانی")).not.toContain("ـ");
+  });
+
+  it("کلید جستجو عمداً هم‌طول متن اصلی نیست", () => {
+    // قید حفظ طول فقط برای مسیر ویرایش زنده است، نه اینجا.
+    const text = "می‌خواهم بازـــرگانی ۱۲۳";
+    expect(persianSearchKey(text).length).not.toBe(text.length);
+  });
 });

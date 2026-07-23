@@ -184,16 +184,32 @@ describe("جهت متن در عبور از موتور زنده می‌ماند",
     expect(hb.direction).toBe("auto");
   });
 
+  it("★★ در نمایش موتور فقط **یک** نسخه از direction وجود دارد", () => {
+    // این تست جانِ تک‌منبعی بودن است. اگر مقدار در سطح بالا هم بماند،
+    // دو نسخه می‌توانند واگرا شوند و round-trip همچنان سبز می‌ماند —
+    // چون هر دو طرف نگاشت یک نسخه را می‌خوانند و دیگری بی‌صدا کهنه می‌شود.
+    const engine = toExcalidraw(SAMPLES.text!) as Record<string, unknown>;
+    expect(engine).not.toHaveProperty("direction");
+    expect((engine.customData as { hb: { direction?: string } }).hb.direction).toBe("auto");
+  });
+
+  it("★★ getDirection فقط customData را می‌خواند، نه سطح بالا", () => {
+    // اگر کسی فیلد سطح بالا را دستکاری کند (یا موتور آن را بازگرداند)،
+    // نباید بر منبع پایدار غلبه کند.
+    const engine = toExcalidraw(SAMPLES.text!) as Record<string, unknown>;
+    engine.direction = "ltr"; // نسخه‌ی مزاحم
+    expect(getDirection(engine as never)).toBe("auto");
+    expect((fromExcalidraw(engine as never) as { direction?: string }).direction).toBe("auto");
+  });
+
   it("در مسیر برگشت به سطح بالا برمی‌گردد", () => {
     const back = fromExcalidraw(toExcalidraw(SAMPLES.text!));
     expect((back as { direction?: string }).direction).toBe("auto");
   });
 
-  it("★ اگر موتور فیلد سطح بالا را انداخته باشد، از customData بازیابی می‌شود", () => {
+  it("★ موتور فیلدهای ناشناخته‌ی سطح بالا را دور می‌اندازد — customData می‌ماند", () => {
+    // دقیقاً همان چیزی که در عمل رخ می‌دهد و دلیل وجود این نگاشت است.
     const engine = toExcalidraw(SAMPLES.text!);
-    // شبیه‌سازی: موتور فیلدهای ناشناخته‌ی سطح بالا را دور انداخته.
-    delete (engine as Record<string, unknown>).direction;
-
     const back = fromExcalidraw(engine);
     expect((back as { direction?: string }).direction).toBe("auto");
   });
@@ -210,7 +226,10 @@ describe("جهت متن در عبور از موتور زنده می‌ماند",
   });
 
   it("متنی که موتور ساخته و direction ندارد، auto می‌گیرد", () => {
+    // ⚠️ `getDirection` روی نمایش **موتور** کار می‌کند (customData را می‌خواند).
+    // خروجی `fromExcalidraw` یک `HbElement` است که فیلدش سطح بالاست، پس
+    // اینجا مستقیم خوانده می‌شود، نه با getDirection.
     const back = fromExcalidraw({ type: "text", text: "سلام" });
-    expect(getDirection(back)).toBe("auto");
+    expect((back as { direction?: string }).direction).toBe("auto");
   });
 });
