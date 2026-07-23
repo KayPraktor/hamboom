@@ -146,6 +146,23 @@ body {
   font-size: 15px;
 }
 
+.hb-waiting {
+  color: var(--hb-muted);
+  font-size: 13px;
+}
+
+.hb-rows-block {
+  display: grid;
+  gap: 4px;
+  max-inline-size: 520px;
+}
+
+.hb-rows-block .hb-row {
+  justify-content: space-between;
+  border-block-end: 1px dashed var(--hb-border);
+  padding-block: 4px;
+}
+
 .hb-table {
   inline-size: 100%;
   border-collapse: collapse;
