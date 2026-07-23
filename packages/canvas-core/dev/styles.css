@@ -146,6 +146,61 @@ body {
   font-size: 15px;
 }
 
+/* ── صفحه‌ی پالت (گام ۳٫۱) ───────────────────────────────── */
+
+.hb-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--hb-space);
+}
+
+.hb-swatch {
+  margin: 0;
+}
+
+.hb-swatch-note {
+  display: grid;
+  place-items: center;
+  min-block-size: 140px;
+  padding: var(--hb-space);
+  border-inline-start: 4px solid transparent;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+}
+
+.hb-swatch-text {
+  font-size: 18px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.hb-swatch > figcaption {
+  padding-block-start: 8px;
+  font-size: 12px;
+}
+
+.hb-swatch-meta {
+  display: grid;
+  gap: 2px;
+  margin-block-start: 4px;
+}
+
+.hb-swatch-meta > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hb-swatch-meta dt {
+  color: var(--hb-muted);
+}
+
+.hb-swatch-meta dd {
+  margin: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 .hb-waiting {
   color: var(--hb-muted);
   font-size: 13px;

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { Palette } from "./Palette";
 import { SpikeEditing } from "./SpikeEditing";
 import { SpikeText } from "./SpikeText";
 // fonts.css عمداً اینجا نیست — از گام ۱٫۴ بخشی از خود پکیج است و
@@ -15,6 +16,7 @@ if (!container) throw new Error("عنصر #root در index.html پیدا نشد.
 const PAGES: Record<string, typeof App> = {
   "#spike": SpikeText,
   "#spike-edit": SpikeEditing,
+  "#palette": Palette,
 };
 const Page = PAGES[window.location.hash] ?? App;
 
