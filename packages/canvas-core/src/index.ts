@@ -61,6 +61,17 @@ export {
 } from "./elements/sticky";
 export type { CreateStickyOptions, StickyPair, MeasureLine } from "./elements/sticky";
 
+export { createShape } from "./elements/shape";
+export type { CreateShapeOptions, ShapeResult, HbShapeKind } from "./elements/shape";
+
+export { createText, realignTextForContent } from "./elements/text";
+export type { CreateTextOptions } from "./elements/text";
+
+export { applyStyle, commonStyle, withBoundElements } from "./elements/style";
+export type { StylePatch } from "./elements/style";
+
+export * from "./ui/index";
+
 export { createStickyTool } from "./tools/sticky-tool";
 export type { StickyTool, StickyToolOptions } from "./tools/sticky-tool";
 

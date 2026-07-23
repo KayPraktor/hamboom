@@ -4,6 +4,7 @@ import { detectBaseDirection } from "../text/bidi";
 import { hbBoundTextDefaults, HB_STICKY_DEFAULTS } from "../theme/defaults";
 import { getStickySwatch, HB_STICKY_DEFAULT } from "../theme/sticky-palette";
 import { HB_FONT_FAMILY, HB_STICKY_GAP, HB_TYPO } from "../theme/tokens";
+import { buildBaseElement, resolveSeed, type ElementSeedOptions } from "./factory";
 import { getKind } from "./mapping";
 
 /**
@@ -25,7 +26,7 @@ import { getKind } from "./mapping";
 /** فاصله‌ی داخلی متن از لبه‌ی استیکی. */
 const STICKY_PADDING = 12;
 
-export interface CreateStickyOptions {
+export interface CreateStickyOptions extends ElementSeedOptions {
   x: number;
   y: number;
   palette?: HbStickyColor;
@@ -33,9 +34,6 @@ export interface CreateStickyOptions {
   authorId: string;
   /** ایندکس لایه — تولید واقعی fractional index کار گام ۵٫۱ است. */
   index?: string;
-  now?: number;
-  makeId?: () => string;
-  random?: () => number;
   /**
    * اگر داده شود، اندازه‌ی فونت با `fitStickyFontSize` از طول متن حساب می‌شود.
    *
@@ -50,10 +48,6 @@ export interface StickyPair {
   text: HbElement;
   /** به ترتیب z: ظرف پایین، متن رویش. */
   elements: [HbElement, HbElement];
-}
-
-function defaultMakeId(): string {
-  return Math.random().toString(36).slice(2, 12);
 }
 
 /**
@@ -71,15 +65,14 @@ export function createSticky(options: CreateStickyOptions): StickyPair {
     text = "",
     authorId,
     index = "a0",
-    now = Date.now(),
-    makeId = defaultMakeId,
-    random = Math.random,
     measure,
+    ...seedOptions
   } = options;
 
+  const seed = resolveSeed(seedOptions);
   const swatch = getStickySwatch(palette);
-  const containerId = `stk_${makeId()}`;
-  const textId = `txt_${makeId()}`;
+  const containerId = `stk_${seed.makeId()}`;
+  const textId = `txt_${seed.makeId()}`;
   const direction = detectBaseDirection(text);
   const textDefaults = hbBoundTextDefaults(direction);
 
@@ -90,71 +83,42 @@ export function createSticky(options: CreateStickyOptions): StickyPair {
       ? fitStickyFontSize({ text, ...box, measure, lineHeight: textDefaults.lineHeight })
       : textDefaults.fontSize;
 
-  const hb = {
-    schema: 1 as const,
-    kind: "sticky" as const,
-    createdBy: authorId,
-    lastEditedBy: authorId,
-    createdAt: now,
-  };
-
   const container = {
-    id: containerId,
-    type: "rectangle" as const,
-    x,
-    y,
-    width: HB_STICKY_DEFAULTS.width,
-    height: HB_STICKY_DEFAULTS.height,
-    angle: 0,
-    index,
-    frameId: null,
-    groupIds: [],
-    locked: false,
+    ...buildBaseElement({
+      id: containerId,
+      type: "rectangle",
+      x,
+      y,
+      width: HB_STICKY_DEFAULTS.width,
+      height: HB_STICKY_DEFAULTS.height,
+      index,
+      kind: "sticky",
+      authorId,
+      seed,
+      hbExtra: { sticky: { palette, autoFit: HB_STICKY_DEFAULTS.autoFit } },
+    }),
     strokeColor: HB_STICKY_DEFAULTS.strokeColor,
     backgroundColor: swatch.bg,
-    fillStyle: HB_STICKY_DEFAULTS.fillStyle,
-    strokeWidth: HB_STICKY_DEFAULTS.strokeWidth,
-    strokeStyle: HB_STICKY_DEFAULTS.strokeStyle,
-    roughness: HB_STICKY_DEFAULTS.roughness,
-    opacity: HB_STICKY_DEFAULTS.opacity,
     roundness: { ...HB_STICKY_DEFAULTS.roundness },
-    seed: Math.floor(random() * 2_147_483_647),
-    version: 1,
-    versionNonce: Math.floor(random() * 2_147_483_647),
-    updated: now,
-    isDeleted: false,
     boundElements: [{ id: textId, type: "text" as const }],
-    link: null,
-    customData: { hb: { ...hb, sticky: { palette, autoFit: HB_STICKY_DEFAULTS.autoFit } } },
   } as unknown as HbElement;
 
   const textElement = {
-    id: textId,
-    type: "text" as const,
-    x: x + STICKY_PADDING,
-    y: y + STICKY_PADDING,
-    width: HB_STICKY_DEFAULTS.width - STICKY_PADDING * 2,
-    height: fontSize * textDefaults.lineHeight,
-    angle: 0,
-    index: `${index}V`,
-    frameId: null,
-    groupIds: [],
-    locked: false,
+    ...buildBaseElement({
+      id: textId,
+      type: "text",
+      x: x + STICKY_PADDING,
+      y: y + STICKY_PADDING,
+      width: HB_STICKY_DEFAULTS.width - STICKY_PADDING * 2,
+      height: fontSize * textDefaults.lineHeight,
+      index: `${index}V`,
+      kind: "text",
+      authorId,
+      seed,
+    }),
     strokeColor: swatch.text,
     backgroundColor: "transparent",
-    fillStyle: HB_STICKY_DEFAULTS.fillStyle,
-    strokeWidth: HB_STICKY_DEFAULTS.strokeWidth,
-    strokeStyle: HB_STICKY_DEFAULTS.strokeStyle,
-    roughness: HB_STICKY_DEFAULTS.roughness,
-    opacity: HB_STICKY_DEFAULTS.opacity,
     roundness: null,
-    seed: Math.floor(random() * 2_147_483_647),
-    version: 1,
-    versionNonce: Math.floor(random() * 2_147_483_647),
-    updated: now,
-    isDeleted: false,
-    boundElements: null,
-    link: null,
     containerId,
     text,
     originalText: text,
@@ -165,7 +129,6 @@ export function createSticky(options: CreateStickyOptions): StickyPair {
     lineHeight: textDefaults.lineHeight,
     direction: textDefaults.direction,
     autoResize: false,
-    customData: { hb: { ...hb, kind: "text" as const } },
   } as unknown as HbElement;
 
   return { container, text: textElement, elements: [container, textElement] };

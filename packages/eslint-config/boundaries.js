@@ -45,8 +45,19 @@ export function packageBoundaries(options = {}) {
  * `type` که بخواهد معنای محصولی را تشخیص دهد، **غلط است** — و بدتر: بی‌صدا
  * غلط است، چون کد کامپایل می‌شود و در حالت‌های ساده هم درست کار می‌کند.
  *
- * فقط روی نام نوع‌های واقعی عنصر تطبیق می‌دهد، نه هر `.type ===`ی — تا
- * `event.type === "click"` و مشابهش گیر نکنند.
+ * ── چرا هر دو سرِ مقایسه شرط دارند ────────────────────────────────────
+ *
+ * قاعده هم نام نوع‌های واقعی عنصر را می‌خواهد **و هم** اینکه سمت چپ یک
+ * دسترسی به `.type` باشد. اگر فقط مقدار سمت راست ملاک بود:
+ *
+ * - `event.type === "click"` گیر نمی‌کرد (چون "click" در فهرست نیست) ✓
+ * - ولی `shape === "rectangle"` گیر می‌کرد — یک پارامتر تابع، نه نوع عنصر ✗
+ *
+ * دومی در گام ۳٫۳ واقعاً رخ داد. قاعده‌ای که مثبت کاذب می‌دهد، دور زده
+ * می‌شود یا خاموش — و آن‌وقت مورد واقعی را هم دیگر نمی‌گیرد.
+ *
+ * هزینه‌ی پذیرفته‌شده: `const t = el.type; if (t === "rectangle")` فرار می‌کند.
+ * قاعده برای گرفتن اشتباه سهوی است، نه دور زدن عمدی.
  *
  * @returns {import("eslint").Linter.Config}
  */
@@ -59,14 +70,19 @@ export function elementKindDiscipline() {
       "no-restricted-syntax": [
         "error",
         {
-          selector: `BinaryExpression[operator=/^[!=]==$/][right.value=/^(${ELEMENT_TYPES})$/]`,
+          selector:
+            `BinaryExpression[operator=/^[!=]==$/]` +
+            `[left.property.name="type"]` +
+            `[right.value=/^(${ELEMENT_TYPES})$/]`,
           message:
             "ADR-010: روی element.type شرط نگذار — استیکی و شکل هر دو rectangle اند. " +
             "از getKind(element) در elements/mapping.ts استفاده کن. " +
             "اگر واقعاً به نوع رندر نیاز داری، کدت جایش در همان mapping.ts است.",
         },
         {
-          selector: `SwitchCase > Literal[value=/^(${ELEMENT_TYPES})$/]`,
+          selector:
+            `SwitchStatement[discriminant.property.name="type"] > SwitchCase > ` +
+            `Literal[value=/^(${ELEMENT_TYPES})$/]`,
           message:
             "ADR-010: switch روی element.type بیرون از mapping.ts ممنوع است. " +
             "از getKind(element) استفاده کن.",

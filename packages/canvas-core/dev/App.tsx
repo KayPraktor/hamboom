@@ -3,12 +3,19 @@ import {
   ENGINE_STAGE,
   HB_STICKY_PALETTE,
   HamboomCanvas,
+  StylePanel,
   applyStickyPalette,
+  applyStyle,
+  createShape,
   createStickyTool,
+  createText,
   fromExcalidraw,
   getKind,
   toExcalidraw,
+  withBoundElements,
+  type HbShapeKind,
   type StickyTool,
+  type StylePatch,
 } from "@hamboom/canvas-core";
 import { SYNC_CONTRACT_VERSION } from "@hamboom/canvas-core/sync";
 import type { HbStickyColor } from "@hamboom/shared-types";
@@ -30,11 +37,18 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+type HbElementList = ReturnType<typeof fromExcalidraw>[];
+
 export function App() {
   const [elementCount, setElementCount] = useState(0);
   const [stickyCount, setStickyCount] = useState(0);
   const [palette, setPalette] = useState<HbStickyColor>("yellow");
   const [toolActive, setToolActive] = useState(false);
+  /** عکس فوری از صحنه برای پنل استایل — با هر تغییر به‌روز می‌شود. */
+  const [snapshot, setSnapshot] = useState<{
+    elements: HbElementList;
+    selectedIds: Set<string>;
+  }>({ elements: [], selectedIds: new Set() });
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const toolRef = useRef<StickyTool | null>(null);
@@ -52,12 +66,27 @@ export function App() {
     //   ولی نمایشگر صفر می‌ماند و آدم فکر می‌کند فیچر خراب است. در مرورگر
     //   گرفته شد: صحنه دو عنصر داشت و نمایشگر صفر نشان می‌داد.
     const refreshCounts = () => {
-      const live = api.getSceneElements().filter((el) => !el.isDeleted);
+      const scene = api.getSceneElements();
+      const live = scene.filter((el) => !el.isDeleted);
       setElementCount(live.length);
       setStickyCount(live.filter((el) => getKind(el) === "sticky").length);
+
+      const selected = api.getAppState().selectedElementIds;
+      setSnapshot({
+        elements: scene.map((el) => fromExcalidraw(el as never)),
+        selectedIds: new Set(scene.filter((el) => selected[el.id]).map((el) => el.id)),
+      });
     };
     api.onChange(refreshCounts);
-    refreshCountsRef.current = refreshCounts;
+    // ⚠️ بعد از `updateScene` برنامه‌ای، state موتور هنوز اعمال نشده — خواندن
+    //   فوری `selectedElementIds` مقدار قبلی را می‌دهد و پنل استایل ظاهر
+    //   نمی‌شود. یک تیک صبر می‌کنیم.
+    //
+    //   ★ عمداً `setTimeout` نه `requestAnimationFrame`: rAF وقتی صفحه فریم
+    //   نمی‌سازد (تب پس‌زمینه، پنجره‌ی پنهان) اصلاً اجرا نمی‌شود و به‌روزرسانی
+    //   تا لحظه‌ی برگشت کاربر معلق می‌ماند. اولین نسخه با rAF بود و دقیقاً
+    //   همین اتفاق افتاد.
+    refreshCountsRef.current = () => setTimeout(refreshCounts, 0);
 
     // ★ ابزار قبلی باید نابود شود. زیر StrictMode این callback دوبار صدا زده
     //   می‌شود و بدون پاک‌سازی، ابزار کهنه با یک API مرده روی `document`
@@ -97,6 +126,71 @@ export function App() {
       toolRef.current = null;
     };
   }, []);
+
+  /** خواندن صحنه به‌صورت عناصر هم‌بوم + شناسه‌های انتخاب‌شده. */
+  const readScene = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return null;
+    const selected = api.getAppState().selectedElementIds;
+    const scene = api.getSceneElements();
+    return {
+      api,
+      elements: scene.map((el) => fromExcalidraw(el as never)),
+      selectedIds: new Set(scene.filter((el) => selected[el.id]).map((el) => el.id)),
+    };
+  }, []);
+
+  /** نوشتن عناصر هم‌بوم به صحنه. */
+  const writeScene = useCallback((api: ExcalidrawImperativeAPI, next: HbElementList) => {
+    api.updateScene({ elements: next.map(toExcalidraw) as never });
+    refreshCountsRef.current?.();
+  }, []);
+
+  const addShape = useCallback((shape: HbShapeKind, text?: string) => {
+    const api = apiRef.current;
+    if (!api) return;
+    const { width, height } = { width: 200, height: 120 };
+    const result = createShape({
+      shape,
+      x: -width / 2 + Math.round(Math.random() * 200),
+      y: -height / 2 + Math.round(Math.random() * 200),
+      authorId: "u_demo",
+      text,
+    });
+    api.updateScene({
+      elements: [...api.getSceneElements(), ...result.elements.map(toExcalidraw)] as never,
+      appState: { selectedElementIds: { [result.shape.id]: true } } as never,
+    });
+    refreshCountsRef.current?.();
+  }, []);
+
+  const addText = useCallback((text: string) => {
+    const api = apiRef.current;
+    if (!api) return;
+    const element = createText({
+      x: Math.round(Math.random() * 200),
+      y: Math.round(Math.random() * 200),
+      text,
+      authorId: "u_demo",
+    });
+    api.updateScene({
+      elements: [...api.getSceneElements(), toExcalidraw(element)] as never,
+      appState: { selectedElementIds: { [element.id]: true } } as never,
+    });
+    refreshCountsRef.current?.();
+  }, []);
+
+  /** پنل استایل — همان عملیات از منوی راست‌کلیک هم می‌آید (گام ۴٫۳). */
+  const onStyleChange = useCallback(
+    (patch: StylePatch) => {
+      const read = readScene();
+      if (!read || read.selectedIds.size === 0) return;
+      // شکل و متن مقیدش با هم عوض می‌شوند — از دید کاربر یک چیزند.
+      const selection = withBoundElements(read.elements, read.selectedIds);
+      writeScene(read.api, applyStyle(read.elements, selection, patch));
+    },
+    [readScene, writeScene],
+  );
 
   /** تغییر رنگ انتخاب فعلی — همان عملیاتی که پنل استایل در گام ۴٫۳ صدا می‌زند. */
   const recolorSelection = useCallback((next: HbStickyColor) => {
@@ -150,6 +244,32 @@ export function App() {
           ))}
         </div>
 
+        <div className="hb-style-group" role="group" aria-label="افزودن عنصر">
+          <button type="button" className="hb-style-chip" onClick={() => addShape("rectangle")}>
+            مستطیل
+          </button>
+          <button type="button" className="hb-style-chip" onClick={() => addShape("ellipse")}>
+            بیضی
+          </button>
+          <button type="button" className="hb-style-chip" onClick={() => addShape("diamond")}>
+            لوزی
+          </button>
+          <button
+            type="button"
+            className="hb-style-chip"
+            onClick={() => addShape("rectangle", "متن داخل شکل")}
+          >
+            شکل + متن
+          </button>
+          <button
+            type="button"
+            className="hb-style-chip"
+            onClick={() => addText("متن آزاد فارسی روی بوم")}
+          >
+            متن آزاد
+          </button>
+        </div>
+
         <dl className="hb-rows">
           <Row label="ابزار استیکی" value={toolActive ? "فعال" : "خاموش"} />
           <Row label="استیکی" value={String(stickyCount)} />
@@ -162,6 +282,15 @@ export function App() {
 
       <main className="hb-canvas-host">
         <HamboomCanvas onReady={onReady} />
+        {snapshot.selectedIds.size > 0 ? (
+          <div className="hb-style-dock">
+            <StylePanel
+              elements={snapshot.elements}
+              selectedIds={snapshot.selectedIds}
+              onChange={onStyleChange}
+            />
+          </div>
+        ) : null}
       </main>
     </div>
   );

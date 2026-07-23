@@ -146,6 +146,19 @@ body {
   font-size: 15px;
 }
 
+/* ── جایگاه پنل استایل (گام ۳٫۳) ─────────────────────────── */
+
+/*
+ * ADR-016 — `inset-inline-start` نه `left`. در RTL خودش سمت راست می‌نشیند،
+ * بدون هیچ کد شرطی.
+ */
+.hb-style-dock {
+  position: absolute;
+  inset-block-start: 16px;
+  inset-inline-start: 16px;
+  z-index: 5;
+}
+
 /* ── انتخابگر رنگ استیکی (گام ۳٫۲) ───────────────────────── */
 
 .hb-palette-picker {

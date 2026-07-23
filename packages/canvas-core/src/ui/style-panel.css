@@ -1,0 +1,82 @@
+/*
+ * پنل استایل — ADR-016: فقط logical properties.
+ *
+ * هیچ `left`/`right`/`margin-left` در این فایل نیست. چیدمان از `dir` سند
+ * می‌آید، پس در RTL و LTR بدون هیچ کد شرطی درست می‌نشیند.
+ */
+
+.hb-style-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+  inline-size: 260px;
+}
+
+.hb-style-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hb-style-label {
+  flex: 0 0 64px;
+  color: #6b7280;
+  font-size: 12px;
+  /* منطقی، نه `left` — در RTL خودش راست‌چین می‌شود. */
+  text-align: start;
+}
+
+.hb-style-swatches,
+.hb-style-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.hb-style-swatch {
+  inline-size: 20px;
+  block-size: 20px;
+  padding: 0;
+  border: 1px solid #e3e6ea;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.hb-style-swatch.is-transparent {
+  background: linear-gradient(45deg, transparent 45%, #d14343 45% 55%, transparent 55%), #ffffff;
+}
+
+.hb-style-swatch.is-selected,
+.hb-style-chip.is-selected {
+  outline: 2px solid #5b8def;
+  outline-offset: 1px;
+}
+
+.hb-style-chip {
+  padding-block: 3px;
+  padding-inline: 8px;
+  border: 1px solid #e3e6ea;
+  border-radius: 6px;
+  background: #ffffff;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.hb-style-value {
+  flex: 0 0 32px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: end;
+}
+
+.hb-style-panel input[type="range"] {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
