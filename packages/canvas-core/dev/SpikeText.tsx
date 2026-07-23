@@ -1,6 +1,12 @@
-import { FONT_FAMILY, HamboomCanvas, convertToExcalidrawElements } from "@hamboom/canvas-core";
+import {
+  FONT_FAMILY,
+  HamboomCanvas,
+  convertToExcalidrawElements,
+  getCanvasTextDirectionInvocations,
+  isCanvasTextDirectionInstalled,
+} from "@hamboom/canvas-core";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 /**
  * صفحه‌ی spike متن فارسی — گام ۱٫۳ از TODO.md.
@@ -134,6 +140,25 @@ function usesVazirmatn(text: string, family: string): boolean {
 export function SpikeText() {
   const [rows, setRows] = useState<Measurement[]>([]);
   const [fontStringUsed, setFontStringUsed] = useState("");
+  const [dirHook, setDirHook] = useState({ installed: false, invocations: 0 });
+
+  /**
+   * ★ تایید ADR-023 — این عدد باید هنگام کار با بوم بالا برود.
+   *
+   * اگر روی صفر بماند، یعنی موتور از مسیر
+   * `CanvasRenderingContext2D.prototype.fillText` رد نمی‌شود و راه‌حل wrapper
+   * جواب نمی‌دهد — آن‌وقت باید به patch (P-1) برگردیم. عمداً زنده به‌روز می‌شود
+   * تا با یک نگاه، بدون ابزار، قابل بررسی باشد.
+   */
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setDirHook({
+        installed: isCanvasTextDirectionInstalled(),
+        invocations: getCanvasTextDirectionInvocations(),
+      });
+    }, 400);
+    return () => window.clearInterval(id);
+  }, []);
 
   const onReady = useCallback((api: ExcalidrawImperativeAPI) => {
     const skeletons = CASES.map((c, i) => ({
@@ -217,6 +242,16 @@ export function SpikeText() {
           <div className="hb-row">
             <dt>فونت</dt>
             <dd>{fontStringUsed || "—"}</dd>
+          </div>
+          <div className="hb-row">
+            <dt>hook جهت نصب است؟</dt>
+            <dd>{dirHook.installed ? "بله" : "خیر"}</dd>
+          </div>
+          <div className="hb-row">
+            <dt>فراخوانی hook</dt>
+            <dd>
+              {dirHook.invocations} {dirHook.invocations > 0 ? "✅" : "⚠️"}
+            </dd>
           </div>
         </dl>
       </header>

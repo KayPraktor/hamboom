@@ -1,32 +1,82 @@
 /**
- * Stub حداقلی برای `HTMLCanvasElement.getContext` در jsdom.
+ * Stub حداقلی canvas برای jsdom.
  *
  * **چرا لازم است:** Excalidraw در زمان **لود ماژول** (نه رندر) روی یک canvas
- * موقت `getContext("2d")` می‌زند تا قابلیت‌ها را تشخیص دهد. jsdom این را پیاده
- * نکرده و `null` برمی‌گرداند، پس هر تستی که چیزی از `@hamboom/canvas-core`
- * import کند در زمان collect می‌ترکد.
+ * موقت `getContext("2d")` می‌زند. jsdom این را پیاده نکرده و `null` برمی‌گرداند،
+ * پس هر تستی که چیزی از `@hamboom/canvas-core` import کند در زمان collect می‌ترکد.
+ *
+ * ── دو تله که این فایل قبلاً در آن‌ها افتاد ────────────────────────────
+ *
+ * ۱. **نسخه‌ی اول یک آبجکت ساده برمی‌گرداند** که `fillText` را به‌عنوان own
+ *    property داشت. نتیجه: کدی که `CanvasRenderingContext2D.prototype.fillText`
+ *    را wrap می‌کند (`engine/canvas-direction.ts`) هرگز در زنجیره قرار نمی‌گرفت.
+ *
+ * ۲. **jsdom اصلاً `CanvasRenderingContext2D` را تعریف نمی‌کند.** پس حتی با
+ *    زنجیره‌ی درست هم هدفی برای wrap کردن وجود نداشت. این فایل خودش آن
+ *    سازنده را می‌سازد تا API مرورگر شبیه‌سازی شود.
  *
  * ── مرز صریح این stub ─────────────────────────────────────────────────
  *
- * این **رندر واقعی نمی‌کند**. هیچ پیکسلی کشیده نمی‌شود و `measureText` یک عدد
- * ساختگی و قطعی برمی‌گرداند که هیچ ربطی به فونت واقعی ندارد.
+ * این **رندر واقعی نمی‌کند**. هیچ پیکسلی کشیده نمی‌شود و `measureText` عددی
+ * ساختگی و قطعی می‌دهد که هیچ ربطی به فونت واقعی ندارد.
  *
  * پس این‌ها را **هرگز** نمی‌شود با تست jsdom آزمود:
  *   - اندازه‌گیری و شکست خط متن (فارسی یا غیر آن)
  *   - شکل‌دهی حروف و ترتیب bidi
  *   - هر چیزی که به پیکسل واقعی وابسته است
  *
- * این‌ها باید در مرورگر واقعی آزموده شوند — spike گام ۱٫۳ و تست‌های گام ۶٫۱.
- * اگر روزی دیدی یک تست jsdom درباره‌ی عرض متن ادعایی می‌کند، آن تست دروغ می‌گوید.
+ * آنچه **می‌شود** آزمود: اینکه wrapper ها در زنجیره‌ی prototype قرار می‌گیرند و
+ * مقدار درستی ست می‌کنند. تایید خروجی بصری فقط در مرورگر واقعی — صفحه‌های
+ * `#spike` و `#spike-edit` و `docs/spike-persian-text.md`.
  */
 
 /** عرض ساختگی هر کاراکتر — عمداً گرد و غیرواقعی تا کسی جدی‌اش نگیرد. */
 const FAKE_CHAR_WIDTH = 10;
 
+/**
+ * سازنده‌ی `CanvasRenderingContext2D` را برمی‌گرداند و اگر jsdom آن را نداشت،
+ * یک معادل حداقلی می‌سازد و روی `globalThis` می‌گذارد.
+ *
+ * `fillText`/`strokeText` عمداً روی **prototype** می‌نشینند، نه روی نمونه —
+ * تا کد محصولی که prototype را wrap می‌کند واقعاً آزموده شود.
+ */
+let contextConstructorReady = false;
+
+function ensureContextConstructor(): { prototype: Record<string, unknown> } {
+  const existing = (globalThis as Record<string, unknown>).CanvasRenderingContext2D as
+    { prototype: Record<string, unknown> } | undefined;
+
+  if (existing?.prototype) {
+    // ⚠️ فقط **یک‌بار**. نسخه‌ی قبلی این کار را در هر ساخت context تکرار می‌کرد
+    // و چون `createFake2dContext` هم این تابع را صدا می‌زند، هر بار
+    // `prototype.fillText` را روی noop برمی‌گرداند — یعنی wrapper ای که تست
+    // همان لحظه نصب کرده بود پاک می‌شد و تست بی‌دلیل شکست می‌خورد.
+    if (!contextConstructorReady) {
+      // jsdom این متدها را پیاده نکرده و صدا زدنشان خطا می‌دهد.
+      existing.prototype.fillText = () => undefined;
+      existing.prototype.strokeText = () => undefined;
+      contextConstructorReady = true;
+    }
+    return existing;
+  }
+
+  class FakeCanvasRenderingContext2D {
+    fillText(): void {}
+    strokeText(): void {}
+  }
+
+  (globalThis as Record<string, unknown>).CanvasRenderingContext2D = FakeCanvasRenderingContext2D;
+  contextConstructorReady = true;
+
+  return FakeCanvasRenderingContext2D as unknown as { prototype: Record<string, unknown> };
+}
+
 function createFake2dContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   const noop = () => undefined;
+  const Ctor = ensureContextConstructor();
 
-  const context = {
+  // ارث‌بری واقعی از prototype — نکته‌ی کلیدی این فایل.
+  const context = Object.assign(Object.create(Ctor.prototype as object) as object, {
     canvas,
     // ویژگی‌هایی که کد بالادست وجودشان را چک می‌کند (`'filter' in ctx`)
     filter: "none",
@@ -87,8 +137,7 @@ function createFake2dContext(canvas: HTMLCanvasElement): CanvasRenderingContext2
     clip: noop,
     isPointInPath: () => false,
     isPointInStroke: () => false,
-    fillText: noop,
-    strokeText: noop,
+    // ★ fillText و strokeText عمداً اینجا نیستند — روی prototype می‌مانند.
     drawImage: noop,
     createLinearGradient: () => ({ addColorStop: noop }),
     createRadialGradient: () => ({ addColorStop: noop }),
@@ -108,13 +157,15 @@ function createFake2dContext(canvas: HTMLCanvasElement): CanvasRenderingContext2
     putImageData: noop,
     setLineDash: noop,
     getLineDash: () => [] as number[],
-  };
+  });
 
   return context as unknown as CanvasRenderingContext2D;
 }
 
-/** نصب stub روی prototype. چندبار صدا زدن بی‌ضرر است. */
+/** نصب stub. چندبار صدا زدن بی‌ضرر است. */
 export function installCanvasStub(): void {
+  ensureContextConstructor();
+
   const proto = globalThis.HTMLCanvasElement?.prototype;
   if (!proto) return;
 

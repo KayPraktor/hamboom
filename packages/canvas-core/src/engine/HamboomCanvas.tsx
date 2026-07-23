@@ -3,6 +3,7 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { useEffect, useState } from "react";
 
 import { assertAssetPathConfigured } from "./asset-path";
+import { installCanvasTextDirection } from "./canvas-direction";
 import { guardDocumentDirection } from "./document-direction-guard";
 
 import "@excalidraw/excalidraw/index.css";
@@ -57,9 +58,13 @@ export function HamboomCanvas({
     };
   }, []);
 
-  // Excalidraw جهت و زبان کل سند را عوض می‌کند. تا اعمال patch در گام ۱٫۴،
-  // اثرش خنثی می‌شود. توضیح کامل در document-direction-guard.ts
+  // Excalidraw جهت و زبان کل سند را عوض می‌کند؛ اثرش خنثی می‌شود.
   useEffect(() => guardDocumentDirection(), []);
+
+  // ADR-023 — موتور `ctx.direction` را ست نمی‌کند، پس متن فارسی با جهت پایه‌ی
+  // LTR چیده می‌شود. باید **قبل از اولین رندر** نصب شود، نه در یک effect —
+  // موتور عناصر را کش می‌کند و متنی که یک‌بار اشتباه کشیده شد دوباره کشیده نمی‌شود.
+  installCanvasTextDirection();
 
   if (!fontsReady) {
     return (

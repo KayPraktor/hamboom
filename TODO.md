@@ -175,11 +175,18 @@
 
 فهرست به‌روزشده بر اساس یافته‌های ۱٫۳ و ۱٫۳ب:
 
-- [ ] **P-1:** patch برای ست‌کردن `ctx.direction` قبل از `fillText` + ثبت در `patches/README.md`
-- [ ] `ENGINE_STAGE` → `"patch"` (یک تست این را می‌پاید)
-- [ ] `text/bidi.ts` با `detectBaseDirection` **مبتنی بر اکثریت** ([ADR-024](ARCHITECTURE_DECISIONS.md#adr-024))،
-      `isRTLChar`، و `normalizePersian` (ي/ك عربی → ی/ک فارسی — موتور این کار را نمی‌کند)
-- [ ] پیش‌فرض `element.textAlign` عناصر متنی → `"right"`
+- [x] `text/bidi.ts` — `detectBaseDirection` **مبتنی بر اکثریت** ([ADR-024](ARCHITECTURE_DECISIONS.md#adr-024))،
+      `isRTLChar`, `isLTRChar`, `countStrongChars`, `resolveDirection`, `defaultTextAlignFor` — ۱۷ تست
+- [x] `text/normalize.ts` — `normalizePersian()` + `persianSearchKey()` — ۱۸ تست.
+      **در فایل جدا، نه در `bidi.ts`** — مسئله‌اش جهت نیست، ورودی است.
+      ⚠️ **کاندید انتقال به `shared-types` قبل از M3:** اگر فقط اینجا نرمال‌سازی کنیم،
+      متنی که از API، قالب یا seed بیاید نرمال‌نشده می‌ماند و در جستجوی M3 مچ نمی‌شود.
+- [x] `engine/canvas-direction.ts` — wrapper روی `fillText`/`strokeText` — ۱۰ تست
+      ([ADR-025](ARCHITECTURE_DECISIONS.md#adr-025))
+- [ ] **🔬 تایید تجربی ADR-025:** شمارنده‌ی «فراخوانی hook» در صفحه‌ی `#spike` باید
+      هنگام کار با بوم بالا برود. اگر صفر ماند → برگشت به patch تاییدشده‌ی P-1.
+- [ ] در صورت نیاز به patch: اعمال P-1 + ثبت در `patches/README.md` + `ENGINE_STAGE` → `"patch"`
+- [ ] پیش‌فرض `element.textAlign` عناصر متنی → `"right"` (از `defaultTextAlignFor`)
 - [ ] صفت `dir` روی textarea از `auto` به مقدار صریح `detectBaseDirection`
 - [ ] انتقال `fonts.css` از `dev/` به `src/theme/`
 - [ ] تست رگرسیون هش پیکسلی

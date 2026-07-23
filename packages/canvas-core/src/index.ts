@@ -38,6 +38,25 @@ export {
   isAssetPathConfigured,
   assertAssetPathConfigured,
 } from "./engine/asset-path";
+export {
+  installCanvasTextDirection,
+  uninstallCanvasTextDirection,
+  isCanvasTextDirectionInstalled,
+  getCanvasTextDirectionInvocations,
+  resetCanvasTextDirectionInvocations,
+} from "./engine/canvas-direction";
+
+export {
+  detectBaseDirection,
+  resolveDirection,
+  defaultTextAlignFor,
+  countStrongChars,
+  isRTLChar,
+  isLTRChar,
+} from "./text/bidi";
+export type { TextDirection } from "./text/bidi";
+export { normalizePersian, persianSearchKey } from "./text/normalize";
+export type { NormalizeOptions } from "./text/normalize";
 
 /** شناسه‌ی پکیج — برای تشخیص در لاگ و ابزار توسعه. */
 export const CANVAS_CORE_NAME = "@hamboom/canvas-core";

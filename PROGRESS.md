@@ -87,16 +87,52 @@ Vite جدا؛ `packages/tsconfig` خودبسنده؛ vitest بدون globals؛ `
     رشته با جمع عرض کاراکترها برابر می‌شد. ۳۸٪ اختلاف در فارسی و ۰٪ در لاتین،
     اثبات قطعی shaping است. این روش برای تست رگرسیون هم قابل استفاده است.
 
-## قدم بعدی — گام ۱٫۴ (آزاد شد)
+## گام ۱٫۴ — بخش انجام‌شده
 
-1. **P-1:** patch برای ست‌کردن `ctx.direction` قبل از `fillText` + `patches/README.md`
-2. `ENGINE_STAGE` → `"patch"`
-3. `text/bidi.ts` — `detectBaseDirection` **مبتنی بر اکثریت** ([ADR-024](ARCHITECTURE_DECISIONS.md#adr-024))،
-   `isRTLChar`، `normalizePersian` (ي/ك عربی → ی/ک — موتور این کار را نمی‌کند)
-4. پیش‌فرض `element.textAlign` → `"right"`
-5. صفت `dir` روی textarea از `auto` به مقدار صریح
-6. انتقال `fonts.css` از `dev/` به `src/theme/`
-7. تست رگرسیون هش پیکسلی
+| فایل | چیست | تست |
+|---|---|---|
+| `src/text/bidi.ts` | تشخیص جهت با اکثریت (ADR-024) | ۱۷ |
+| `src/text/normalize.ts` | `normalizePersian` + `persianSearchKey` | ۱۸ |
+| `src/engine/canvas-direction.ts` | wrapper روی `fillText` (ADR-025) | ۱۰ |
+| `patches/README.md` | ثبت باگ U-1 و patch پشتیبان P-1 | — |
+
+**۵۴ تست سبز.** `typecheck` · `lint` · `format:check` هم سبز.
+
+### دو باگ واقعی که تست‌ها گرفتند
+
+1. **`isRTLChar` ارقام فارسی را حرف قوی می‌شمرد.** بازه‌ی دستی `U+0600–U+06FF`
+   شامل `U+06F0–U+06F9` هم می‌شود. با `\p{L}` + `\p{Script=…}` حل شد.
+2. **stub canvas سیم‌کشی را غیرقابل‌تست کرده بود.** آبجکت ساده برمی‌گرداند، پس
+   wrap کردن prototype هرگز به آن نمی‌رسید — و بدتر: jsdom اصلاً
+   `CanvasRenderingContext2D` را تعریف نمی‌کند. stub حالا خودش آن را می‌سازد.
+   (باگ سوم داخل همین اصلاح: `ensureContextConstructor` هر بار `fillText` را
+   روی noop برمی‌گرداند و wrapper تست را پاک می‌کرد.)
+
+## 🔬 یک مورد نیازمند تایید تجربی — [ADR-025](ARCHITECTURE_DECISIONS.md#adr-025)
+
+به‌جای patch تاییدشده، یک راه بدون patch پیدا شد: wrap کردن
+`CanvasRenderingContext2D.prototype.fillText` که `ctx.direction` را از روی
+خود متن ست می‌کند. اگر جواب بدهد، پروژه روی **پله‌ی A** می‌ماند.
+
+**ولی هنوز اثبات نشده که موتور از همین مسیر متن می‌کشد.** در این session
+اسکرین‌شات در دسترس نبود، رویدادهای مصنوعی اشاره‌گر/چرخ را موتور نمی‌پذیرفت و
+میانبر کیبورد هم به بوم نمی‌رسید — پس هیچ رندر مجددی تولید نشد. شمارنده صفر
+ماند، **ولی هش پیکسل بوم هم قبل و بعد یکسان ماند، یعنی رندری اتفاق نیفتاده
+بود.** صفر ماندن در آن شرایط شاهد نیست.
+
+**راه تایید (یک دقیقه کار):** صفحه‌ی `#spike` را باز کن، با بوم کار کن
+(یک شکل بکش، زوم کن). در نوار بالا «فراخوانی hook» زنده به‌روز می‌شود.
+
+- عدد بالا رفت → ADR-025 پذیرفته، پله‌ی A حفظ می‌شود، patch لازم نیست
+- صفر ماند → P-1 اعمال می‌شود (از قبل تایید شده، در `patches/README.md` آماده است)
+
+## قدم بعدی — ادامه‌ی گام ۱٫۴
+
+1. تایید تجربی ADR-025 (بالا) — و در صورت نیاز اعمال P-1
+2. پیش‌فرض `element.textAlign` → `"right"` از `defaultTextAlignFor`
+3. صفت `dir` روی textarea از `auto` به مقدار صریح `detectBaseDirection`
+4. انتقال `fonts.css` از `dev/` به `src/theme/`
+5. تست رگرسیون هش پیکسلی
 
 **قاعده‌ی انسجام (از ADR-024):** جهت در سه جا مصرف می‌شود — `ctx.direction`،
 صفت `dir` ویرایشگر، و `textAlign` عنصر. هر سه باید از یک تابع بیایند، وگرنه
