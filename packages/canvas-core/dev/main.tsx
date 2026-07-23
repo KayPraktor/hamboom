@@ -4,7 +4,8 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { SpikeEditing } from "./SpikeEditing";
 import { SpikeText } from "./SpikeText";
-import "./fonts.css";
+// fonts.css عمداً اینجا نیست — از گام ۱٫۴ بخشی از خود پکیج است و
+// HamboomCanvas آن را import می‌کند.
 import "./styles.css";
 
 const container = document.getElementById("root");

@@ -183,13 +183,23 @@
       متنی که از API، قالب یا seed بیاید نرمال‌نشده می‌ماند و در جستجوی M3 مچ نمی‌شود.
 - [x] `engine/canvas-direction.ts` — wrapper روی `fillText`/`strokeText` — ۱۰ تست
       ([ADR-025](ARCHITECTURE_DECISIONS.md#adr-025))
-- [ ] **🔬 تایید تجربی ADR-025:** شمارنده‌ی «فراخوانی hook» در صفحه‌ی `#spike` باید
-      هنگام کار با بوم بالا برود. اگر صفر ماند → برگشت به patch تاییدشده‌ی P-1.
-- [ ] در صورت نیاز به patch: اعمال P-1 + ثبت در `patches/README.md` + `ENGINE_STAGE` → `"patch"`
-- [ ] پیش‌فرض `element.textAlign` عناصر متنی → `"right"` (از `defaultTextAlignFor`)
-- [ ] صفت `dir` روی textarea از `auto` به مقدار صریح `detectBaseDirection`
-- [ ] انتقال `fonts.css` از `dev/` به `src/theme/`
-- [ ] تست رگرسیون هش پیکسلی
+- [x] **🔬 تایید تجربی ADR-025** — شمارنده‌ی «فراخوانی hook» هنگام رندر واقعی بالا
+      می‌رود (۳۸ فراخوانی در یک بارگذاری `#spike`). **patch لازم نشد؛ پله‌ی A حفظ شد.**
+- [x] ~~اعمال P-1~~ — لازم نشد. به‌عنوان پشتیبان در `patches/README.md` می‌ماند و
+      به چک‌لیست ارتقای نسخه اضافه شد.
+- [x] پیش‌فرض `element.textAlign` → از `defaultTextAlignFor(defaultDirection)` در
+      `initialData.appState.currentItemTextAlign`
+- [x] `engine/editor-direction.ts` — صفت `dir` روی textarea از `auto` به مقدار صریح.
+      تایید در مرورگر: روی «board برای تیم ماست» نگهبان `rtl` می‌دهد و `dir="auto"`
+      مرورگر `ltr` — دقیقاً همان موردی که ADR-024 برایش وجود دارد. ۱۰ تست.
+- [x] انتقال `fonts.css` به `src/theme/` — حالا `HamboomCanvas` خودش import می‌کند،
+      پس مصرف‌کننده نمی‌تواند فراموشش کند
+- [!] **تست رگرسیون هش پیکسلی — به گام ۶٫۱ موکول شد.**
+      دلیل: jsdom پیکسل تولید نمی‌کند و تست پیکسلی واقعی به مرورگر headless
+      (Playwright) نیاز دارد که یک وابستگی سنگین است و الان فقط برای یک تست
+      اضافه می‌شود. جایگزین فعلی: ۶۴ تست واحد + شمارنده‌ی زنده‌ی `#spike` که
+      در چک‌لیست ارتقای نسخه ثبت شده. در گام ۶٫۱ که تست یکپارچه‌ی مرورگری
+      به‌هرحال لازم است، این هم با آن می‌آید.
 - [ ] برای مشکلات دسته‌ی **props/CSS**: در `text/` حل کن (مثلاً `dir="auto"` روی textarea ویرایشگر، `unicode-bidi: plaintext`، `text-align: start`)
 - [ ] برای مشکلات دسته‌ی **patch**: با `pnpm patch` اصلاح کن. هر patch باید:
   - در `patches/` باشد

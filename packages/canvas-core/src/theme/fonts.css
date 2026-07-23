@@ -1,0 +1,56 @@
+/*
+ * فونت‌های بوم هم‌بوم — بخشی از پکیج، نه اپ دمو.
+ *
+ * `HamboomCanvas` این فایل را import می‌کند، پس هر مصرف‌کننده‌ای خودبه‌خود
+ * فونت درست را می‌گیرد و نمی‌تواند فراموشش کند.
+ *
+ * ── ترفند کلیدی: تزریق Vazirmatn به خانواده‌های فونت موتور ─────────────
+ *
+ * موتور رندر نام خانواده‌ی فونت را خودش می‌سازد (`20px Excalifont`) و هیچ API
+ * عمومی برای ثبت فونت سفارشی ندارد. ولی CSS اجازه می‌دهد چند `@font-face` با
+ * **یک نام خانواده** و `unicode-range` های متفاوت تعریف شود؛ مرورگر برای هر
+ * کاراکتر آن face ای را برمی‌دارد که بازه‌اش را پوشش می‌دهد.
+ *
+ * پس با ثبت Vazirmatn زیر نام خانواده‌های موتور و محدود به بازه‌ی عربی، متن
+ * فارسی با Vazirmatn رندر می‌شود و متن لاتین با فونت اصلی — **بدون هیچ patch ای**.
+ * تایید تجربی در [ADR-023](../../../../ARCHITECTURE_DECISIONS.md#adr-023).
+ *
+ * هیچ فونتی از CDN نمی‌آید (اصل P2) — همه از node_modules باندل می‌شوند.
+ *
+ * ⚠️ `font-display: block` عمدی است، نه `swap`. اندازه‌گیری متن روی canvas باید
+ * با فونت نهایی انجام شود؛ با `swap` عرض‌ها اول با فونت fallback حساب می‌شوند و
+ * بعد چیدمان می‌پرد ([ADR-017](../../../../ARCHITECTURE_DECISIONS.md#adr-017)).
+ */
+
+@import "@fontsource-variable/vazirmatn/index.css";
+
+/* بازه‌ی یونیکد خط عربی/فارسی + نیم‌فاصله و ZWJ */
+@font-face {
+  font-family: "Excalifont";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+  src: url("@fontsource-variable/vazirmatn/files/vazirmatn-arabic-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+200C-200D, U+FB50-FDFF, U+FE70-FEFF;
+}
+
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+  src: url("@fontsource-variable/vazirmatn/files/vazirmatn-arabic-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+200C-200D, U+FB50-FDFF, U+FE70-FEFF;
+}
+
+@font-face {
+  font-family: "Virgil";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+  src: url("@fontsource-variable/vazirmatn/files/vazirmatn-arabic-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+200C-200D, U+FB50-FDFF, U+FE70-FEFF;
+}

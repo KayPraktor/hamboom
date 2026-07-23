@@ -45,6 +45,7 @@ export {
   getCanvasTextDirectionInvocations,
   resetCanvasTextDirectionInvocations,
 } from "./engine/canvas-direction";
+export { guardEditorDirection } from "./engine/editor-direction";
 
 export {
   detectBaseDirection,
