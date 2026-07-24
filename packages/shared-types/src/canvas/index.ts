@@ -27,6 +27,7 @@ export type {
   HbKind,
   HbTextDirection,
   HbStickyColor,
+  HbConnectorStyle,
   HbPoint,
   HbCustomData,
   HbShapeElement,

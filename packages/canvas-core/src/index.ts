@@ -70,6 +70,17 @@ export type { CreateTextOptions } from "./elements/text";
 export { applyStyle, commonStyle, withBoundElements } from "./elements/style";
 export type { StylePatch } from "./elements/style";
 
+export { createConnector, rerouteConnector } from "./elements/connector";
+export type { CreateConnectorOptions, ConnectorEnd } from "./elements/connector";
+export {
+  routeConnector,
+  edgePoint,
+  boxCenter,
+  roundTo2,
+  toRelativePoints,
+} from "./elements/connector-routing";
+export type { Point, Box, RouteInput } from "./elements/connector-routing";
+
 export * from "./ui/index";
 
 export { createStickyTool } from "./tools/sticky-tool";

@@ -6,11 +6,14 @@ import {
   StylePanel,
   applyStickyPalette,
   applyStyle,
+  createConnector,
   createShape,
+  createSticky,
   createStickyTool,
   createText,
   fromExcalidraw,
   getKind,
+  rerouteConnector,
   toExcalidraw,
   withBoundElements,
   type HbShapeKind,
@@ -53,6 +56,7 @@ export function App() {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const toolRef = useRef<StickyTool | null>(null);
   const refreshCountsRef = useRef<(() => void) | null>(null);
+  const rerouteConnectorsRef = useRef<(() => void) | null>(null);
   const paletteRef = useRef(palette);
   paletteRef.current = palette;
 
@@ -78,6 +82,10 @@ export function App() {
       });
     };
     api.onChange(refreshCounts);
+    // ★ reroute کانکتورها هنگام حرکت عنصر متصل — مسیر حالت مشتق‌شده است
+    //   (ADR-008). این نسخه‌ی ساده‌ی دمو کاری را می‌کند که binder واقعی M2
+    //   خواهد کرد: هر کانکتور را با جعبه‌ی فعلی دو سرش دوباره route می‌کند.
+    api.onChange(() => rerouteConnectorsRef.current?.());
     // ⚠️ بعد از `updateScene` برنامه‌ای، state موتور هنوز اعمال نشده — خواندن
     //   فوری `selectedElementIds` مقدار قبلی را می‌دهد و پنل استایل ظاهر
     //   نمی‌شود. یک تیک صبر می‌کنیم.
@@ -180,6 +188,75 @@ export function App() {
     refreshCountsRef.current?.();
   }, []);
 
+  /**
+   * هر کانکتور را با موقعیت فعلی دو سرش دوباره route می‌کند.
+   *
+   * حلقه نمی‌سازد چون `updateScene` برنامه‌ای `onChange` را صدا نمی‌زند — پس
+   * reroute که در پاسخ به درگ کاربر اجرا می‌شود، خودش onChange بعدی تولید نمی‌کند.
+   */
+  const rerouteConnectors = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const scene = api.getSceneElements();
+    const byId = new Map(scene.map((el) => [el.id, el]));
+    const boxOf = (el: (typeof scene)[number]) => ({
+      x: el.x,
+      y: el.y,
+      width: el.width,
+      height: el.height,
+    });
+
+    let changed = false;
+    const next = scene.map((el) => {
+      if (getKind(el) !== "connector") return el;
+      const hb = fromExcalidraw(el as never);
+      const startId = (hb as { startBinding?: { elementId: string } }).startBinding?.elementId;
+      const endId = (hb as { endBinding?: { elementId: string } }).endBinding?.elementId;
+      const startEl = startId ? byId.get(startId) : undefined;
+      const endEl = endId ? byId.get(endId) : undefined;
+      if (!startEl || !endEl) return el;
+
+      const routed = rerouteConnector(hb, boxOf(startEl), boxOf(endEl));
+      const current = el as unknown as { x: number; y: number; points: [number, number][] };
+      if (
+        current.x === routed.x &&
+        current.y === routed.y &&
+        JSON.stringify(current.points) === JSON.stringify(routed.points)
+      ) {
+        return el;
+      }
+      changed = true;
+      return toExcalidraw({ ...hb, ...routed } as never);
+    });
+
+    if (changed) api.updateScene({ elements: next as never });
+  }, []);
+  rerouteConnectorsRef.current = rerouteConnectors;
+  // برای اشکال‌زدایی از کنسول — فقط محیط دمو.
+  (window as unknown as { __hbReroute: () => void }).__hbReroute = rerouteConnectors;
+
+  /** دو استیکی + یک کانکتور بینشان — برای آزمودن reroute هنگام حرکت. */
+  const addConnectedPair = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const a = createSticky({ x: -320, y: 0, palette: "yellow", text: "شروع", authorId: "u_demo" });
+    const b = createSticky({ x: 200, y: 200, palette: "blue", text: "پایان", authorId: "u_demo" });
+    const box = (s: typeof a.container) => ({ x: s.x, y: s.y, width: s.width, height: s.height });
+    const connector = createConnector({
+      start: { elementId: a.container.id, box: box(a.container) },
+      end: { elementId: b.container.id, box: box(b.container) },
+      style: "elbow",
+      authorId: "u_demo",
+    });
+    api.updateScene({
+      elements: [
+        ...api.getSceneElements(),
+        ...[...a.elements, ...b.elements, connector].map(toExcalidraw),
+      ] as never,
+    });
+    refreshCountsRef.current?.();
+  }, []);
+
   /** پنل استایل — همان عملیات از منوی راست‌کلیک هم می‌آید (گام ۴٫۳). */
   const onStyleChange = useCallback(
     (patch: StylePatch) => {
@@ -267,6 +344,9 @@ export function App() {
             onClick={() => addText("متن آزاد فارسی روی بوم")}
           >
             متن آزاد
+          </button>
+          <button type="button" className="hb-style-chip" onClick={addConnectedPair}>
+            دو استیکی + کانکتور
           </button>
         </div>
 

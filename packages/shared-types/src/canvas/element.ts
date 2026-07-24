@@ -76,6 +76,7 @@ export const hbTextAlign = z.enum(["left", "center", "right"]);
 export const hbVerticalAlign = z.enum(["top", "middle", "bottom"]);
 export const hbArrowhead = z.enum(["arrow", "triangle", "dot", "bar", "circle"]).nullable();
 export const hbConnectorStyle = z.enum(["straight", "elbow", "curved"]);
+export type HbConnectorStyle = z.infer<typeof hbConnectorStyle>;
 
 /** نقطه‌ی دوبعدی — مختصات نسبی به `x`/`y` عنصر. */
 export const hbPoint = z.tuple([z.number(), z.number()]);
