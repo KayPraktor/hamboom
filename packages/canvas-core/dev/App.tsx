@@ -350,8 +350,12 @@ export function App() {
     );
     const byId = new Map(recolored.map((el) => [el.id, el]));
 
+    // ★ یک ژست = یک ورودی undo (ADR-026). بدون IMMEDIATELY، تغییر رنگ ورودی
+    //   undo جدا نمی‌سازد و اولین Ctrl+Z به‌جای برگرداندن رنگ، ژست قبلی
+    //   (ساخت فریم/استیکی) را برمی‌گرداند — در مرورگر تایید شد.
     api.updateScene({
       elements: hb.map((el) => toExcalidraw(byId.get(el.id) ?? el)) as never,
+      captureUpdate: "IMMEDIATELY",
     });
   }, []);
 
