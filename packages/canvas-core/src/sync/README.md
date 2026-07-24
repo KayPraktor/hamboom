@@ -101,6 +101,10 @@ emitElementChanges(changes) {
 - [ ] `requestAssetUpload` → presigned URL (باینری هرگز در سند)
 - [ ] `SaveState` که **حقیقت** را بگوید، نه خوش‌بینی
 - [ ] اعمال `CanvasPermissions` — **در سرور هم**، نه فقط UI ([ADR-012](../../../../ARCHITECTURE_DECISIONS.md#adr-012))
+- [ ] ★ **`applyRemoteChanges` باید صحنه را با `captureUpdate: "NEVER"` بنویسد**
+      ([ADR-026](../../../../ARCHITECTURE_DECISIONS.md#adr-026)). وگرنه تغییری که از
+      کاربر دیگر می‌رسد در undo stack محلی این کاربر می‌نشیند و `Ctrl+Z` او کار
+      دیگری را برمی‌گرداند — همان چیزی که ADR-012 منع کرده. مکمل نگهبان echo.
 
 ## گپ‌های شناخته‌شده که M2 باید پر کند
 

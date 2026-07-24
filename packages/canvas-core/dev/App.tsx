@@ -7,12 +7,15 @@ import {
   applyStickyPalette,
   applyStyle,
   createConnector,
+  createFrame,
   createShape,
   createSticky,
   createStickyTool,
   createText,
   fromExcalidraw,
   getKind,
+  moveFrame,
+  recomputeFrameMembership,
   rerouteConnector,
   toExcalidraw,
   withBoundElements,
@@ -235,6 +238,62 @@ export function App() {
   // برای اشکال‌زدایی از کنسول — فقط محیط دمو.
   (window as unknown as { __hbReroute: () => void }).__hbReroute = rerouteConnectors;
 
+  /** یک فریم با دو استیکی داخلش — عضویت خودکار حساب می‌شود. */
+  const addFrameWithChildren = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const frame = createFrame({
+      x: -260,
+      y: -160,
+      width: 560,
+      height: 320,
+      name: "فریم من",
+      authorId: "u_demo",
+    });
+    const a = createSticky({
+      x: -240,
+      y: -140,
+      palette: "yellow",
+      text: "الف",
+      authorId: "u_demo",
+    });
+    const b = createSticky({ x: 20, y: -140, palette: "mint", text: "ب", authorId: "u_demo" });
+
+    const fresh = [frame, ...a.elements, ...b.elements].map((el) =>
+      fromExcalidraw(toExcalidraw(el)),
+    );
+    const withMembership = recomputeFrameMembership([
+      ...api.getSceneElements().map((el) => fromExcalidraw(el as never)),
+      ...fresh,
+    ]);
+
+    api.updateScene({
+      elements: withMembership.map(toExcalidraw) as never,
+      appState: { selectedElementIds: { [frame.id]: true } } as never,
+      captureUpdate: "IMMEDIATELY",
+    });
+    refreshCountsRef.current?.();
+  }, []);
+
+  /**
+   * ★ حرکت فریمِ انتخاب‌شده با فرزندانش — در **یک** updateScene با IMMEDIATELY،
+   * تا کل ژست یک ورودی undo شود (ADR-026).
+   */
+  const moveSelectedFrame = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const scene = api.getSceneElements().map((el) => fromExcalidraw(el as never));
+    const selected = api.getAppState().selectedElementIds;
+    const frame =
+      scene.find((el) => getKind(el) === "frame" && selected[el.id]) ??
+      scene.find((el) => getKind(el) === "frame");
+    if (!frame) return;
+
+    const moved = moveFrame(scene, frame.id, 120, 80);
+    api.updateScene({ elements: moved.map(toExcalidraw) as never, captureUpdate: "IMMEDIATELY" });
+    refreshCountsRef.current?.();
+  }, []);
+
   /** دو استیکی + یک کانکتور بینشان — برای آزمودن reroute هنگام حرکت. */
   const addConnectedPair = useCallback(() => {
     const api = apiRef.current;
@@ -347,6 +406,12 @@ export function App() {
           </button>
           <button type="button" className="hb-style-chip" onClick={addConnectedPair}>
             دو استیکی + کانکتور
+          </button>
+          <button type="button" className="hb-style-chip" onClick={addFrameWithChildren}>
+            فریم + دو استیکی
+          </button>
+          <button type="button" className="hb-style-chip" onClick={moveSelectedFrame}>
+            حرکت فریم
           </button>
         </div>
 

@@ -4,7 +4,7 @@ import { detectBaseDirection } from "../text/bidi";
 import { hbBoundTextDefaults, HB_STICKY_DEFAULTS } from "../theme/defaults";
 import { getStickySwatch, HB_STICKY_DEFAULT } from "../theme/sticky-palette";
 import { HB_FONT_FAMILY, HB_STICKY_GAP, HB_TYPO } from "../theme/tokens";
-import { buildBaseElement, resolveSeed, type ElementSeedOptions } from "./factory";
+import { buildBaseElement, bumpVersion, resolveSeed, type ElementSeedOptions } from "./factory";
 import { getKind } from "./mapping";
 
 /**
@@ -270,10 +270,9 @@ export function applyStickyPalette(elements: HbElement[], palette: HbStickyColor
 
   return elements.map((element) => {
     if (stickyIds.has(element.id)) {
-      return {
+      return bumpVersion({
         ...element,
         backgroundColor: swatch.bg,
-        version: element.version + 1,
         customData: {
           ...element.customData,
           hb: {
@@ -281,12 +280,12 @@ export function applyStickyPalette(elements: HbElement[], palette: HbStickyColor
             sticky: { ...element.customData.hb.sticky, palette, autoFit: true },
           },
         },
-      } as HbElement;
+      }) as HbElement;
     }
 
     const containerId = (element as HbTextElement).containerId;
-    if (element.type === "text" && containerId !== null && stickyIds.has(containerId)) {
-      return { ...element, strokeColor: swatch.text, version: element.version + 1 } as HbElement;
+    if (getKind(element) === "text" && containerId !== null && stickyIds.has(containerId)) {
+      return bumpVersion({ ...element, strokeColor: swatch.text }) as HbElement;
     }
 
     return element;

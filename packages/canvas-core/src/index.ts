@@ -72,6 +72,17 @@ export type { StylePatch } from "./elements/style";
 
 export { createConnector, rerouteConnector } from "./elements/connector";
 export type { CreateConnectorOptions, ConnectorEnd } from "./elements/connector";
+
+export {
+  createFrame,
+  recomputeFrameMembership,
+  frameChildren,
+  moveFrame,
+  deleteFrameKeepChildren,
+} from "./elements/frame";
+export type { CreateFrameOptions } from "./elements/frame";
+
+export { bumpVersion } from "./elements/factory";
 export {
   routeConnector,
   edgePoint,

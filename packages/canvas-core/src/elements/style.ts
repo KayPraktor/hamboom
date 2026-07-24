@@ -1,6 +1,7 @@
 import type { HbElement } from "@hamboom/shared-types";
 
 import { HB_TYPO } from "../theme/tokens";
+import { bumpVersion } from "./factory";
 import { getKind } from "./mapping";
 
 /**
@@ -71,7 +72,7 @@ export function applyStyle(
     if (Object.keys(updates).length === 0) return element;
 
     changed = true;
-    return { ...element, ...updates, version: element.version + 1 } as HbElement;
+    return bumpVersion({ ...element, ...updates }) as HbElement;
   });
 
   return changed ? next : elements;

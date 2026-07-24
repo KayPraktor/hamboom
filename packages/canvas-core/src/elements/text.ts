@@ -3,7 +3,7 @@ import type { HbElement, HbTextDirection } from "@hamboom/shared-types";
 import { detectBaseDirection, defaultTextAlignFor, resolveDirection } from "../text/bidi";
 import { hbTextDefaults } from "../theme/defaults";
 import { HB_FONT_FAMILY, HB_TYPO, HB_UI_COLORS } from "../theme/tokens";
-import { buildBaseElement, resolveSeed, type ElementSeedOptions } from "./factory";
+import { buildBaseElement, bumpVersion, resolveSeed, type ElementSeedOptions } from "./factory";
 
 /**
  * متن آزاد روی بوم — گام ۳٫۳.
@@ -103,9 +103,5 @@ export function realignTextForContent(element: HbElement): HbElement {
   const nextAlign = defaultTextAlignFor(detectBaseDirection(text.text ?? ""));
   if (nextAlign === text.textAlign) return element;
 
-  return {
-    ...element,
-    textAlign: nextAlign,
-    version: element.version + 1,
-  } as HbElement;
+  return bumpVersion({ ...element, textAlign: nextAlign }) as HbElement;
 }

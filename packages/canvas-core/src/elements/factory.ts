@@ -33,6 +33,30 @@ export interface ElementSeed {
 
 const MAX_SEED = 2_147_483_647;
 
+/**
+ * نسخه‌ی یک عنصر تغییریافته را بالا می‌برد — **هم `version` هم `versionNonce`**.
+ *
+ * ⚠️ **هر دو لازم‌اند.** یک باگ واقعی که در مرورگر گرفته شد: اگر فقط `version`
+ * بالا برود و `versionNonce` ثابت بماند، موتور تغییر را برای undo **ثبت
+ * نمی‌کند** — چون `versionNonce` را برای تشخیص increment می‌خواند. نتیجه:
+ * حرکت یا تغییر رنگ، ورودی undo جدا نمی‌سازد و یک `Ctrl+Z` مستقیماً کل
+ * عملیات قبلی را برمی‌گرداند.
+ *
+ * `versionNonce` قطعی بالا می‌رود (`+1`) تا helper ها خالص و تست‌پذیر بمانند —
+ * برای تشخیص increment فقط کافی است از مقدار **قبلی** فرق کند، که `+1` تضمین
+ * می‌کند. مقدار همیشه زیر `MAX_SEED` می‌ماند (پیمایش دایره‌ای).
+ *
+ * هر helper ای که property یک عنصر را عوض می‌کند باید از این استفاده کند، نه
+ * دستی `version: v + 1`.
+ */
+export function bumpVersion<T extends { version: number; versionNonce: number }>(element: T): T {
+  return {
+    ...element,
+    version: element.version + 1,
+    versionNonce: (element.versionNonce + 1) % MAX_SEED,
+  };
+}
+
 export function resolveSeed(options: ElementSeedOptions = {}): ElementSeed {
   return {
     now: options.now ?? Date.now(),

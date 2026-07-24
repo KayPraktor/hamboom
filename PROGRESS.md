@@ -347,10 +347,37 @@ export می‌شد؛ فقط `export type HbConnectorStyle = z.infer<...>` که �
 اضافه شد. **قرارداد تغییر نکرد** — یک تایپِ از قبل موجود در دسترس شد. اگر ترجیح
 می‌دهی به‌جایش محلی derive شود، بگو.
 
+### گام ۳٫۵ — فریم + [ADR-026](ARCHITECTURE_DECISIONS.md#adr-026)
+
+| فایل | چیست | تست |
+|---|---|---|
+| `elements/frame.ts` | `createFrame`, `recomputeFrameMembership`, `moveFrame`, `deleteFrameKeepChildren` | ۲۳ |
+| `elements/factory.ts` | `bumpVersion` (رفع باگ undo) | — |
+
+**۳۳۸ تست سبز** (۴۴ shared-types، ۲۹۴ canvas-core).
+
+**پیش‌نیاز چک شد (مثل ۳٫۲):** این‌بار API عمومی هست — `captureUpdate` روی
+`updateScene`. granularity تجربی در مرورگر اثبات شد (یک IMMEDIATELY = یک undo).
+ثبت شد به‌عنوان ADR-026، با نکته‌ی مکمل برای M2: `applyRemoteChanges` باید
+`NEVER` بدهد.
+
+**★ باگ خاموشی که این گام بیرون کشید:** تغییر `version` بدون `versionNonce`
+باعث می‌شد موتور تغییر را برای undo ثبت **نکند**. اول در دموی فریم به‌نظر
+«یک undo همه را پاک می‌کند» آمد؛ با آزمون کنترل‌شده در مرورگر ایزوله شد که
+`versionNonce` علت است. `bumpVersion()` مشترک ساخته شد و **همه‌ی ۶ جهش‌دهنده**
+(`moveFrame`, `applyStyle`, `applyStickyPalette`, `recomputeFrameMembership`,
+`deleteFrameKeepChildren`, `realignTextForContent`) رویش رفتند — یعنی تغییر رنگ
+و استایل هم همین باگ را داشتند. یک تست ناوردا (`versionNonce` باید عوض شود) و
+یک ردیف در جدول تله‌های `CLAUDE.md` بستنش.
+
+**تایید مرورگر:** فریم + دو استیکی، حرکت `+120,+80` روی هر ۵ عنصر (شامل متن
+مقید)، یک undo فقط حرکت را برگرداند و همه ماندند.
+
 ## قدم بعدی
 
-**گام ۳٫۵ — فریم:** ساخت فریم با نام فارسی، عضویت با `frameId`، حرکت فریم =
-حرکت همه‌ی فرزندان در یک ژست، و undo یک‌باره.
+**گام ۳٫۶ — تصویر:** افزودن با drag&drop و paste، `requestAssetUpload` با
+placeholder، `resolveAssetUrl` با کش. در `local-adapter` با `createObjectURL`
+شبیه‌سازی می‌شود.
 
 **قاعده‌ی انسجام (از ADR-024):** جهت در سه جا مصرف می‌شود — `ctx.direction`،
 صفت `dir` ویرایشگر، و `textAlign` عنصر. هر سه باید از یک تابع بیایند، وگرنه
