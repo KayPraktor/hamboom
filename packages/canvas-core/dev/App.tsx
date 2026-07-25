@@ -7,6 +7,7 @@ import {
   applyStickyPalette,
   applyStyle,
   createConnector,
+  createDrawTool,
   createFrame,
   createImageTool,
   createShape,
@@ -20,12 +21,16 @@ import {
   rerouteConnector,
   toExcalidraw,
   withBoundElements,
+  type DrawStrokeOutbound,
+  type DrawTool,
   type HbShapeKind,
   type ImageAssetOutbound,
   type ImageTool,
   type StickyTool,
+  type StrokePoint,
   type StylePatch,
 } from "@hamboom/canvas-core";
+import { sceneCoordsToViewportCoords } from "@excalidraw/excalidraw";
 import { SYNC_CONTRACT_VERSION } from "@hamboom/canvas-core/sync";
 import type { HbStickyColor } from "@hamboom/shared-types";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
@@ -81,9 +86,13 @@ export function App() {
     selectedIds: Set<string>;
   }>({ elements: [], selectedIds: new Set() });
 
+  const [drawActive, setDrawActive] = useState(false);
+
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const toolRef = useRef<StickyTool | null>(null);
   const imageToolRef = useRef<ImageTool | null>(null);
+  const drawToolRef = useRef<DrawTool | null>(null);
+  const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const refreshCountsRef = useRef<(() => void) | null>(null);
   const rerouteConnectorsRef = useRef<(() => void) | null>(null);
   const paletteRef = useRef(palette);
@@ -173,6 +182,55 @@ export function App() {
       onError: (message) => api.setToast({ message, duration: 4000 }),
       onInserted: () => refreshCountsRef.current?.(),
     });
+
+    // ابزار قلم — استروکِ در حال کشیدن روی overlay رندر می‌شود و ephemeral پخش
+    // می‌گردد؛ نتیجه‌ی نهایی یک عنصر و یک emitElementChanges (ADR-022).
+    const renderStroke = (points: StrokePoint[] | null) => {
+      const overlay = overlayRef.current;
+      const ctx = overlay?.getContext("2d");
+      if (!overlay || !ctx) return;
+      if (overlay.width !== overlay.clientWidth || overlay.height !== overlay.clientHeight) {
+        overlay.width = overlay.clientWidth;
+        overlay.height = overlay.clientHeight;
+      }
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      if (!points || points.length < 2) return;
+      const rect = overlay.getBoundingClientRect();
+      const appState = api.getAppState();
+      ctx.beginPath();
+      points.forEach((p, i) => {
+        const v = sceneCoordsToViewportCoords({ sceneX: p[0], sceneY: p[1] }, appState);
+        const x = v.x - rect.left;
+        const y = v.y - rect.top;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = "#1A1A1A";
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.stroke();
+    };
+
+    // outbound نمایشی: فقط emitElementChanges را می‌شمارد تا ناوردای «یک ژست =
+    // یک تغییرِ ماندگار» در مرورگر هم قابل بازرسی باشد.
+    const win = window as unknown as { __hbDrawEmits: number };
+    win.__hbDrawEmits = 0;
+    const drawOutbound: DrawStrokeOutbound = {
+      emitEphemeral: () => {},
+      emitElementChanges: () => {
+        win.__hbDrawEmits += 1;
+      },
+    };
+
+    drawToolRef.current?.destroy();
+    drawToolRef.current = createDrawTool({
+      api,
+      outbound: drawOutbound,
+      authorId: "u_demo",
+      onLocalStroke: renderStroke,
+      onCommitted: () => refreshCountsRef.current?.(),
+    });
   }, []);
 
   useEffect(() => {
@@ -198,9 +256,24 @@ export function App() {
       toolRef.current = null;
       imageToolRef.current?.destroy();
       imageToolRef.current = null;
+      drawToolRef.current?.destroy();
+      drawToolRef.current = null;
       for (const url of urls.values()) URL.revokeObjectURL(url);
       urls.clear();
     };
+  }, []);
+
+  /** روشن/خاموش کردن قلم. قلم و استیکی هم‌زمان فعال نمی‌شوند. */
+  const toggleDraw = useCallback(() => {
+    const next = !(drawToolRef.current?.isActive() ?? false);
+    if (next) {
+      toolRef.current?.deactivate();
+      setToolActive(false);
+      drawToolRef.current?.activate();
+    } else {
+      drawToolRef.current?.deactivate();
+    }
+    setDrawActive(next);
   }, []);
 
   /** خواندن صحنه به‌صورت عناصر هم‌بوم + شناسه‌های انتخاب‌شده. */
@@ -491,6 +564,14 @@ export function App() {
           <button type="button" className="hb-style-chip" onClick={() => void addSampleImage()}>
             تصویر نمونه
           </button>
+          <button
+            type="button"
+            className={`hb-style-chip${drawActive ? " is-selected" : ""}`}
+            onClick={toggleDraw}
+            aria-pressed={drawActive}
+          >
+            قلم{drawActive ? " (فعال)" : ""}
+          </button>
         </div>
 
         <dl className="hb-rows">
@@ -505,6 +586,7 @@ export function App() {
 
       <main className="hb-canvas-host">
         <HamboomCanvas onReady={onReady} />
+        <canvas ref={overlayRef} className="hb-draw-overlay" />
         {snapshot.selectedIds.size > 0 ? (
           <div className="hb-style-dock">
             <StylePanel

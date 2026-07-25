@@ -159,6 +159,17 @@ body {
   z-index: 5;
 }
 
+/*
+ * لایه‌ی استروکِ ephemeral (گام ۳٫۷ / ADR-022). روی بوم، زیر پنل‌ها.
+ * `pointer-events: none` تا کلیک به خودِ بوم برسد؛ فقط رندر است.
+ */
+.hb-draw-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
 /* ── انتخابگر رنگ استیکی (گام ۳٫۲) ───────────────────────── */
 
 .hb-palette-picker {

@@ -93,6 +93,9 @@ export {
 } from "./elements/image";
 export type { CreateImageOptions, ImageValidation, HbImageMime } from "./elements/image";
 
+export { createDraw, simplifyStroke } from "./elements/draw";
+export type { CreateDrawOptions, StrokePoint } from "./elements/draw";
+
 export { bumpVersion } from "./elements/factory";
 export {
   routeConnector,
@@ -110,6 +113,9 @@ export type { StickyTool, StickyToolOptions } from "./tools/sticky-tool";
 
 export { createImageTool } from "./tools/image-tool";
 export type { ImageTool, ImageToolOptions, ImageAssetOutbound } from "./tools/image-tool";
+
+export { createDrawTool } from "./tools/draw-tool";
+export type { DrawTool, DrawToolOptions, DrawStrokeOutbound } from "./tools/draw-tool";
 
 export { createFontString, measureLineWidth, clearMeasureCache } from "./text/measure";
 

@@ -521,12 +521,26 @@ versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `fact
 - [ ] **تایید بصری با مالک:** پیکسلِ تصویر روی بوم (اسکرین‌شات در session ممکن نبود؛
       مثل bidi و پالت). blob رمزگشایی می‌شود و فایل بدون خطا ثبت می‌شود.
 
-### گام ۳٫۷ — قلم آزاد با کانال ephemeral
-- [ ] `tools/draw-tool.ts`: در حال کشیدن، فقط `emitEphemeral({ kind: "draw-stroke", … })` — [ADR-022](ARCHITECTURE_DECISIONS.md#adr-022)
-- [ ] در `pointerup`: ساده‌سازی مسیر با Ramer–Douglas–Peucker (آستانه‌ی قابل تنظیم) سپس یک `emitElementChanges` واحد
-- [ ] رندر استروک ephemeral کاربران دیگر در یک لایه‌ی مجزا (بالای بوم، پایین رابط)
-- [ ] تست: کشیدن یک خط ۳۰۰ نقطه‌ای باید دقیقاً **یک** فراخوانی `emitElementChanges` تولید کند
-- **معیار پذیرش:** تست بالا سبز است
+### گام ۳٫۷ — قلم آزاد با کانال ephemeral ✅ (۱۴۰۵/۰۵/۰۲)
+> پیش‌نیاز در مرورگر probe شد: عنصر freedraw با `points` نسبی + `pressures: []` +
+> `simulatePressure: true` را موتور می‌پذیرد و بدون خطا رندر می‌کند.
+
+- [x] `elements/draw.ts`: `simplifyStroke` (RDP، خالص) + `createDraw` (خالص؛ نقاط
+      مطلق → جعبه‌ی احاطه + نقاط نسبی). ساده‌سازی فقط روی **کلاینتِ کشنده** اجرا و
+      نتیجه ذخیره می‌شود، پس برخلاف کانکتور نیازی به تعیّن بین‌مرورگری ندارد (`hypot` مجاز).
+- [x] `tools/draw-tool.ts`: حین کشیدن فقط `emitEphemeral({ kind: "draw-stroke", … })`؛
+      در `pointerup` مسیر ساده و **یک** `emitElementChanges` + یک `updateScene(IMMEDIATELY)`
+      محلی (یک undo). رویداد در فاز capture گرفته می‌شود تا قلمِ خودِ موتور فعال نشود.
+- [x] رندر استروکِ محلیِ در حال کشیدن روی یک `<canvas>` overlay (لایه‌ی مجزا،
+      `pointer-events: none`). استروکِ **کاربران دیگر** از همین مسیر در M2/4.4
+      (از `applyPeers`) می‌آید.
+- [x] ۱۸ تست جدید (۱۳ عنصر/RDP + ۵ ابزار).
+- **معیار پذیرش:** ✅ تست «۳۰۰ نقطه = یک `emitElementChanges`» سبز، **و در مرورگر
+      تایید شد** — استروک ۲۰۱ نقطه‌ای: `emitElementChanges` دقیقاً **۱**، RDP نقاط را
+      ۲۰۱→۲۹ کرد، یک عنصر freedraw؛ **یک undo حذفش کرد و redo برگرداند**؛ بدون خطای کنسول.
+
+- [ ] **تایید بصری با مالک:** خودِ استروک روی بوم و overlay (اسکرین‌شات در session
+      ممکن نبود — پنل مرورگر نمایش داده نمی‌شد). مسیر داده و undo/redo تایید شدند.
 
 ---
 
