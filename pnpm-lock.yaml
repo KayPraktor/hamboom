@@ -118,6 +118,27 @@ importers:
         specifier: ^8.18.0
         version: 8.65.0(eslint@9.39.5)(typescript@5.9.3)
 
+  packages/i18n:
+    devDependencies:
+      '@hamboom/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@hamboom/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.1)(jsdom@25.0.1)(sass@1.51.0)
+
   packages/shared-types:
     dependencies:
       zod:
