@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  formatNumber,
-  formatRial,
-  formatToman,
-  toLatinDigits,
-  toPersianDigits,
-} from "./numbers";
+import { formatNumber, formatRial, formatToman, toLatinDigits, toPersianDigits } from "./numbers";
 
 /** ارقام فارسیِ یک رشته را جدا می‌کند — برای بررسیِ مقدار مستقل از جداکننده. */
 const digitsOnly = (s: string) => s.replace(/[^۰-۹]/g, "");

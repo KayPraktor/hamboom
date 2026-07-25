@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  formatJalaliDate,
-  formatJalaliDateTime,
-  formatJalaliShort,
-  jalaliYear,
-} from "./dates";
+import { formatJalaliDate, formatJalaliDateTime, formatJalaliShort, jalaliYear } from "./dates";
 
 // ۲۰۲۶-۰۷-۲۵ در تهران = ۳ مرداد ۱۴۰۵ (نوروزِ ۱۴۰۵ = ۲۰۲۶-۰۳-۲۱).
 const MORDAD = new Date("2026-07-25T06:00:00Z");

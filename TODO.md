@@ -546,12 +546,20 @@ versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `fact
 
 ## فاز ۴ — رابط کاربری RTL (تخمین: ۲ تا ۴ روز)
 
-### گام ۴٫۱ — زیرساخت RTL و i18n
-- [ ] `packages/i18n`: بارگذار رشته‌های `fa`، تابع `t(key, params)`، قالب‌بندی عدد فارسی، تاریخ جلالی با `Intl` ([ADR-018](ARCHITECTURE_DECISIONS.md#adr-018))
-- [ ] Stylelint rule: خطا روی `margin-left`, `padding-right`, `left:`, `right:`, `text-align: left|right` — فقط logical properties ([ADR-016](ARCHITECTURE_DECISIONS.md#adr-016))
-- [ ] `dir="rtl"` روی ریشه‌ی دمو
-- [ ] **استثنای بوم مستند شود:** مختصات بوم هرگز آینه نمی‌شود؛ یک کامنت صریح در `engine/`
-- **معیار پذیرش:** Stylelint روی کل پکیج سبز است و هیچ استثنایی ندارد
+### گام ۴٫۱ — زیرساخت RTL و i18n ✅ (۱۴۰۵/۰۵/۰۲)
+- [x] `packages/i18n`: `t(key, params)` (درجِ عددِ فارسیِ خودکار)، ارقام فارسی +
+      پول ریال/تومان (P5)، تاریخ جلالی با `Intl` (کلندر persian، تهران — [ADR-018](ARCHITECTURE_DECISIONS.md#adr-018)).
+      لایه‌ی پایه، بدون وابستگیِ هم‌بومی، فقط Intl بومی. ۲۴ تست.
+- [x] Stylelint ([stylelint.config.js](stylelint.config.js)): `property-disallowed-list`
+      + `declaration-property-value-disallowed-list` خطا روی `margin/padding/border-left|right`,
+      `left`, `right`, `text-align: left|right`, `float/clear` جهت‌دار ([ADR-016](ARCHITECTURE_DECISIONS.md#adr-016)).
+      بدون config پایه (یک gate، یک هدف). با fixtureِ نقض **هر دو جهت** آزموده شد.
+- [x] `dir="rtl" lang="fa"` روی ریشه‌ی دمو (از گام ۰٫۲).
+- [x] **استثنای بوم مستند:** `engine/coords.ts` کامنت صریح «مختصات بوم هرگز آینه
+      نمی‌شود» دارد؛ config استایل‌لینت هم `direction` را استثنا نمی‌گیرد (فقط جهت‌دارها).
+- **معیار پذیرش:** ✅ `pnpm lint:css` روی هر ۳ فایل CSS سبز، **بدون هیچ
+      `stylelint-disable`**. لایسنسِ stylelint (+۸۳ پکیج) با `pnpm license:check`
+      تایید شد — ۶۵۵ پکیج، همه مجاز (P1).
 
 ### گام ۴٫۲ — نوار ابزار
 - [ ] نوار ابزار سفارشی هم‌بوم جایگزین نوار Excalidraw (با `UIOptions` غیرفعال کردن نوار پیش‌فرض)
