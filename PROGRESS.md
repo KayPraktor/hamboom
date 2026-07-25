@@ -1,10 +1,10 @@
 # PROGRESS — canvas-core
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۰۲ (2026-07-24)
-**گام فعلی: ۳٫۷ (قلم آزاد) تمام → ★ فاز ۳ کامل → بعدی فاز ۴ (رابط RTL، گام ۴٫۱)**
+**گام فعلی: فاز ۳ کامل + نگهبانِ captureUpdate (لینت+چوک‌پوینت) → بعدی فاز ۴ (گام ۴٫۱)**
 پله‌ی [ADR-003](ARCHITECTURE_DECISIONS.md#adr-003): **A** (بسته npm، بدون patch)
 
-**۳۷۹ تست سبز** (۴۴ shared-types، ۳۳۵ canvas-core). `typecheck` · `lint` ·
+**۳۹۳ تست سبز** (۴۴ shared-types، ۳۴۹ canvas-core). `typecheck` · `lint` ·
 `format:check` · `license:check` (self-test ۱۷/۱۷ + ۵۸۱ پکیج) — همه سبز.
 درخت git تمیز، همه‌چیز کامیت شده.
 
@@ -98,23 +98,24 @@ G-1 تست دو-نمونه‌ای با binder واقعی · G-2 تست رگرس�
 
 ---
 
-## پیشنهاد باز — نگهبان خودکار خانواده‌ی `captureUpdate`/`versionNonce`
+## ✅ نگهبان خودکار خانواده‌ی `captureUpdate` — گزینه‌های ۱ و ۲ ساخته شد
 
-سه باگِ جدا از این خانواده دیده شد (نبودِ `versionNonce`؛ نبودِ `captureUpdate`؛
-ترتیبِ غلطِ `captureUpdate`). این‌ها در **دو لایه** اند و یک قاعده‌ی واحد کافی نیست.
-پیشنهاد (منتظر تصمیم مالک):
+سه باگِ جدا از این خانواده دیده شده بود؛ حالا نگهبان دارد:
 
-1. **قاعده‌ی ESLint (ارزان، پرتاثیر):** هر `api.updateScene({…})` باید `captureUpdate`
-   **صریح** داشته باشد → باگ «defaultِ خاموش» (#۲) را می‌کشد. هم‌خانواده‌ی
-   `elementKindDiscipline` در `packages/eslint-config`.
-2. **چوک‌پوینتِ نوشتن:** helperهای `commitGesture` (IMMEDIATELY) / `commitSystemUpdate`
-   (NEVER) در canvas-core + لینتِ ممنوعیت `updateScene` خام بیرونشان → ترتیبِ درست
-   **یک‌بار** کدنویسی می‌شود (مثل `engine/coords.ts` و ADR-013).
-3. **گام ۶٫۱:** harness مرورگریِ `expectSingleUndoReverts(doGesture)` — تنها راهِ گرفتنِ
-   property runtimeِ ترتیب (#۳)، ولی **یک خط به‌ازای هر ژست** نه دیباگ از صفر.
+1. **✅ قاعده‌ی ESLint `require-capture-update`** ([boundaries.js](packages/eslint-config/boundaries.js)):
+   هر `api.updateScene({…})` باید `captureUpdate` **صریح** داشته باشد. یک قاعده‌ی
+   واقعی با `create()` (چون `:has` در esquery نیست)، با **خودآزمونِ RuleTester**
+   (۱۰ مورد). **بلافاصله یک باگِ نهفته گرفت:** `sticky-tool` هنگام ساختِ استیکی
+   `captureUpdate` نداشت — یعنی undoِ ساختِ استیکی هم همان کلاسِ باگ را داشت. در
+   مرورگر بعد از فیکس تایید شد: دو استیکی، هر undo فقط یکی را برمی‌گرداند.
+2. **✅ چوک‌پوینتِ نوشتن** ([engine/scene-commit.ts](packages/canvas-core/src/engine/scene-commit.ts)):
+   `commitGesture` (IMMEDIATELY) و `commitSystemUpdate` (NEVER). همه‌ی ابزارها
+   (sticky/image/draw) و دمو روی این‌ها رفتند؛ ترتیبِ درستِ pending→saved یک‌بار
+   کدنویسی شد. خط قرمزِ ۷ در `canvas-core/CLAUDE.md`.
+3. **⏳ گام ۶٫۱:** harness مرورگریِ `expectSingleUndoReverts(doGesture)` — تنها راهِ
+   گرفتنِ property runtimeِ ترتیب (#۳). طبق برنامه به ۶٫۱ موکول شد.
 
-`versionNonce` (#۱) در لایه‌ی mutator است، `captureUpdate` (#۲/#۳) در لایه‌ی نوشتن —
-پس «مصون‌کردن هر mutator» یعنی مصون‌کردنِ هر دو نقطه.
+`versionNonce` (#۱) در لایه‌ی mutator است، `captureUpdate` (#۲/#۳) در لایه‌ی نوشتن.
 
 ---
 

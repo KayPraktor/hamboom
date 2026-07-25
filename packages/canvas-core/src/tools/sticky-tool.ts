@@ -3,6 +3,7 @@ import type { HbStickyColor } from "@hamboom/shared-types";
 
 import { createSticky, nextStickyPosition, type StickyPair } from "../elements/sticky";
 import { viewportCoordsToSceneCoords } from "../engine/coords";
+import { commitGesture } from "../engine/scene-commit";
 import { toExcalidraw } from "../elements/mapping";
 import { HB_STICKY_DEFAULT } from "../theme/sticky-palette";
 
@@ -77,9 +78,10 @@ export function createStickyTool(options: StickyToolOptions): StickyTool {
       authorId,
     });
 
-    api.updateScene({
-      elements: [...api.getSceneElements(), ...pair.elements.map(toExcalidraw)] as never,
-      appState: { selectedElementIds: { [pair.container.id]: true } } as never,
+    // ساختِ استیکی یک ژست است → یک ورودی undo (ADR-026). قبلاً captureUpdate
+    // نداشت و undoِ ساخت رفتار پیش‌فرض می‌گرفت — قاعده‌ی lint این را گرفت.
+    commitGesture(api, [...api.getSceneElements(), ...pair.elements.map(toExcalidraw)], {
+      select: [pair.container.id],
     });
 
     last = pair;

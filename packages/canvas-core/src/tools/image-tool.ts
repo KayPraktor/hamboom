@@ -5,6 +5,7 @@ import { bumpVersion } from "../elements/factory";
 import { createImage, fitImageBox, validateImageFile } from "../elements/image";
 import { toExcalidraw } from "../elements/mapping";
 import { viewportCoordsToSceneCoords } from "../engine/coords";
+import { commitGesture, commitSystemUpdate } from "../engine/scene-commit";
 
 /**
  * ابزار تصویر — گام ۳٫۶.
@@ -155,10 +156,8 @@ export function createImageTool(options: ImageToolOptions): ImageTool {
       status: "pending",
       authorId,
     });
-    api.updateScene({
-      elements: [...api.getSceneElements(), toExcalidraw(pending)] as never,
-      appState: { selectedElementIds: { [pending.id]: true } } as never,
-      captureUpdate: "IMMEDIATELY",
+    commitGesture(api, [...api.getSceneElements(), toExcalidraw(pending)], {
+      select: [pending.id],
     });
 
     // ۴) resolve (کش‌شونده) → ثبت باینری در موتور.
@@ -183,12 +182,13 @@ export function createImageTool(options: ImageToolOptions): ImageTool {
     //    کل تصویر را برمی‌گرداند. `bumpVersion` لازم است تا موتور تغییرِ
     //    وضعیت را واقعاً رندر کند (تلهٔ versionNonce).
     const saved = bumpVersion({ ...pending, status: "saved" } as unknown as HbElement);
-    api.updateScene({
-      elements: api
-        .getSceneElements()
-        .map((el) => (el.id === pending.id ? toExcalidraw(saved) : el)) as never,
-      captureUpdate: "NEVER",
-    });
+    // flip سیستمی (نه ژستِ تازه) → `commitSystemUpdate` (NEVER). خطِ پایه جلو
+    // می‌رود ولی ورودی undo نمی‌سازد؛ همان creation از مرحله‌ی ۳ کل تصویر را
+    // برمی‌گرداند.
+    commitSystemUpdate(
+      api,
+      api.getSceneElements().map((el) => (el.id === pending.id ? toExcalidraw(saved) : el)),
+    );
 
     onInserted?.(saved);
     return saved;

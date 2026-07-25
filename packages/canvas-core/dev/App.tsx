@@ -6,6 +6,8 @@ import {
   StylePanel,
   applyStickyPalette,
   applyStyle,
+  commitGesture,
+  commitSystemUpdate,
   createConnector,
   createDrawTool,
   createFrame,
@@ -289,9 +291,9 @@ export function App() {
     };
   }, []);
 
-  /** نوشتن عناصر هم‌بوم به صحنه. */
+  /** نوشتن عناصر هم‌بوم به صحنه — تغییرِ استایل یک ژست است. */
   const writeScene = useCallback((api: ExcalidrawImperativeAPI, next: HbElementList) => {
-    api.updateScene({ elements: next.map(toExcalidraw) as never });
+    commitGesture(api, next.map(toExcalidraw));
     refreshCountsRef.current?.();
   }, []);
 
@@ -306,9 +308,8 @@ export function App() {
       authorId: "u_demo",
       text,
     });
-    api.updateScene({
-      elements: [...api.getSceneElements(), ...result.elements.map(toExcalidraw)] as never,
-      appState: { selectedElementIds: { [result.shape.id]: true } } as never,
+    commitGesture(api, [...api.getSceneElements(), ...result.elements.map(toExcalidraw)], {
+      select: [result.shape.id],
     });
     refreshCountsRef.current?.();
   }, []);
@@ -322,9 +323,8 @@ export function App() {
       text,
       authorId: "u_demo",
     });
-    api.updateScene({
-      elements: [...api.getSceneElements(), toExcalidraw(element)] as never,
-      appState: { selectedElementIds: { [element.id]: true } } as never,
+    commitGesture(api, [...api.getSceneElements(), toExcalidraw(element)], {
+      select: [element.id],
     });
     refreshCountsRef.current?.();
   }, []);
@@ -376,7 +376,9 @@ export function App() {
       return toExcalidraw({ ...hb, ...routed } as never);
     });
 
-    if (changed) api.updateScene({ elements: next as never });
+    // مسیرِ کانکتور حالتِ مشتق‌شده است (ADR-008)، نه ژستِ کاربر → NEVER؛ در undo
+    // ظاهر نمی‌شود و با برگشتِ حرکت، onChange دوباره reroute می‌کند.
+    if (changed) commitSystemUpdate(api, next);
   }, []);
   rerouteConnectorsRef.current = rerouteConnectors;
   // برای اشکال‌زدایی از کنسول — فقط محیط دمو.
@@ -411,11 +413,7 @@ export function App() {
       ...fresh,
     ]);
 
-    api.updateScene({
-      elements: withMembership.map(toExcalidraw) as never,
-      appState: { selectedElementIds: { [frame.id]: true } } as never,
-      captureUpdate: "IMMEDIATELY",
-    });
+    commitGesture(api, withMembership.map(toExcalidraw), { select: [frame.id] });
     refreshCountsRef.current?.();
   }, []);
 
@@ -434,7 +432,7 @@ export function App() {
     if (!frame) return;
 
     const moved = moveFrame(scene, frame.id, 120, 80);
-    api.updateScene({ elements: moved.map(toExcalidraw) as never, captureUpdate: "IMMEDIATELY" });
+    commitGesture(api, moved.map(toExcalidraw));
     refreshCountsRef.current?.();
   }, []);
 
@@ -451,12 +449,10 @@ export function App() {
       style: "elbow",
       authorId: "u_demo",
     });
-    api.updateScene({
-      elements: [
-        ...api.getSceneElements(),
-        ...[...a.elements, ...b.elements, connector].map(toExcalidraw),
-      ] as never,
-    });
+    commitGesture(api, [
+      ...api.getSceneElements(),
+      ...[...a.elements, ...b.elements, connector].map(toExcalidraw),
+    ]);
     refreshCountsRef.current?.();
   }, []);
 
@@ -494,13 +490,13 @@ export function App() {
     );
     const byId = new Map(recolored.map((el) => [el.id, el]));
 
-    // ★ یک ژست = یک ورودی undo (ADR-026). بدون IMMEDIATELY، تغییر رنگ ورودی
-    //   undo جدا نمی‌سازد و اولین Ctrl+Z به‌جای برگرداندن رنگ، ژست قبلی
-    //   (ساخت فریم/استیکی) را برمی‌گرداند — در مرورگر تایید شد.
-    api.updateScene({
-      elements: hb.map((el) => toExcalidraw(byId.get(el.id) ?? el)) as never,
-      captureUpdate: "IMMEDIATELY",
-    });
+    // ★ یک ژست = یک ورودی undo (ADR-026). `commitGesture` همان IMMEDIATELY را
+    //   تضمین می‌کند؛ بدونش اولین Ctrl+Z به‌جای برگرداندن رنگ، ژست قبلی را
+    //   پاک می‌کرد — در مرورگر تایید و با قاعده‌ی lint حالا غیرممکن شد.
+    commitGesture(
+      api,
+      hb.map((el) => toExcalidraw(byId.get(el.id) ?? el)),
+    );
   }, []);
 
   return (

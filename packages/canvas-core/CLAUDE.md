@@ -22,6 +22,11 @@ ADR-003، ADR-007، ADR-008، ADR-010، ADR-016، ADR-017، ADR-022.
 5. **مسیر کانکتور مشتق‌شده است، نه ذخیره‌شده.** `routeConnector` باید خالص و
    قطعی باشد — ورودی یکسان، خروجی بیت‌به‌بیت یکسان در هر مرورگر (ADR-008).
 6. **`packages/shared-types` را بدون تایید مالک تغییر نده** (ADR-021).
+7. **نوشتن به صحنه فقط از `commitGesture`/`commitSystemUpdate`**
+   ([engine/scene-commit.ts](src/engine/scene-commit.ts)) یا با `captureUpdate`
+   صریح. قاعده‌ی ESLint `require-capture-update` نوشتنِ خامِ بدونِ انتخاب را خطا
+   می‌کند (ADR-026) — سه‌بار همین باگ ظاهر شد، آخری‌اش را همین قاعده در
+   `sticky-tool` گرفت.
 
 ## ساختار
 

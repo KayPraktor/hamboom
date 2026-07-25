@@ -187,7 +187,8 @@ export function SpikeText() {
     }));
 
     const elements = convertToExcalidrawElements([...skeletons, ...containerSkeletons]);
-    api.updateScene({ elements });
+    // محتوای اولیه‌ی spike، نه ژستِ کاربر → بدون ورودی undo (ADR-026).
+    api.updateScene({ elements, captureUpdate: "NEVER" });
     api.scrollToContent(elements, { fitToContent: true });
 
     // برای بازرسی دستی از کنسول در حین spike

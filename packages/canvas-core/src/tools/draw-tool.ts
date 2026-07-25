@@ -4,6 +4,7 @@ import type { HbElement } from "@hamboom/shared-types";
 import { createDraw, simplifyStroke, type StrokePoint } from "../elements/draw";
 import { toExcalidraw } from "../elements/mapping";
 import { viewportCoordsToSceneCoords } from "../engine/coords";
+import { commitGesture } from "../engine/scene-commit";
 import { HB_UI_COLORS } from "../theme/tokens";
 import type { ElementChangeSet, EphemeralPayload } from "../sync/contract";
 
@@ -151,11 +152,8 @@ export function createDrawTool(options: DrawToolOptions): DrawTool {
       strokeWidth: width,
     });
 
-    // نتیجه‌ی نهایی: صحنه‌ی محلی (یک undo) + دقیقاً یک تغییرِ ماندگار برای sync.
-    api.updateScene({
-      elements: [...api.getSceneElements(), toExcalidraw(element)] as never,
-      captureUpdate: "IMMEDIATELY",
-    });
+    // نتیجه‌ی نهایی: صحنه‌ی محلی (یک ژست، یک undo) + دقیقاً یک تغییرِ ماندگار برای sync.
+    commitGesture(api, [...api.getSceneElements(), toExcalidraw(element)]);
     outbound.emitElementChanges({
       upserted: [element],
       deleted: [],

@@ -46,6 +46,8 @@ export {
   resetCanvasTextDirectionInvocations,
 } from "./engine/canvas-direction";
 export { guardEditorDirection } from "./engine/editor-direction";
+export { commitGesture, commitSystemUpdate } from "./engine/scene-commit";
+export type { CommitOptions } from "./engine/scene-commit";
 
 export { getKind, isSticky, getDirection, toExcalidraw, fromExcalidraw } from "./elements/mapping";
 

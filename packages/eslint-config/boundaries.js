@@ -93,6 +93,101 @@ export function elementKindDiscipline() {
 }
 
 /**
+ * انضباط ADR-026 — هر `updateScene` باید `captureUpdate` را **صریح** انتخاب کند.
+ *
+ * ── چرا یک قاعده لازم شد ──────────────────────────────────────────────
+ *
+ * سه باگِ جدا از یک خانواده دیده شد که همه‌شان از «انتخابِ خاموشِ captureUpdate»
+ * می‌آمدند: تغییرِ رنگ که default می‌گرفت و یک undo کل ژست قبلی را پاک می‌کرد،
+ * و ترتیبِ اشتباهِ pending/saved در تصویر. مشترکشان این بود که نویسنده
+ * `captureUpdate` را **ننوشت** و موتور بی‌صدا رفتار پیش‌فرض را گرفت.
+ *
+ * این قاعده صرفاً **حضورِ صریحِ فیلد** را الزام می‌کند؛ مقدارش را قضاوت نمی‌کند
+ * (چون درست/غلط بودنِ ترتیب به وضعیتِ تاریخچه در زمان اجرا بستگی دارد و
+ * static نیست). ولی همین که نویسنده مجبور شود آگاهانه یکی از
+ * `IMMEDIATELY`/`NEVER`/`EVENTUALLY` را بنویسد، کلاسِ «defaultِ خاموش» را حذف می‌کند.
+ *
+ * راهِ توصیه‌شده: به‌جای `updateScene` خام از `commitGesture`/`commitSystemUpdate`
+ * در `engine/scene-commit.ts` استفاده شود که انتخاب را در یک نقطه ثابت می‌کنند.
+ *
+ * ── چرا قاعده‌ی سفارشی، نه `no-restricted-syntax` ─────────────────────
+ *
+ * تشخیصِ «شیئی که فیلد captureUpdate **ندارد**» به نفیِ `:has` نیاز دارد که
+ * esquery پشتیبانی نمی‌کند. پس یک قاعده‌ی واقعی با `create()`. برای پرهیز از
+ * مثبتِ کاذب، اگر آرگومان spread داشته باشد (`{ ...x }`) رد می‌شود — ممکن است
+ * captureUpdate از آنجا بیاید.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+/**
+ * قاعده‌ی خامِ «هر updateScene باید captureUpdate صریح داشته باشد».
+ *
+ * جدا صادر می‌شود تا با `RuleTester` مستقیم آزموده شود — یک گیت که خودش
+ * آزموده نشود، گیت نیست.
+ *
+ * @type {import("eslint").Rule.RuleModule}
+ */
+export const requireCaptureUpdateRule = {
+  meta: {
+    type: "problem",
+    docs: {
+      description: "هر updateScene باید captureUpdate صریح داشته باشد (ADR-026).",
+    },
+    schema: [],
+    messages: {
+      missing:
+        "ADR-026: این فراخوانی updateScene فیلد captureUpdate ندارد. " +
+        "یکی از 'IMMEDIATELY' (ژست کاربر) / 'NEVER' (تغییر سیستمی یا remote) / " +
+        "'EVENTUALLY' را صریح بنویس — یا از commitGesture/commitSystemUpdate " +
+        "در engine/scene-commit.ts استفاده کن. بدون آن، موتور بی‌صدا رفتار پیش‌فرض " +
+        "می‌گیرد و یک undo می‌تواند کل ژست قبلی را پاک کند.",
+    },
+  },
+  create(context) {
+    return {
+      CallExpression(node) {
+        const callee = node.callee;
+        if (callee.type !== "MemberExpression") return;
+        if (callee.property.type !== "Identifier" || callee.property.name !== "updateScene") {
+          return;
+        }
+        const arg = node.arguments[0];
+        if (!arg || arg.type !== "ObjectExpression") return;
+
+        let hasCapture = false;
+        let hasSpread = false;
+        for (const prop of arg.properties) {
+          if (prop.type === "SpreadElement") {
+            hasSpread = true;
+            continue;
+          }
+          if (prop.type !== "Property" || prop.computed) continue;
+          const key = prop.key;
+          if (
+            (key.type === "Identifier" && key.name === "captureUpdate") ||
+            (key.type === "Literal" && key.value === "captureUpdate")
+          ) {
+            hasCapture = true;
+          }
+        }
+
+        if (!hasCapture && !hasSpread) {
+          context.report({ node, messageId: "missing" });
+        }
+      },
+    };
+  },
+};
+
+export function captureUpdateDiscipline() {
+  return {
+    name: "hamboom/capture-update-discipline",
+    plugins: { hamboom: { rules: { "require-capture-update": requireCaptureUpdateRule } } },
+    rules: { "hamboom/require-capture-update": "error" },
+  };
+}
+
+/**
  * پیش‌تنظیم برای `packages/canvas-core` — ADR-003 / ADR-021.
  * بوم باید کاملاً آفلاین و بدون شبکه قابل اجرا باشد.
  * @returns {import("eslint").Linter.Config}
