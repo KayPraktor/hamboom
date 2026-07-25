@@ -1,10 +1,10 @@
 # PROGRESS — canvas-core
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۰۲ (2026-07-24)
-**گام فعلی: ۳٫۶ (تصویر) تمام و کامیت شد → بعدی ۳٫۷ (قلم آزاد، ADR-022)**
+**گام فعلی: ۳٫۷ (قلم آزاد) تمام → ★ فاز ۳ کامل → بعدی فاز ۴ (رابط RTL، گام ۴٫۱)**
 پله‌ی [ADR-003](ARCHITECTURE_DECISIONS.md#adr-003): **A** (بسته npm، بدون patch)
 
-**۳۶۱ تست سبز** (۴۴ shared-types، ۳۱۷ canvas-core). `typecheck` · `lint` ·
+**۳۷۹ تست سبز** (۴۴ shared-types، ۳۳۵ canvas-core). `typecheck` · `lint` ·
 `format:check` · `license:check` (self-test ۱۷/۱۷ + ۵۸۱ پکیج) — همه سبز.
 درخت git تمیز، همه‌چیز کامیت شده.
 
@@ -30,6 +30,7 @@
 | ۳٫۵ | فریم — عضویت، حرکت یک‌ژستی، undo یک‌باره (ADR-026)، `bumpVersion` | `f43cfba` |
 | — | فیکس دمو: تغییر رنگ باید یک ورودی undo باشد (تایید مرورگر) | `b0a4923` |
 | ۳٫۶ | تصویر — `createImage`/اعتبارسنجی/`fitImageBox`، ابزار drag&drop+paste، جریان placeholder→saved | `692798e` |
+| ۳٫۷ | قلم آزاد — RDP، کانال ephemeral، یک commit به‌ازای استروک (ADR-022)، overlay | `1c93306` |
 
 ---
 
@@ -65,6 +66,9 @@
       نبود (پنل مرورگر نمایش داده نمی‌شد). ولی رفتاری‌ها همه تایید شدند: درج/undo/
       redo، preempt کردن drop/paste موتور، و رد فرمت غیرمجاز؛ blob رمزگشایی و فایل
       بدون خطا در موتور ثبت می‌شود (مسیر رندر استاندارد موتور).
+- [ ] تایید بصری **خودِ استروکِ قلم روی بوم و overlay** (گام ۳٫۷) — همان محدودیتِ
+      اسکرین‌شات. مسیر داده تایید شد: ۲۰۱ نقطه → یک `emitElementChanges`، RDP
+      ۲۰۱→۲۹، یک عنصر freedraw، undo/redo درست، بدون خطای کنسول.
 
 **گپ‌های ثبت‌شده برای M2/6٫۱** (در `sync/README.md` و TODO گام ۶٫۱):
 G-1 تست دو-نمونه‌ای با binder واقعی · G-2 تست رگرسیون هش پیکسلی جهت متن.
@@ -94,13 +98,33 @@ G-1 تست دو-نمونه‌ای با binder واقعی · G-2 تست رگرس�
 
 ---
 
-## قدم بعدی — گام ۳٫۷ (قلم آزاد با کانال ephemeral)
+## پیشنهاد باز — نگهبان خودکار خانواده‌ی `captureUpdate`/`versionNonce`
 
-هنوز **شروع نشده**. طبق TODO و [ADR-022](ARCHITECTURE_DECISIONS.md#adr-022):
-- `tools/draw-tool.ts`: حین کشیدن فقط `emitEphemeral({ kind: "draw-stroke", … })` —
-  استروکِ در حال شکل‌گیری **هرگز وارد سند نمی‌شود**.
-- در `pointerup`: ساده‌سازی مسیر (Ramer–Douglas–Peucker) سپس **یک** `emitElementChanges`.
-- رندر استروک ephemeral کاربران دیگر در یک لایه‌ی مجزا.
-- تست کلیدی: کشیدن یک خط ۳۰۰ نقطه‌ای = دقیقاً **یک** `emitElementChanges`.
+سه باگِ جدا از این خانواده دیده شد (نبودِ `versionNonce`؛ نبودِ `captureUpdate`؛
+ترتیبِ غلطِ `captureUpdate`). این‌ها در **دو لایه** اند و یک قاعده‌ی واحد کافی نیست.
+پیشنهاد (منتظر تصمیم مالک):
 
-با ۳٫۷ فاز ۳ (عناصر) تمام می‌شود؛ بعد فاز ۴ (رابط کاربری RTL).
+1. **قاعده‌ی ESLint (ارزان، پرتاثیر):** هر `api.updateScene({…})` باید `captureUpdate`
+   **صریح** داشته باشد → باگ «defaultِ خاموش» (#۲) را می‌کشد. هم‌خانواده‌ی
+   `elementKindDiscipline` در `packages/eslint-config`.
+2. **چوک‌پوینتِ نوشتن:** helperهای `commitGesture` (IMMEDIATELY) / `commitSystemUpdate`
+   (NEVER) در canvas-core + لینتِ ممنوعیت `updateScene` خام بیرونشان → ترتیبِ درست
+   **یک‌بار** کدنویسی می‌شود (مثل `engine/coords.ts` و ADR-013).
+3. **گام ۶٫۱:** harness مرورگریِ `expectSingleUndoReverts(doGesture)` — تنها راهِ گرفتنِ
+   property runtimeِ ترتیب (#۳)، ولی **یک خط به‌ازای هر ژست** نه دیباگ از صفر.
+
+`versionNonce` (#۱) در لایه‌ی mutator است، `captureUpdate` (#۲/#۳) در لایه‌ی نوشتن —
+پس «مصون‌کردن هر mutator» یعنی مصون‌کردنِ هر دو نقطه.
+
+---
+
+## قدم بعدی — فاز ۴ (رابط کاربری RTL)
+
+★ **فاز ۳ (عناصر) کامل شد.** طبق TODO گام ۴٫۱:
+- `packages/i18n`: بارگذار رشته‌های `fa`، `t(key, params)`، عدد فارسی، تاریخ جلالی با
+  `Intl` ([ADR-018](ARCHITECTURE_DECISIONS.md#adr-018)).
+- Stylelint rule: خطا روی property فیزیکیِ جهت‌دار — فقط logical
+  ([ADR-016](ARCHITECTURE_DECISIONS.md#adr-016)).
+- استثنای بوم مستند شود: مختصات بوم هرگز آینه نمی‌شود.
+
+سپس ۴٫۲ (نوار ابزار خودمان) و ۴٫۳ (پنل‌ها و منوی راست‌کلیک).
