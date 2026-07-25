@@ -488,13 +488,38 @@ versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `fact
 `deleteFrameKeepChildren`, `realignTextForContent`. یعنی تغییر رنگ و استایل هم
 همین باگ خاموش را داشتند و حالا رفع شده.
 
-### گام ۳٫۶ — تصویر
-- [ ] `elements/image.ts`: افزودن تصویر با drag&drop و paste
-- [ ] فراخوانی `outbound.requestAssetUpload(file)` و نمایش placeholder تا آماده شدن
-- [ ] نمایش با `resolveAssetUrl(fileId)` + کش در حافظه تا انقضا
-- [ ] محدودیت سمت کلاینت: حداکثر ۲۰MB، فقط `image/png|jpeg|webp|gif|svg+xml`
-- [ ] در `local-adapter`، آپلود با `URL.createObjectURL` شبیه‌سازی شود
-- **معیار پذیرش:** drag یک تصویر روی بوم، ظاهر می‌شود، قابل تغییر اندازه و چرخش است
+### گام ۳٫۶ — تصویر ✅ (۱۴۰۵/۰۵/۰۲)
+> پیش‌نیاز در مرورگر probe شد (مثل ۳٫۲/۳٫۵): عنصر image + `fileId` + `status` را
+> موتور می‌پذیرد، `addFiles` باینری را ثبت می‌کند، و **blob URL** (خروجی
+> `resolveAssetUrl`) به‌عنوان منبع فایل رمزگشایی و رندر می‌شود.
+
+- [x] `elements/image.ts`: `createImage` خالص و تزریق‌پذیر، `validateImageFile`
+      (نوع/حجم)، `fitImageBox` (جا دادن با حفظ نسبت). باینری هرگز روی عنصر نیست.
+- [x] `tools/image-tool.ts`: drag&drop + paste؛ جریان `requestAssetUpload` →
+      درج placeholder (pending) → `resolveAssetUrl` (کش در حافظه) → `addFiles` → saved.
+- [x] محدودیت کلاینت: حداکثر ۲۰MB، فقط `png|jpeg|webp|gif|svg+xml` — پیام خطای فارسی.
+- [x] `local-adapter` از گام ۲٫۲ `URL.createObjectURL` را شبیه‌سازی می‌کند؛ دمو همان
+      outbound را اینلاین دارد.
+- [x] ۲۳ تست جدید (۱۸ عنصر/اعتبارسنجی + ۵ orchestration ابزار).
+- **معیار پذیرش:** ✅ در مرورگر تایید شد — درج با **دکمه، drag&drop، و paste** یک
+      عنصر image (status `saved`، انتخاب‌شده) ساخت؛ **یک undo کل تصویر را برداشت و
+      redo آن را «saved» برگرداند**؛ فرمت غیرمجاز با toast فارسی رد شد. تغییر
+      اندازه/چرخش بومیِ موتور است (عنصر انتخاب‌شده ساخته می‌شود).
+
+**دو مورد که فقط در مرورگر گرفته شد:**
+1. **ترتیب `captureUpdate` در جریان دو-مرحله‌ایِ pending→saved.** اول درجِ
+   pending را `NEVER` و flip به saved را `IMMEDIATELY` گذاشتم؛ یک undo تصویر را
+   **پاک نمی‌کرد**، فقط به pending برمی‌گرداند — چون `NEVER` (و آزموده شد: `EVENTUALLY`
+   هم) خطِ پایه‌ی تاریخچه را جلو می‌برند، پس `IMMEDIATELY` فقط تفاوت وضعیت را ثبت
+   می‌کرد. درست: درجِ pending=`IMMEDIATELY` (creation)، flip=`NEVER`. در
+   `canvas-core/CLAUDE.md` ثبت شد.
+2. **موتور خودش drop/paste تصویر را می‌گیرد.** بدون گرفتن رویداد در فاز capture و
+   `stopPropagation`، تصویر دوبار درج می‌شد (یک‌بار مسیر ما، یک‌بار مسیر موتور).
+   با الگوی capture+stopPropagation (مثل `sticky-tool`) مسیر موتور preempt شد —
+   تایید: drop/paste فقط یک عنصر با `fileId` خودمان (`f_local_…`) می‌سازد.
+
+- [ ] **تایید بصری با مالک:** پیکسلِ تصویر روی بوم (اسکرین‌شات در session ممکن نبود؛
+      مثل bidi و پالت). blob رمزگشایی می‌شود و فایل بدون خطا ثبت می‌شود.
 
 ### گام ۳٫۷ — قلم آزاد با کانال ephemeral
 - [ ] `tools/draw-tool.ts`: در حال کشیدن، فقط `emitEphemeral({ kind: "draw-stroke", … })` — [ADR-022](ARCHITECTURE_DECISIONS.md#adr-022)

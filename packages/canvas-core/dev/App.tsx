@@ -8,6 +8,7 @@ import {
   applyStyle,
   createConnector,
   createFrame,
+  createImageTool,
   createShape,
   createSticky,
   createStickyTool,
@@ -20,6 +21,8 @@ import {
   toExcalidraw,
   withBoundElements,
   type HbShapeKind,
+  type ImageAssetOutbound,
+  type ImageTool,
   type StickyTool,
   type StylePatch,
 } from "@hamboom/canvas-core";
@@ -45,6 +48,28 @@ function Row({ label, value }: { label: string; value: string }) {
 
 type HbElementList = ReturnType<typeof fromExcalidraw>[];
 
+/** یک PNG نمونه می‌سازد تا بدون فایل واقعی هم بشود درج تصویر را آزمود. */
+async function makeSampleImageFile(): Promise<File> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 320;
+  canvas.height = 200;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const grad = ctx.createLinearGradient(0, 0, 320, 200);
+    grad.addColorStop(0, "#5B8DEF");
+    grad.addColorStop(1, "#8E5BEF");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 320, 200);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 28px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("تصویر نمونه", 160, 100);
+  }
+  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
+  return new File([blob ?? new Blob()], "نمونه.png", { type: "image/png" });
+}
+
 export function App() {
   const [elementCount, setElementCount] = useState(0);
   const [stickyCount, setStickyCount] = useState(0);
@@ -58,10 +83,13 @@ export function App() {
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const toolRef = useRef<StickyTool | null>(null);
+  const imageToolRef = useRef<ImageTool | null>(null);
   const refreshCountsRef = useRef<(() => void) | null>(null);
   const rerouteConnectorsRef = useRef<(() => void) | null>(null);
   const paletteRef = useRef(palette);
   paletteRef.current = palette;
+  /** فایل‌های محلی — `URL.createObjectURL` جای Object Storage را می‌گیرد (مثل local-adapter). */
+  const objectUrlsRef = useRef(new Map<string, string>());
 
   const onReady = useCallback((api: ExcalidrawImperativeAPI) => {
     apiRef.current = api;
@@ -113,6 +141,38 @@ export function App() {
         refreshCountsRef.current?.();
       },
     });
+
+    // ابزار تصویر — drag&drop و paste را روی document می‌گیرد. outbound اینجا
+    // همان شبیه‌سازی local-adapter است (URL.createObjectURL جای Object Storage).
+    const objectUrls = objectUrlsRef.current;
+    const imageOutbound: ImageAssetOutbound = {
+      requestAssetUpload: async (file) => {
+        const fileId = `f_local_${Math.random().toString(36).slice(2, 10)}`;
+        objectUrls.set(fileId, URL.createObjectURL(file));
+        return {
+          fileId,
+          bucket: "local",
+          key: `local/${fileId}`,
+          mime: file.type,
+          width: 0,
+          height: 0,
+          sizeBytes: file.size,
+          sha256: null,
+          uploadedBy: "u_demo",
+          createdAt: Date.now(),
+        };
+      },
+      resolveAssetUrl: async (fileId) => objectUrls.get(fileId) ?? "",
+    };
+
+    imageToolRef.current?.destroy();
+    imageToolRef.current = createImageTool({
+      api,
+      outbound: imageOutbound,
+      authorId: "u_demo",
+      onError: (message) => api.setToast({ message, duration: 4000 }),
+      onInserted: () => refreshCountsRef.current?.(),
+    });
   }, []);
 
   useEffect(() => {
@@ -131,10 +191,15 @@ export function App() {
       }
     };
     window.addEventListener("keydown", onKeyDown);
+    const urls = objectUrlsRef.current;
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       toolRef.current?.destroy();
       toolRef.current = null;
+      imageToolRef.current?.destroy();
+      imageToolRef.current = null;
+      for (const url of urls.values()) URL.revokeObjectURL(url);
+      urls.clear();
     };
   }, []);
 
@@ -189,6 +254,12 @@ export function App() {
       appState: { selectedElementIds: { [element.id]: true } } as never,
     });
     refreshCountsRef.current?.();
+  }, []);
+
+  /** درج یک تصویر نمونه — همان مسیری که drag&drop و paste هم می‌روند. */
+  const addSampleImage = useCallback(async () => {
+    const file = await makeSampleImageFile();
+    await imageToolRef.current?.ingestFile(file);
   }, []);
 
   /**
@@ -416,6 +487,9 @@ export function App() {
           </button>
           <button type="button" className="hb-style-chip" onClick={moveSelectedFrame}>
             حرکت فریم
+          </button>
+          <button type="button" className="hb-style-chip" onClick={() => void addSampleImage()}>
+            تصویر نمونه
           </button>
         </div>
 

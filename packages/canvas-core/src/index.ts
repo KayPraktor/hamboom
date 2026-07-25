@@ -82,6 +82,17 @@ export {
 } from "./elements/frame";
 export type { CreateFrameOptions } from "./elements/frame";
 
+export {
+  createImage,
+  validateImageFile,
+  fitImageBox,
+  HB_IMAGE_MAX_MB,
+  HB_IMAGE_MAX_BYTES,
+  HB_IMAGE_MIME_ALLOW,
+  HB_IMAGE_MAX_DISPLAY,
+} from "./elements/image";
+export type { CreateImageOptions, ImageValidation, HbImageMime } from "./elements/image";
+
 export { bumpVersion } from "./elements/factory";
 export {
   routeConnector,
@@ -96,6 +107,9 @@ export * from "./ui/index";
 
 export { createStickyTool } from "./tools/sticky-tool";
 export type { StickyTool, StickyToolOptions } from "./tools/sticky-tool";
+
+export { createImageTool } from "./tools/image-tool";
+export type { ImageTool, ImageToolOptions, ImageAssetOutbound } from "./tools/image-tool";
 
 export { createFontString, measureLineWidth, clearMeasureCache } from "./text/measure";
 
