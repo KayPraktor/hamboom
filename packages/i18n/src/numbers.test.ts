@@ -64,3 +64,38 @@ describe("formatRial / formatToman (P5)", () => {
     expect(digitsOnly(formatToman(12345))).toBe("۱۲۳۴"); // ۱۲۳۴٫۵ → ۱۲۳۴
   });
 });
+
+/**
+ * ★ self-test پول (P5): «پول همیشه ریال است؛ تومان فقط تبدیلِ نمایشیِ ÷۱۰».
+ *
+ * تومانِ هر ردیف **دستی** حساب شده (نه با خودِ `formatToman`) تا مرجع مستقل باشد
+ * — الگوی همان self-testهای پروژه (license/contrast/connector). این ناوردا را در
+ * *لایه‌ی نمایش* می‌بندد؛ اعمالِ «هیچ تومانی در ذخیره‌سازی» کارِ M3/بک‌اند است
+ * (تایپِ برندشده‌ی Rial در shared-types — پیشنهادِ باز).
+ */
+describe("self-test پول (P5) — مقادیرِ دست‌محاسبه", () => {
+  // [ریال، رقم‌های تومانِ نمایشی (÷۱۰ کوتاه‌شده)، رقم‌های ریالِ نمایشی]
+  const cases: Array<[bigint, string, string]> = [
+    [0n, "۰", "۰"],
+    [10n, "۱", "۱۰"],
+    [500_000n, "۵۰۰۰۰", "۵۰۰۰۰۰"], // ۵۰۰٬۰۰۰ ریال = ۵۰٬۰۰۰ تومان
+    [1_000_000n, "۱۰۰۰۰۰", "۱۰۰۰۰۰۰"], // = ۱۰۰٬۰۰۰ تومان
+    [12_345n, "۱۲۳۴", "۱۲۳۴۵"], // ۱۲۳۴۵ ریال = ۱۲۳۴٫۵ → ۱۲۳۴ تومان
+    [999_999n, "۹۹۹۹۹", "۹۹۹۹۹۹"], // = ۹۹۹۹۹٫۹ → ۹۹۹۹۹ تومان
+    [50_000_000n, "۵۰۰۰۰۰۰", "۵۰۰۰۰۰۰۰"], // ۵۰ میلیون ریال = ۵ میلیون تومان
+  ];
+
+  for (const [rial, tomanDigits, rialDigits] of cases) {
+    it(`★ ${rial} ریال → تومان «${tomanDigits}» · ریال «${rialDigits}»`, () => {
+      expect(formatToman(rial)).toMatch(/تومان$/);
+      expect(digitsOnly(formatToman(rial))).toBe(tomanDigits);
+      expect(formatRial(rial)).toMatch(/ریال$/); // ریال هیچ تقسیمی ندارد
+      expect(digitsOnly(formatRial(rial))).toBe(rialDigits);
+    });
+  }
+
+  it("★ number و bigint یک نتیجه می‌دهند (بدون خطای اعشارِ float)", () => {
+    expect(formatToman(500_000)).toBe(formatToman(500_000n));
+    expect(formatRial(500_000)).toBe(formatRial(500_000n));
+  });
+});

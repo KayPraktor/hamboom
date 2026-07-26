@@ -13,4 +13,10 @@ export type { FaKey } from "./strings/fa";
 
 export { toPersianDigits, toLatinDigits, formatNumber, formatRial, formatToman } from "./numbers";
 
-export { formatJalaliDate, formatJalaliDateTime, formatJalaliShort, jalaliYear } from "./dates";
+export {
+  formatJalaliDate,
+  formatJalaliDateTime,
+  formatJalaliShort,
+  jalaliParts,
+  jalaliYear,
+} from "./dates";

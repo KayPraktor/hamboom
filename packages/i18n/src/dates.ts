@@ -48,15 +48,27 @@ export function formatJalaliShort(date: Date): string {
   return shortDateFmt.format(date);
 }
 
+const numericParts = new Intl.DateTimeFormat("en-US-u-ca-persian", {
+  timeZone: TEHRAN,
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+});
+
+/**
+ * اجزای عددیِ جلالیِ یک تاریخ (سال/ماه/روز) — با ارقامِ **لاتین**، نه نمایشی.
+ * برای منطق (شماره‌ی فاکتور، «امروز نوروز است؟») و آزمونِ دقیقِ مرزها.
+ */
+export function jalaliParts(date: Date): { year: number; month: number; day: number } {
+  const parts = numericParts.formatToParts(date);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  return { year: get("year"), month: get("month"), day: get("day") };
+}
+
 /**
  * سالِ جلالیِ یک تاریخ به‌صورت **عدد** (نه رشته‌ی فارسی) — برای شماره‌ی فاکتور
  * (`HB-1405-000123`) که رشته‌ای لاتین است، نه نمایشی (ADR-018).
  */
 export function jalaliYear(date: Date): number {
-  const parts = new Intl.DateTimeFormat("en-US-u-ca-persian", {
-    timeZone: TEHRAN,
-    year: "numeric",
-  }).formatToParts(date);
-  const year = parts.find((p) => p.type === "year")?.value ?? "0";
-  return Number(year);
+  return jalaliParts(date).year;
 }
