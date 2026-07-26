@@ -22,6 +22,8 @@ import {
   recomputeFrameMembership,
   rerouteConnector,
   toExcalidraw,
+  toolForShortcut,
+  Toolbar,
   withBoundElements,
   type DrawStrokeOutbound,
   type DrawTool,
@@ -31,12 +33,13 @@ import {
   type StickyTool,
   type StrokePoint,
   type StylePatch,
+  type ToolId,
 } from "@hamboom/canvas-core";
 import { sceneCoordsToViewportCoords } from "@excalidraw/excalidraw";
 import { SYNC_CONTRACT_VERSION } from "@hamboom/canvas-core/sync";
 import type { HbStickyColor } from "@hamboom/shared-types";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 
 /**
  * دموی canvas-core — از گام ۳٫۲ ابزار استیکی هم دارد.
@@ -89,12 +92,16 @@ export function App() {
   }>({ elements: [], selectedIds: new Set() });
 
   const [drawActive, setDrawActive] = useState(false);
+  const [activeToolId, setActiveToolId] = useState<ToolId>("select");
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const toolRef = useRef<StickyTool | null>(null);
   const imageToolRef = useRef<ImageTool | null>(null);
   const drawToolRef = useRef<DrawTool | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  /** `selectTool` پایدار است ولی از داخلِ listenerِ keydown با ref خوانده می‌شود. */
+  const selectToolRef = useRef<((id: ToolId) => void) | null>(null);
   const refreshCountsRef = useRef<(() => void) | null>(null);
   const rerouteConnectorsRef = useRef<(() => void) | null>(null);
   const paletteRef = useRef(palette);
@@ -240,14 +247,20 @@ export function App() {
       // وقتی کاربر در حال تایپ داخل استیکی است، میانبرها نباید بپرند وسط.
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "TEXTAREA" || target?.tagName === "INPUT") return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return; // Ctrl+Z و … دست موتور
 
-      if (event.key === "n" || event.key === "N") {
-        toolRef.current?.toggle();
-        setToolActive(toolRef.current?.isActive() ?? false);
-      } else if (event.key === "Tab") {
+      // Tab = استیکیِ بعدی در امتداد آخری (رفتار خاصِ ابزار استیکی).
+      if (event.key === "Tab") {
         event.preventDefault();
         toolRef.current?.createNext();
         refreshCountsRef.current?.();
+        return;
+      }
+      // بقیه‌ی میانبرها از همان جدولِ نوار ابزار می‌آیند (یک منبع).
+      const toolId = toolForShortcut(event.key);
+      if (toolId) {
+        event.preventDefault();
+        selectToolRef.current?.(toolId);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -276,6 +289,71 @@ export function App() {
       drawToolRef.current?.deactivate();
     }
     setDrawActive(next);
+  }, []);
+
+  /**
+   * انتخابِ ابزار از نوار (یا میانبر). این لایه‌ی سیم‌کشی است: ابزارهای موتور با
+   * `setActiveTool`، ابزارهای سفارشی (استیکی/قلم) با activate، تصویر با انتخابگرِ
+   * فایل، و کامنت فعلاً stub است (محتوایش کار M3).
+   */
+  const selectTool = useCallback((id: ToolId) => {
+    const api = apiRef.current;
+    if (!api) return;
+
+    // ابزارهای سفارشی را خاموش کن مگر خودشان انتخاب شده باشند.
+    if (id !== "sticky") toolRef.current?.deactivate();
+    if (id !== "pen") drawToolRef.current?.deactivate();
+    setToolActive(id === "sticky");
+    setDrawActive(id === "pen");
+    setActiveToolId(id);
+
+    switch (id) {
+      case "select":
+        api.setActiveTool({ type: "selection" });
+        break;
+      case "hand":
+        api.setActiveTool({ type: "hand" });
+        break;
+      case "text":
+        api.setActiveTool({ type: "text" });
+        break;
+      case "shape":
+        api.setActiveTool({ type: "rectangle" });
+        break;
+      case "connector":
+        api.setActiveTool({ type: "arrow" });
+        break;
+      case "frame":
+        api.setActiveTool({ type: "frame" });
+        break;
+      case "eraser":
+        api.setActiveTool({ type: "eraser" });
+        break;
+      case "sticky":
+        api.setActiveTool({ type: "selection" });
+        toolRef.current?.activate();
+        break;
+      case "pen":
+        api.setActiveTool({ type: "selection" });
+        drawToolRef.current?.activate();
+        break;
+      case "image":
+        fileInputRef.current?.click();
+        break;
+      case "comment":
+        api.setToast({ message: "کامنت‌ها در M3 می‌آیند", duration: 2500 });
+        break;
+    }
+  }, []);
+  selectToolRef.current = selectTool;
+
+  /** انتخابِ فایلِ تصویر از نوار → درج، سپس برگشت به ابزارِ انتخاب. */
+  const onImageFilePicked = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // اجازه‌ی انتخابِ دوباره‌ی همان فایل
+    if (!file) return;
+    await imageToolRef.current?.ingestFile(file);
+    selectToolRef.current?.("select");
   }, []);
 
   /** خواندن صحنه به‌صورت عناصر هم‌بوم + شناسه‌های انتخاب‌شده. */
@@ -583,6 +661,14 @@ export function App() {
       <main className="hb-canvas-host">
         <HamboomCanvas onReady={onReady} />
         <canvas ref={overlayRef} className="hb-draw-overlay" />
+        <Toolbar activeTool={activeToolId} onSelectTool={selectTool} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+          hidden
+          onChange={(event) => void onImageFilePicked(event)}
+        />
         {snapshot.selectedIds.size > 0 ? (
           <div className="hb-style-dock">
             <StylePanel

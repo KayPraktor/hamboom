@@ -1,0 +1,53 @@
+/*
+ * نوار ابزارِ شناورِ پایین-وسط — گام ۴٫۲.
+ *
+ * ADR-016 — فقط logical properties. مرکزِ افقی با `inset-inline: 0` +
+ * `margin-inline: auto` + `inline-size: fit-content` (نه `left: 50%`)، پس در
+ * LTR و RTL یکسان وسط می‌نشیند و گیتِ Stylelint را رد نمی‌کند.
+ */
+.hb-toolbar {
+  position: absolute;
+  inset-block-end: 20px;
+  inset-inline: 0;
+  margin-inline: auto;
+  inline-size: fit-content;
+  z-index: 6;
+
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 12%);
+}
+
+.hb-tool {
+  inline-size: 40px;
+  block-size: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #1a1a1a;
+  cursor: pointer;
+}
+
+.hb-tool:hover {
+  background: #f7f8fa;
+}
+
+.hb-tool.is-active {
+  background: #5b8def;
+  color: #ffffff;
+}
+
+.hb-tool:focus-visible {
+  outline: 2px solid #5b8def;
+  outline-offset: 2px;
+}

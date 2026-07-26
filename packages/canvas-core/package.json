@@ -46,6 +46,7 @@
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.1",
     "@fontsource-variable/vazirmatn": "5.3.0",
+    "@hamboom/i18n": "workspace:*",
     "@hamboom/shared-types": "workspace:*"
   }
 }

@@ -41,6 +41,9 @@ importers:
       '@fontsource-variable/vazirmatn':
         specifier: 5.3.0
         version: 5.3.0
+      '@hamboom/i18n':
+        specifier: workspace:*
+        version: link:../i18n
       '@hamboom/shared-types':
         specifier: workspace:*
         version: link:../shared-types
