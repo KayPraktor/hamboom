@@ -31,16 +31,21 @@ export function Toolbar({ activeTool, onSelectTool }: ToolbarProps) {
         const label = t(tool.labelKey);
         const active = activeTool === tool.id;
         const shortcut = tool.shortcut.toUpperCase();
+        const soon = tool.comingSoon ?? false;
         return (
           <button
             key={tool.id}
             type="button"
-            className={`hb-tool${active ? " is-active" : ""}`}
-            title={`${label} · ${shortcut}`}
+            className={`hb-tool${active ? " is-active" : ""}${soon ? " is-coming-soon" : ""}`}
+            title={soon ? `${label} · به‌زودی` : `${label} · ${shortcut}`}
             aria-label={label}
             aria-pressed={active}
-            aria-keyshortcuts={shortcut}
-            onClick={() => onSelectTool(tool.id)}
+            aria-disabled={soon || undefined}
+            aria-keyshortcuts={soon ? undefined : shortcut}
+            onClick={() => {
+              if (soon) return; // stub — محتوایش کار M3
+              onSelectTool(tool.id);
+            }}
           >
             {toolIcon(tool.id)}
           </button>

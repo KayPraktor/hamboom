@@ -28,4 +28,15 @@ describe("Toolbar", () => {
     render(<Toolbar activeTool="select" onSelectTool={() => {}} />);
     expect(screen.getByLabelText("استیکی")).toHaveAttribute("title", "استیکی · N");
   });
+
+  it("★ دکمه‌ی stub (کامنت) «به‌زودی» است و کلیکش بی‌اثر", async () => {
+    const onSelect = vi.fn();
+    render(<Toolbar activeTool="select" onSelectTool={onSelect} />);
+    const comment = screen.getByLabelText("کامنت");
+    expect(comment).toHaveAttribute("title", "کامنت · به‌زودی");
+    expect(comment).toHaveClass("is-coming-soon");
+    expect(comment).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(comment);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });

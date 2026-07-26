@@ -25,6 +25,8 @@ export interface ToolMeta {
   labelKey: string;
   /** میانبرِ تک‌حرفیِ کوچک. */
   shortcut: string;
+  /** هنوز پیاده نشده (محتوایش کار M3) — دکمه «به‌زودی» و غیرفعالِ بصری می‌شود. */
+  comingSoon?: boolean;
 }
 
 export const HB_TOOLS: readonly ToolMeta[] = [
@@ -37,7 +39,7 @@ export const HB_TOOLS: readonly ToolMeta[] = [
   { id: "pen", labelKey: "tool.pen", shortcut: "p" },
   { id: "image", labelKey: "tool.image", shortcut: "u" },
   { id: "frame", labelKey: "tool.frame", shortcut: "f" },
-  { id: "comment", labelKey: "tool.comment", shortcut: "k" },
+  { id: "comment", labelKey: "tool.comment", shortcut: "k", comingSoon: true },
   { id: "eraser", labelKey: "tool.eraser", shortcut: "e" },
 ];
 
