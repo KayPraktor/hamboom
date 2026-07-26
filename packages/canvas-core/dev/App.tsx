@@ -21,6 +21,7 @@ import {
   moveFrame,
   recomputeFrameMembership,
   rerouteConnector,
+  StatusBar,
   toExcalidraw,
   toolForShortcut,
   Toolbar,
@@ -661,6 +662,11 @@ export function App() {
       <main className="hb-canvas-host">
         <HamboomCanvas onReady={onReady} />
         <canvas ref={overlayRef} className="hb-draw-overlay" />
+        {/* حالت‌های نمونه — منبعِ واقعیِ ConnectionState/SaveState آداپتورِ M2 است. */}
+        <StatusBar
+          connection={{ status: "connected", peers: 2 }}
+          save={{ status: "saved", at: Date.now() }}
+        />
         <Toolbar activeTool={activeToolId} onSelectTool={selectTool} />
         <input
           ref={fileInputRef}

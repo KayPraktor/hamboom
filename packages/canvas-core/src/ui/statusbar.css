@@ -1,0 +1,54 @@
+/*
+ * نوار وضعیت — گام ۴٫۳. گوشه‌ی بالا-مبدأ (inline-start)، فقط logical properties
+ * (ADR-016). در RTL خودش سمت راست می‌نشیند، بدون کد شرطی.
+ */
+.hb-statusbar {
+  position: absolute;
+  inset-block-start: 12px;
+  inset-inline-start: 12px;
+  z-index: 6;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 6px;
+  padding-inline: 12px;
+
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 8%);
+  font-size: 13px;
+  color: #1a1a1a;
+}
+
+.hb-status-dot {
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 999px;
+  flex: none;
+}
+
+.hb-status-dot.is-ok {
+  background: #22a06b;
+}
+
+.hb-status-dot.is-pending {
+  background: #d9a441;
+}
+
+.hb-status-dot.is-warn {
+  background: #e08a3c;
+}
+
+.hb-status-dot.is-error {
+  background: #d14343;
+}
+
+.hb-status-sep {
+  color: #c7ccd3;
+}
+
+.hb-status-save {
+  color: #6b7280;
+}
