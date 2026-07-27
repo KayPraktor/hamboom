@@ -731,6 +731,12 @@ export function App() {
               elements={snapshot.elements}
               selectedIds={snapshot.selectedIds}
               onChange={onStyleChange}
+              onToggleLock={() => {
+                const read = readScene();
+                if (!read || read.selectedIds.size === 0) return;
+                // همان `toggleLock`ِ منوی راست‌کلیک — منبعِ واحد.
+                writeScene(read.api, toggleLock(read.elements, read.selectedIds));
+              }}
             />
           </div>
         ) : null}

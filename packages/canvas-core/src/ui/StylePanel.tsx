@@ -1,5 +1,6 @@
 import type { HbElement } from "@hamboom/shared-types";
 
+import { areAllLocked } from "../elements/operations";
 import { commonStyle, type StylePatch } from "../elements/style";
 import { HB_TYPO } from "../theme/tokens";
 
@@ -48,6 +49,8 @@ export interface StylePanelProps {
   elements: HbElement[];
   selectedIds: ReadonlySet<string>;
   onChange: (patch: StylePatch) => void;
+  /** toggle قفل — همان `toggleLock`ِ منوی راست‌کلیک (منبعِ واحد، ADR-024). */
+  onToggleLock: () => void;
 }
 
 function ColorRow({
@@ -81,11 +84,12 @@ function ColorRow({
   );
 }
 
-export function StylePanel({ elements, selectedIds, onChange }: StylePanelProps) {
+export function StylePanel({ elements, selectedIds, onChange, onToggleLock }: StylePanelProps) {
   if (selectedIds.size === 0) return null;
 
   const current = commonStyle(elements, selectedIds);
   const hasText = current.fontSize !== undefined || elements.some((el) => selectedIds.has(el.id));
+  const allLocked = areAllLocked(elements, selectedIds);
 
   return (
     <aside className="hb-style-panel" aria-label="استایل">
@@ -170,6 +174,28 @@ export function StylePanel({ elements, selectedIds, onChange }: StylePanelProps)
           </div>
         </div>
       ) : null}
+
+      <div className="hb-style-row">
+        <span className="hb-style-label">چیدمان</span>
+        <div className="hb-style-group" role="group" aria-label="چیدمان و قفل">
+          {/* لایه‌بندی کارِ گام ۵٫۱ است (fractional index، ADR-007) — همین‌جا و در
+              منوی راست‌کلیک coming-soon، و در ۵٫۱ هر دو به یک تابع وصل می‌شوند. */}
+          <button type="button" className="hb-style-chip" disabled title="بردن به جلو · به‌زودی">
+            جلو
+          </button>
+          <button type="button" className="hb-style-chip" disabled title="بردن به عقب · به‌زودی">
+            عقب
+          </button>
+          <button
+            type="button"
+            className={`hb-style-chip${allLocked ? " is-selected" : ""}`}
+            aria-pressed={allLocked}
+            onClick={onToggleLock}
+          >
+            {allLocked ? "باز کردن قفل" : "قفل"}
+          </button>
+        </div>
+      </div>
     </aside>
   );
 }
