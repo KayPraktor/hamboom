@@ -119,6 +119,12 @@ export type { ImageTool, ImageToolOptions, ImageAssetOutbound } from "./tools/im
 export { createDrawTool } from "./tools/draw-tool";
 export type { DrawTool, DrawToolOptions, DrawStrokeOutbound } from "./tools/draw-tool";
 
+export { createContextMenuTool } from "./tools/context-menu-tool";
+export type { ContextMenuTool, ContextMenuToolOptions } from "./tools/context-menu-tool";
+
+export { duplicateElements } from "./elements/duplicate";
+export type { DuplicateOptions } from "./elements/duplicate";
+
 export { createFontString, measureLineWidth, clearMeasureCache } from "./text/measure";
 
 export {

@@ -6,9 +6,12 @@ import {
   StylePanel,
   applyStickyPalette,
   applyStyle,
+  bumpVersion,
   commitGesture,
   commitSystemUpdate,
+  ContextMenu,
   createConnector,
+  createContextMenuTool,
   createDrawTool,
   createFrame,
   createImageTool,
@@ -16,6 +19,7 @@ import {
   createSticky,
   createStickyTool,
   createText,
+  duplicateElements,
   fromExcalidraw,
   getKind,
   moveFrame,
@@ -31,6 +35,8 @@ import {
   type HbShapeKind,
   type ImageAssetOutbound,
   type ImageTool,
+  type ContextMenuTool,
+  type MenuActionId,
   type StickyTool,
   type StrokePoint,
   type StylePatch,
@@ -94,11 +100,13 @@ export function App() {
 
   const [drawActive, setDrawActive] = useState(false);
   const [activeToolId, setActiveToolId] = useState<ToolId>("select");
+  const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const toolRef = useRef<StickyTool | null>(null);
   const imageToolRef = useRef<ImageTool | null>(null);
   const drawToolRef = useRef<DrawTool | null>(null);
+  const contextMenuToolRef = useRef<ContextMenuTool | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   /** `selectTool` پایدار است ولی از داخلِ listenerِ keydown با ref خوانده می‌شود. */
@@ -241,6 +249,15 @@ export function App() {
       onLocalStroke: renderStroke,
       onCommitted: () => refreshCountsRef.current?.(),
     });
+
+    // منوی راست‌کلیک — منوی موتور را در فاز capture preempt می‌کند (تایید مرورگر).
+    contextMenuToolRef.current?.destroy();
+    contextMenuToolRef.current = createContextMenuTool({
+      onOpen: ({ x, y }) => {
+        const selected = api.getAppState().selectedElementIds;
+        setMenu({ x, y, hasSelection: Object.keys(selected).length > 0 });
+      },
+    });
   }, []);
 
   useEffect(() => {
@@ -274,9 +291,38 @@ export function App() {
       imageToolRef.current = null;
       drawToolRef.current?.destroy();
       drawToolRef.current = null;
+      contextMenuToolRef.current?.destroy();
+      contextMenuToolRef.current = null;
       for (const url of urls.values()) URL.revokeObjectURL(url);
       urls.clear();
     };
+  }, []);
+
+  /** کنش‌های منوی راست‌کلیک. کاری‌ها: حذف، تکثیر، قفل. بقیه coming-soon (غیرفعال). */
+  const onMenuAction = useCallback((id: MenuActionId) => {
+    const api = apiRef.current;
+    if (!api) return;
+    const scene = api.getSceneElements();
+    const selected = api.getAppState().selectedElementIds;
+    const isSel = (el: (typeof scene)[number]) => Boolean(selected[el.id]);
+
+    if (id === "delete") {
+      commitGesture(
+        api,
+        scene.map((el) => (isSel(el) ? bumpVersion({ ...el, isDeleted: true }) : el)),
+      );
+    } else if (id === "duplicate") {
+      const hb = scene.map((el) => fromExcalidraw(el as never));
+      const { elements, newIds } = duplicateElements(hb, new Set(Object.keys(selected)));
+      commitGesture(api, elements.map(toExcalidraw), { select: newIds });
+    } else if (id === "lock") {
+      const anyUnlocked = scene.some((el) => isSel(el) && !el.locked);
+      commitGesture(
+        api,
+        scene.map((el) => (isSel(el) ? bumpVersion({ ...el, locked: anyUnlocked }) : el)),
+      );
+    }
+    refreshCountsRef.current?.();
   }, []);
 
   /** روشن/خاموش کردن قلم. قلم و استیکی هم‌زمان فعال نمی‌شوند. */
@@ -668,6 +714,15 @@ export function App() {
           save={{ status: "saved", at: Date.now() }}
         />
         <Toolbar activeTool={activeToolId} onSelectTool={selectTool} />
+        {menu ? (
+          <ContextMenu
+            x={menu.x}
+            y={menu.y}
+            hasSelection={menu.hasSelection}
+            onAction={onMenuAction}
+            onDismiss={() => setMenu(null)}
+          />
+        ) : null}
         <input
           ref={fileInputRef}
           type="file"

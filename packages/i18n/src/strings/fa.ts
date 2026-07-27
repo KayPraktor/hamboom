@@ -24,9 +24,15 @@ export const fa = {
   // کنش‌ها
   "action.undo": "برگردان",
   "action.redo": "دوباره",
+  "action.copy": "کپی",
+  "action.paste": "چسباندن",
   "action.delete": "حذف",
   "action.duplicate": "تکثیر",
   "action.group": "گروه‌بندی",
+  "action.lock": "قفل",
+  "action.unlock": "باز کردن قفل",
+  "action.bringToFront": "بردن به جلو",
+  "action.sendToBack": "بردن به عقب",
   "action.copyAsImage": "کپی به‌عنوان تصویر",
   "action.fitToScreen": "برازش با صفحه",
 

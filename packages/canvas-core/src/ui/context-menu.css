@@ -1,0 +1,56 @@
+/*
+ * منوی راست‌کلیک — گام ۴٫۳. فقط logical properties (ADR-016)؛ موقعیتِ فیزیکیِ
+ * نشانگر (left/top) به‌صورت inline در کامپوننت ست می‌شود (استثنای بوم).
+ */
+.hb-context-menu {
+  position: fixed;
+  z-index: 10;
+  min-inline-size: 200px;
+  padding-block: 6px;
+  padding-inline: 0;
+
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 14%);
+  font-size: 13px;
+  color: #1a1a1a;
+  user-select: none;
+}
+
+.hb-menu-item {
+  inline-size: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-block: 7px;
+  padding-inline: 14px;
+
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.hb-menu-item:hover:not(:disabled) {
+  background: #f7f8fa;
+}
+
+.hb-menu-item:disabled {
+  color: #b0b6be;
+  cursor: default;
+}
+
+.hb-menu-shortcut {
+  color: #9aa1a9;
+  font-size: 12px;
+}
+
+.hb-menu-divider {
+  block-size: 1px;
+  background: #eceef1;
+  margin-block: 6px;
+}
