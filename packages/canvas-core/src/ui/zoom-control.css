@@ -1,0 +1,55 @@
+/*
+ * کنترلِ بزرگ‌نمایی — گام ۴٫۳. گوشه‌ی پایین-مبدأ (inline-start)، فقط logical
+ * properties (ADR-016). در RTL خودش سمت راست می‌نشیند.
+ */
+.hb-zoom {
+  position: absolute;
+  inset-block-end: 20px;
+  inset-inline-start: 20px;
+  z-index: 6;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 10%);
+  color: #1a1a1a;
+}
+
+.hb-zoom-btn {
+  inline-size: 32px;
+  block-size: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.hb-zoom-btn:hover {
+  background: #f7f8fa;
+}
+
+.hb-zoom-percent {
+  min-inline-size: 52px;
+  block-size: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.hb-zoom-percent:hover {
+  background: #f7f8fa;
+}

@@ -31,6 +31,9 @@ import {
   toolForShortcut,
   Toolbar,
   withBoundElements,
+  ZoomControl,
+  zoomAroundCenter,
+  zoomStep,
   type DrawStrokeOutbound,
   type DrawTool,
   type HbShapeKind,
@@ -102,6 +105,7 @@ export function App() {
   const [drawActive, setDrawActive] = useState(false);
   const [activeToolId, setActiveToolId] = useState<ToolId>("select");
   const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
+  const [zoom, setZoom] = useState(1);
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const toolRef = useRef<StickyTool | null>(null);
@@ -145,6 +149,8 @@ export function App() {
     //   (ADR-008). این نسخه‌ی ساده‌ی دمو کاری را می‌کند که binder واقعی M2
     //   خواهد کرد: هر کانکتور را با جعبه‌ی فعلی دو سرش دوباره route می‌کند.
     api.onChange(() => rerouteConnectorsRef.current?.());
+    // بزرگ‌نمایی از چرخِ ماوس/pinch هم به کنترلِ ما برسد.
+    api.onScrollChange((_scrollX, _scrollY, nextZoom) => setZoom(nextZoom.value));
     // ⚠️ بعد از `updateScene` برنامه‌ای، state موتور هنوز اعمال نشده — خواندن
     //   فوری `selectedElementIds` مقدار قبلی را می‌دهد و پنل استایل ظاهر
     //   نمی‌شود. یک تیک صبر می‌کنیم.
@@ -318,6 +324,53 @@ export function App() {
       commitGesture(api, toggleLock(hb, ids).map(toExcalidraw));
     }
     refreshCountsRef.current?.();
+  }, []);
+
+  /**
+   * بزرگ/کوچک‌نمایی حول مرکز — منطق در `zoom.ts`. appState-only، بدون ورودی undo.
+   * ★ گامِ بعدی از **zoomِ فعلیِ موتور** حساب می‌شود، نه از state (که async است و
+   *   کلیک‌های پشت‌سرهم را با مقدارِ کهنه می‌بندد).
+   */
+  const applyZoom = useCallback((direction: 1 | -1) => {
+    const api = apiRef.current;
+    if (!api) return;
+    const s = api.getAppState();
+    const next = zoomAroundCenter(
+      {
+        zoom: s.zoom.value,
+        scrollX: s.scrollX,
+        scrollY: s.scrollY,
+        width: s.width,
+        height: s.height,
+      },
+      zoomStep(s.zoom.value, direction),
+    );
+    api.updateScene({
+      appState: {
+        zoom: { value: next.zoom },
+        scrollX: next.scrollX,
+        scrollY: next.scrollY,
+      } as never,
+      captureUpdate: "NEVER",
+    });
+    setZoom(next.zoom);
+  }, []);
+
+  /** برازش با صفحه — `scrollToContent`ِ موتور؛ صحنه‌ی خالی = بازنشانی به ۱۰۰٪. */
+  const fitToScreen = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const live = api.getSceneElements().filter((el) => !el.isDeleted);
+    if (live.length === 0) {
+      api.updateScene({
+        appState: { zoom: { value: 1 }, scrollX: 0, scrollY: 0 } as never,
+        captureUpdate: "NEVER",
+      });
+      setZoom(1);
+      return;
+    }
+    api.scrollToContent(live, { fitToContent: true });
+    setTimeout(() => setZoom(apiRef.current?.getAppState().zoom.value ?? 1), 0);
   }, []);
 
   /** روشن/خاموش کردن قلم. قلم و استیکی هم‌زمان فعال نمی‌شوند. */
@@ -709,6 +762,12 @@ export function App() {
           save={{ status: "saved", at: Date.now() }}
         />
         <Toolbar activeTool={activeToolId} onSelectTool={selectTool} />
+        <ZoomControl
+          zoom={zoom}
+          onZoomIn={() => applyZoom(1)}
+          onZoomOut={() => applyZoom(-1)}
+          onFit={fitToScreen}
+        />
         {menu ? (
           <ContextMenu
             x={menu.x}

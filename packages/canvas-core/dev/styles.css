@@ -136,6 +136,11 @@ body {
   display: none;
 }
 
+/* گام ۴٫۳ — کنترلِ بزرگ‌نماییِ خودمان جای zoomِ موتور را می‌گیرد. */
+.hb-canvas-host .excalidraw .zoom-actions {
+  display: none;
+}
+
 /* ── صفحه‌ی spike (گام ۱٫۳) ──────────────────────────────── */
 
 .hb-spike-canvas {
