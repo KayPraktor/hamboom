@@ -6,7 +6,6 @@ import {
   StylePanel,
   applyStickyPalette,
   applyStyle,
-  bumpVersion,
   commitGesture,
   commitSystemUpdate,
   ContextMenu,
@@ -19,6 +18,7 @@ import {
   createSticky,
   createStickyTool,
   createText,
+  deleteElements,
   duplicateElements,
   fromExcalidraw,
   getKind,
@@ -27,6 +27,7 @@ import {
   rerouteConnector,
   StatusBar,
   toExcalidraw,
+  toggleLock,
   toolForShortcut,
   Toolbar,
   withBoundElements,
@@ -298,29 +299,23 @@ export function App() {
     };
   }, []);
 
-  /** کنش‌های منوی راست‌کلیک. کاری‌ها: حذف، تکثیر، قفل. بقیه coming-soon (غیرفعال). */
+  /**
+   * کنش‌های منوی راست‌کلیک. کاری‌ها: حذف، تکثیر، قفل — همه از توابعِ **مشترکِ**
+   * `elements/*` (نه inline)، تا پنل استایل هم از همان منبع بیاید. بقیه coming-soon.
+   */
   const onMenuAction = useCallback((id: MenuActionId) => {
     const api = apiRef.current;
     if (!api) return;
-    const scene = api.getSceneElements();
-    const selected = api.getAppState().selectedElementIds;
-    const isSel = (el: (typeof scene)[number]) => Boolean(selected[el.id]);
+    const hb = api.getSceneElements().map((el) => fromExcalidraw(el as never));
+    const ids = new Set(Object.keys(api.getAppState().selectedElementIds));
 
     if (id === "delete") {
-      commitGesture(
-        api,
-        scene.map((el) => (isSel(el) ? bumpVersion({ ...el, isDeleted: true }) : el)),
-      );
+      commitGesture(api, deleteElements(hb, ids).map(toExcalidraw));
     } else if (id === "duplicate") {
-      const hb = scene.map((el) => fromExcalidraw(el as never));
-      const { elements, newIds } = duplicateElements(hb, new Set(Object.keys(selected)));
+      const { elements, newIds } = duplicateElements(hb, ids);
       commitGesture(api, elements.map(toExcalidraw), { select: newIds });
     } else if (id === "lock") {
-      const anyUnlocked = scene.some((el) => isSel(el) && !el.locked);
-      commitGesture(
-        api,
-        scene.map((el) => (isSel(el) ? bumpVersion({ ...el, locked: anyUnlocked }) : el)),
-      );
+      commitGesture(api, toggleLock(hb, ids).map(toExcalidraw));
     }
     refreshCountsRef.current?.();
   }, []);
