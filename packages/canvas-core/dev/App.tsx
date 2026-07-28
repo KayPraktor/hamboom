@@ -25,6 +25,7 @@ import {
   moveFrame,
   PeerAvatars,
   PeerCursors,
+  PeerSelections,
   recomputeFrameMembership,
   rerouteConnector,
   StatusBar,
@@ -397,7 +398,8 @@ export function App() {
         { clientX: event.clientX, clientY: event.clientY },
         api.getAppState(),
       );
-      emitPointer({ x, y, visible: true });
+      // انتخابِ محلی را هم پیوست کن تا هاله‌ی انتخابِ همتاها کار کند.
+      emitPointer({ x, y, visible: true }, Object.keys(api.getAppState().selectedElementIds));
     };
     const onLeave = () => emitPointer({ x: 0, y: 0, visible: false });
     document.addEventListener("pointermove", onMove);
@@ -844,6 +846,7 @@ export function App() {
       <main className="hb-canvas-host" ref={hostRef}>
         <HamboomCanvas onReady={onReady} viewModeEnabled={readOnly} />
         <canvas ref={overlayRef} className="hb-draw-overlay" />
+        <PeerSelections peers={peers} elements={snapshot.elements} project={projectPeer} />
         <PeerCursors peers={peers} project={projectPeer} />
         <PeerAvatars peers={peers} onFollow={followPeer} />
         {/* حالت‌های نمونه — منبعِ واقعیِ ConnectionState/SaveState آداپتورِ M2 است. */}

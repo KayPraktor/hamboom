@@ -1,0 +1,18 @@
+/*
+ * هاله‌ی انتخابِ همکاران — گام ۴٫۴. لایه‌ی شفاف روی بوم، زیرِ مکان‌نماها.
+ */
+.hb-peer-selections {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.hb-peer-halo {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  border: 2px solid;
+  border-radius: 4px;
+}

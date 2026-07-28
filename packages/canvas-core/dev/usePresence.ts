@@ -19,6 +19,7 @@ type Msg =
       clientId: number;
       user: PeerState["user"];
       pointer: PeerState["pointer"];
+      selectedIds: string[];
       t: number;
     }
   | { type: "leave"; clientId: number };
@@ -60,7 +61,7 @@ export function usePresence() {
             clientId: msg.clientId,
             user: msg.user,
             pointer: msg.pointer,
-            selectedIds: [],
+            selectedIds: msg.selectedIds,
             viewport: null,
             activeTool: null,
           },
@@ -92,12 +93,13 @@ export function usePresence() {
     };
   }, [flush]);
 
-  const emitPointer = useCallback((pointer: PeerState["pointer"]) => {
+  const emitPointer = useCallback((pointer: PeerState["pointer"], selectedIds: string[] = []) => {
     channelRef.current?.postMessage({
       type: "cursor",
       clientId: idRef.current,
       user: userRef.current,
       pointer,
+      selectedIds,
       t: Date.now(),
     } satisfies Msg);
   }, []);

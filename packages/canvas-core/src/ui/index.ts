@@ -17,5 +17,7 @@ export { PeerCursors } from "./PeerCursors";
 export type { PeerCursorsProps } from "./PeerCursors";
 export { PeerAvatars } from "./PeerAvatars";
 export type { PeerAvatarsProps } from "./PeerAvatars";
+export { PeerSelections } from "./PeerSelections";
+export type { PeerSelectionsProps } from "./PeerSelections";
 export { HB_TOOLS, HB_TOOL_SHORTCUTS, toolForShortcut } from "./toolbar-tools";
 export type { ToolId, ToolMeta } from "./toolbar-tools";
