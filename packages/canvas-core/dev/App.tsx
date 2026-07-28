@@ -23,6 +23,8 @@ import {
   fromExcalidraw,
   getKind,
   moveFrame,
+  PeerAvatars,
+  PeerCursors,
   recomputeFrameMembership,
   rerouteConnector,
   StatusBar,
@@ -46,11 +48,13 @@ import {
   type StylePatch,
   type ToolId,
 } from "@hamboom/canvas-core";
-import { sceneCoordsToViewportCoords } from "@excalidraw/excalidraw";
+import { sceneCoordsToViewportCoords, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
 import { SYNC_CONTRACT_VERSION } from "@hamboom/canvas-core/sync";
 import type { HbStickyColor } from "@hamboom/shared-types";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+
+import { usePresence } from "./usePresence";
 
 /**
  * دموی canvas-core — از گام ۳٫۲ ابزار استیکی هم دارد.
@@ -106,6 +110,8 @@ export function App() {
   const [activeToolId, setActiveToolId] = useState<ToolId>("select");
   const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [readOnly, setReadOnly] = useState(false);
+  const { peers, emitPointer } = usePresence();
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const toolRef = useRef<StickyTool | null>(null);
@@ -113,6 +119,10 @@ export function App() {
   const drawToolRef = useRef<DrawTool | null>(null);
   const contextMenuToolRef = useRef<ContextMenuTool | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
+  const hostRef = useRef<HTMLElement | null>(null);
+  /** آخرین وضعیتِ فقط‌خواندنی — تا guardهای پایدار بدونِ re-subscribe بخوانند. */
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   /** `selectTool` پایدار است ولی از داخلِ listenerِ keydown با ref خوانده می‌شود. */
   const selectToolRef = useRef<((id: ToolId) => void) | null>(null);
@@ -373,6 +383,59 @@ export function App() {
     setTimeout(() => setZoom(apiRef.current?.getAppState().zoom.value ?? 1), 0);
   }, []);
 
+  // حضور — مکان‌نمای محلی را پخش کن (throttle ۴۰ms) و هنگام خروج نامرئی کن.
+  useEffect(() => {
+    let last = 0;
+    const onMove = (event: PointerEvent) => {
+      const now = Date.now();
+      if (now - last < 40) return;
+      last = now;
+      const api = apiRef.current;
+      const target = event.target as Element | null;
+      if (!api || !target?.closest?.(".excalidraw")) return;
+      const { x, y } = viewportCoordsToSceneCoords(
+        { clientX: event.clientX, clientY: event.clientY },
+        api.getAppState(),
+      );
+      emitPointer({ x, y, visible: true });
+    };
+    const onLeave = () => emitPointer({ x: 0, y: 0, visible: false });
+    document.addEventListener("pointermove", onMove);
+    window.addEventListener("blur", onLeave);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      window.removeEventListener("blur", onLeave);
+    };
+  }, [emitPointer]);
+
+  /** نقطه‌ی صحنه → پیکسلِ محلیِ لایه‌ی مکان‌نماها (نسبت به هاست). */
+  const projectPeer = useCallback((sceneX: number, sceneY: number) => {
+    const api = apiRef.current;
+    const host = hostRef.current;
+    if (!api || !host) return { x: sceneX, y: sceneY };
+    const viewport = sceneCoordsToViewportCoords({ sceneX, sceneY }, api.getAppState());
+    const rect = host.getBoundingClientRect();
+    return { x: viewport.x - rect.left, y: viewport.y - rect.top };
+  }, []);
+
+  /** دنبال‌کردنِ یک همتا — نما را روی مکان‌نمای او وسط می‌کند (focusOnِ نمایشی). */
+  const followPeer = useCallback(
+    (clientId: number) => {
+      const api = apiRef.current;
+      const peer = peers.find((p) => p.clientId === clientId);
+      if (!api || !peer?.pointer) return;
+      const s = api.getAppState();
+      api.updateScene({
+        appState: {
+          scrollX: s.width / 2 / s.zoom.value - peer.pointer.x,
+          scrollY: s.height / 2 / s.zoom.value - peer.pointer.y,
+        } as never,
+        captureUpdate: "NEVER",
+      });
+    },
+    [peers],
+  );
+
   /** روشن/خاموش کردن قلم. قلم و استیکی هم‌زمان فعال نمی‌شوند. */
   const toggleDraw = useCallback(() => {
     const next = !(drawToolRef.current?.isActive() ?? false);
@@ -386,6 +449,21 @@ export function App() {
     setDrawActive(next);
   }, []);
 
+  /** فقط‌خواندنی (permissions.canEdit === false نمایشی) — ویرایش خاموش. */
+  const toggleReadOnly = useCallback(() => {
+    setReadOnly((prev) => {
+      const next = !prev;
+      if (next) {
+        toolRef.current?.deactivate();
+        drawToolRef.current?.deactivate();
+        setToolActive(false);
+        setDrawActive(false);
+        setActiveToolId("select");
+      }
+      return next;
+    });
+  }, []);
+
   /**
    * انتخابِ ابزار از نوار (یا میانبر). این لایه‌ی سیم‌کشی است: ابزارهای موتور با
    * `setActiveTool`، ابزارهای سفارشی (استیکی/قلم) با activate، تصویر با انتخابگرِ
@@ -394,6 +472,8 @@ export function App() {
   const selectTool = useCallback((id: ToolId) => {
     const api = apiRef.current;
     if (!api) return;
+    // فقط‌خواندنی: ابزارهای ویرایش کار نمی‌کنند (select/hand برای ناوبری مجازند).
+    if (readOnlyRef.current && id !== "select" && id !== "hand") return;
 
     // ابزارهای سفارشی را خاموش کن مگر خودشان انتخاب شده باشند.
     if (id !== "sticky") toolRef.current?.deactivate();
@@ -741,6 +821,14 @@ export function App() {
           >
             قلم{drawActive ? " (فعال)" : ""}
           </button>
+          <button
+            type="button"
+            className={`hb-style-chip${readOnly ? " is-selected" : ""}`}
+            onClick={toggleReadOnly}
+            aria-pressed={readOnly}
+          >
+            فقط‌خواندنی{readOnly ? " (روشن)" : ""}
+          </button>
         </div>
 
         <dl className="hb-rows">
@@ -753,9 +841,11 @@ export function App() {
         </dl>
       </header>
 
-      <main className="hb-canvas-host">
-        <HamboomCanvas onReady={onReady} />
+      <main className="hb-canvas-host" ref={hostRef}>
+        <HamboomCanvas onReady={onReady} viewModeEnabled={readOnly} />
         <canvas ref={overlayRef} className="hb-draw-overlay" />
+        <PeerCursors peers={peers} project={projectPeer} />
+        <PeerAvatars peers={peers} onFollow={followPeer} />
         {/* حالت‌های نمونه — منبعِ واقعیِ ConnectionState/SaveState آداپتورِ M2 است. */}
         <StatusBar
           connection={{ status: "connected", peers: 2 }}
