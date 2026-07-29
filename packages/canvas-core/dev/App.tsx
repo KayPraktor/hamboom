@@ -110,7 +110,14 @@ export function App() {
   const [drawActive, setDrawActive] = useState(false);
   const [activeToolId, setActiveToolId] = useState<ToolId>("select");
   const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
-  const [zoom, setZoom] = useState(1);
+  /**
+   * ★ نما (viewport) منبعِ **واحد** برای zoom **و** pan است. عمداً از
+   * `api.getAppState()` جدا نگه داشته می‌شود: درست بعد از یک جابه‌جاییِ نما،
+   * `getAppState()` یک فریم کهنه است (تله‌ی ثبت‌شده). `onScrollChange` مقادیرِ
+   * معتبرِ scrollX/scrollY/zoom را می‌دهد؛ لایه‌ی حضور از همین state پروجکت می‌کند
+   * تا با هر pan **خالص** هم دوباره جای درست بنشیند (گام ۴٫۴، Q1).
+   */
+  const [viewport, setViewport] = useState({ scrollX: 0, scrollY: 0, zoom: 1 });
   const [readOnly, setReadOnly] = useState(false);
   const { peers, emitPointer } = usePresence();
 
@@ -160,8 +167,12 @@ export function App() {
     //   (ADR-008). این نسخه‌ی ساده‌ی دمو کاری را می‌کند که binder واقعی M2
     //   خواهد کرد: هر کانکتور را با جعبه‌ی فعلی دو سرش دوباره route می‌کند.
     api.onChange(() => rerouteConnectorsRef.current?.());
-    // بزرگ‌نمایی از چرخِ ماوس/pinch هم به کنترلِ ما برسد.
-    api.onScrollChange((_scrollX, _scrollY, nextZoom) => setZoom(nextZoom.value));
+    // ★ چرخِ ماوس/pinch هم zoom را عوض می‌کند هم **pan** می‌دهد. مقادیرِ معتبرِ
+    //   نما را از خودِ callback بگیر (نه از getAppState که یک فریم عقب است) و در
+    //   state بگذار — تا لایه‌ی حضور با pan خالص هم دوباره پروجکت شود (Q1، گام ۴٫۴).
+    api.onScrollChange((scrollX, scrollY, nextZoom) =>
+      setViewport({ scrollX, scrollY, zoom: nextZoom.value }),
+    );
     // ⚠️ بعد از `updateScene` برنامه‌ای، state موتور هنوز اعمال نشده — خواندن
     //   فوری `selectedElementIds` مقدار قبلی را می‌دهد و پنل استایل ظاهر
     //   نمی‌شود. یک تیک صبر می‌کنیم.
@@ -364,7 +375,8 @@ export function App() {
       } as never,
       captureUpdate: "NEVER",
     });
-    setZoom(next.zoom);
+    // مقادیرِ محاسبه‌شده معتبرترین‌اند (updateScene برنامه‌ای onScrollChange نمی‌دهد).
+    setViewport({ scrollX: next.scrollX, scrollY: next.scrollY, zoom: next.zoom });
   }, []);
 
   /** برازش با صفحه — `scrollToContent`ِ موتور؛ صحنه‌ی خالی = بازنشانی به ۱۰۰٪. */
@@ -377,11 +389,15 @@ export function App() {
         appState: { zoom: { value: 1 }, scrollX: 0, scrollY: 0 } as never,
         captureUpdate: "NEVER",
       });
-      setZoom(1);
+      setViewport({ scrollX: 0, scrollY: 0, zoom: 1 });
       return;
     }
     api.scrollToContent(live, { fitToContent: true });
-    setTimeout(() => setZoom(apiRef.current?.getAppState().zoom.value ?? 1), 0);
+    // یک تیک صبر تا نما بنشیند، بعد نمای معتبر را کامل بخوان (scroll + zoom).
+    setTimeout(() => {
+      const s = apiRef.current?.getAppState();
+      if (s) setViewport({ scrollX: s.scrollX, scrollY: s.scrollY, zoom: s.zoom.value });
+    }, 0);
   }, []);
 
   // حضور — مکان‌نمای محلی را پخش کن (throttle ۴۰ms) و هنگام خروج نامرئی کن.
@@ -410,15 +426,37 @@ export function App() {
     };
   }, [emitPointer]);
 
-  /** نقطه‌ی صحنه → پیکسلِ محلیِ لایه‌ی مکان‌نماها (نسبت به هاست). */
-  const projectPeer = useCallback((sceneX: number, sceneY: number) => {
-    const api = apiRef.current;
-    const host = hostRef.current;
-    if (!api || !host) return { x: sceneX, y: sceneY };
-    const viewport = sceneCoordsToViewportCoords({ sceneX, sceneY }, api.getAppState());
-    const rect = host.getBoundingClientRect();
-    return { x: viewport.x - rect.left, y: viewport.y - rect.top };
-  }, []);
+  /**
+   * نقطه‌ی صحنه → پیکسلِ محلیِ لایه‌ی مکان‌نماها (نسبت به هاست).
+   *
+   * ★ scroll/zoom را از state (`viewport` — معتبر، از onScrollChange) می‌گیرد نه
+   *   از `getAppState()` که درست بعد از pan/zoom یک فریم کهنه است. فقط
+   *   offsetLeft/offsetTop از getAppState خوانده می‌شوند؛ آن‌ها با pan/zoom عوض
+   *   نمی‌شوند (فقط با resize). وابستگیِ `[viewport]` باعث می‌شود لایه‌ی حضور با
+   *   هر جابه‌جاییِ نما — از جمله pan خالص — دوباره رندر و پروجکت شود (Q1).
+   */
+  const projectPeer = useCallback(
+    (sceneX: number, sceneY: number) => {
+      const api = apiRef.current;
+      const host = hostRef.current;
+      if (!api || !host) return { x: sceneX, y: sceneY };
+      const st = api.getAppState();
+      // `zoom.value` در موتور یک عددِ برندشده است؛ عددِ ساده‌ی state را به همان
+      // شکل cast می‌کنیم (منبعش خودِ همان مقدار از onScrollChange بود).
+      const p = sceneCoordsToViewportCoords(
+        { sceneX, sceneY },
+        {
+          ...st,
+          scrollX: viewport.scrollX,
+          scrollY: viewport.scrollY,
+          zoom: { value: viewport.zoom } as typeof st.zoom,
+        },
+      );
+      const rect = host.getBoundingClientRect();
+      return { x: p.x - rect.left, y: p.y - rect.top };
+    },
+    [viewport],
+  );
 
   /** دنبال‌کردنِ یک همتا — نما را روی مکان‌نمای او وسط می‌کند (focusOnِ نمایشی). */
   const followPeer = useCallback(
@@ -427,13 +465,13 @@ export function App() {
       const peer = peers.find((p) => p.clientId === clientId);
       if (!api || !peer?.pointer) return;
       const s = api.getAppState();
+      const scrollX = s.width / 2 / s.zoom.value - peer.pointer.x;
+      const scrollY = s.height / 2 / s.zoom.value - peer.pointer.y;
       api.updateScene({
-        appState: {
-          scrollX: s.width / 2 / s.zoom.value - peer.pointer.x,
-          scrollY: s.height / 2 / s.zoom.value - peer.pointer.y,
-        } as never,
+        appState: { scrollX, scrollY } as never,
         captureUpdate: "NEVER",
       });
+      setViewport({ scrollX, scrollY, zoom: s.zoom.value });
     },
     [peers],
   );
@@ -856,7 +894,7 @@ export function App() {
         />
         <Toolbar activeTool={activeToolId} onSelectTool={selectTool} />
         <ZoomControl
-          zoom={zoom}
+          zoom={viewport.zoom}
           onZoomIn={() => applyZoom(1)}
           onZoomOut={() => applyZoom(-1)}
           onFit={fitToScreen}
