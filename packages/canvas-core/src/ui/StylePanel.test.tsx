@@ -19,14 +19,17 @@ function shape(id: string, locked = false) {
   return { ...s, id, locked };
 }
 
-describe("StylePanel — قفل/چیدمان (گام ۴٫۳)", () => {
+const noop = () => {};
+
+describe("StylePanel — قفل/چیدمان (گام ۴٫۳/۵٫۱)", () => {
   it("بدون انتخاب، چیزی رندر نمی‌کند", () => {
     const { container } = render(
       <StylePanel
         elements={[]}
         selectedIds={new Set()}
-        onChange={() => {}}
-        onToggleLock={() => {}}
+        onChange={noop}
+        onToggleLock={noop}
+        onReorder={noop}
       />,
     );
     expect(container.firstChild).toBeNull();
@@ -38,8 +41,9 @@ describe("StylePanel — قفل/چیدمان (گام ۴٫۳)", () => {
       <StylePanel
         elements={[shape("A", false)]}
         selectedIds={new Set(["A"])}
-        onChange={() => {}}
+        onChange={noop}
         onToggleLock={onToggleLock}
+        onReorder={noop}
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: "قفل" }));
@@ -51,23 +55,32 @@ describe("StylePanel — قفل/چیدمان (گام ۴٫۳)", () => {
       <StylePanel
         elements={[shape("A", true)]}
         selectedIds={new Set(["A"])}
-        onChange={() => {}}
-        onToggleLock={() => {}}
+        onChange={noop}
+        onToggleLock={noop}
+        onReorder={noop}
       />,
     );
     expect(screen.getByRole("button", { name: "باز کردن قفل" })).toBeInTheDocument();
   });
 
-  it("★ لایه (جلو/عقب) coming-soon و غیرفعال است (۵٫۱)", () => {
+  it("★ جلو/عقب فعال‌اند و onReorder را با جهتِ درست صدا می‌زنند (۵٫۱)", async () => {
+    const onReorder = vi.fn();
     render(
       <StylePanel
         elements={[shape("A")]}
         selectedIds={new Set(["A"])}
-        onChange={() => {}}
-        onToggleLock={() => {}}
+        onChange={noop}
+        onToggleLock={noop}
+        onReorder={onReorder}
       />,
     );
-    expect(screen.getByRole("button", { name: "جلو" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "عقب" })).toBeDisabled();
+    const forward = screen.getByRole("button", { name: "جلو" });
+    const backward = screen.getByRole("button", { name: "عقب" });
+    expect(forward).toBeEnabled();
+    expect(backward).toBeEnabled();
+    await userEvent.click(forward);
+    await userEvent.click(backward);
+    expect(onReorder).toHaveBeenNthCalledWith(1, "forward");
+    expect(onReorder).toHaveBeenNthCalledWith(2, "backward");
   });
 });

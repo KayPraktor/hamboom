@@ -54,3 +54,61 @@ export function toggleLock(elements: HbElement[], selectedIds: ReadonlySet<strin
   });
   return changed ? next : elements;
 }
+
+/** جهتِ تغییرِ لایه (z-order). */
+export type ReorderOp = "front" | "back" | "forward" | "backward";
+
+/**
+ * تغییرِ لایه‌ی عناصرِ انتخاب‌شده — منبعِ واحد برای منوی راست‌کلیک (جلوترین/عقب‌ترین)
+ * و پنل استایل (جلو/عقب یک‌پله).
+ *
+ * ★ **ترتیبِ آرایه = ترتیبِ z** (اولْ ته، آخرْ رو). فقط ترتیب را می‌چینیم و رشته‌ی
+ * `index` را **دست نمی‌زنیم**: بعد از `updateScene`، موتور خودش ایندکسِ کسری را از
+ * روی ترتیبِ جدید بازتولید می‌کند ([ADR-007](../../../../ARCHITECTURE_DECISIONS.md#adr-007)).
+ * پس الگوریتمِ ایندکسِ کسری اینجا **تکرار نمی‌شود** (درسِ [ADR-024](../../../../ARCHITECTURE_DECISIONS.md#adr-024)).
+ * روی هر عنصری که موقعیتش عوض شده `bumpVersion` می‌خورد تا موتور reorder را برای
+ * undo ثبت کند ([ADR-026](../../../../ARCHITECTURE_DECISIONS.md#adr-026)).
+ *
+ * پله‌ای‌ها (`forward`/`backward`) گروهِ انتخاب را یک پله از **همسایه‌ی نامنتخب**
+ * رد می‌کنند، بی‌آنکه ترتیبِ درونیِ خودِ انتخاب به‌هم بخورد.
+ */
+export function reorderElements(
+  elements: HbElement[],
+  selectedIds: ReadonlySet<string>,
+  op: ReorderOp,
+): HbElement[] {
+  const isSel = (el: HbElement | undefined): el is HbElement =>
+    el !== undefined && selectedIds.has(el.id) && !el.isDeleted;
+  if (!elements.some(isSel)) return elements;
+
+  let next: HbElement[];
+  if (op === "front") {
+    next = [...elements.filter((el) => !isSel(el)), ...elements.filter(isSel)];
+  } else if (op === "back") {
+    next = [...elements.filter(isSel), ...elements.filter((el) => !isSel(el))];
+  } else {
+    next = elements.slice();
+    if (op === "forward") {
+      // از انتها به ابتدا: هر منتخب را یک پله به سمتِ رو (انتها) ببر.
+      for (let i = next.length - 2; i >= 0; i--) {
+        if (isSel(next[i]) && !isSel(next[i + 1])) {
+          [next[i], next[i + 1]] = [next[i + 1]!, next[i]!];
+        }
+      }
+    } else {
+      // backward — از ابتدا به انتها: یک پله به سمتِ ته (ابتدا).
+      for (let i = 1; i < next.length; i++) {
+        if (isSel(next[i]) && !isSel(next[i - 1])) {
+          [next[i], next[i - 1]] = [next[i - 1]!, next[i]!];
+        }
+      }
+    }
+  }
+
+  // اگر ترتیب عوض نشده، همان آرایه (بدون commitِ اضافه).
+  const moved = next.some((el, i) => el !== elements[i]);
+  if (!moved) return elements;
+
+  // فقط عناصری که جایشان عوض شده version می‌گیرند.
+  return next.map((el, i) => (el === elements[i] ? el : bumpVersion(el)));
+}

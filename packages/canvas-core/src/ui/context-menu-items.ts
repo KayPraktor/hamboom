@@ -56,19 +56,8 @@ export const HB_MENU_ITEMS: readonly MenuItemMeta[] = [
   },
   { id: "lock", labelKey: "action.lock", requiresSelection: true },
   { id: "group", labelKey: "action.group", requiresSelection: true, comingSoon: true },
-  {
-    id: "bringToFront",
-    labelKey: "action.bringToFront",
-    requiresSelection: true,
-    comingSoon: true,
-  },
-  {
-    id: "sendToBack",
-    labelKey: "action.sendToBack",
-    requiresSelection: true,
-    comingSoon: true,
-    dividerAfter: true,
-  },
+  { id: "bringToFront", labelKey: "action.bringToFront", requiresSelection: true },
+  { id: "sendToBack", labelKey: "action.sendToBack", requiresSelection: true, dividerAfter: true },
   { id: "copyAsImage", labelKey: "action.copyAsImage", requiresSelection: true, comingSoon: true },
 ];
 

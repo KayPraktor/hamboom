@@ -125,7 +125,8 @@ export type { ContextMenuTool, ContextMenuToolOptions } from "./tools/context-me
 export { duplicateElements } from "./elements/duplicate";
 export type { DuplicateOptions } from "./elements/duplicate";
 
-export { deleteElements, toggleLock, areAllLocked } from "./elements/operations";
+export { deleteElements, toggleLock, areAllLocked, reorderElements } from "./elements/operations";
+export type { ReorderOp } from "./elements/operations";
 
 export { createFontString, measureLineWidth, clearMeasureCache } from "./text/measure";
 

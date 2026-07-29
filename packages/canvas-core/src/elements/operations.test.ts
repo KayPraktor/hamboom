@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { areAllLocked, deleteElements, toggleLock } from "./operations";
+import { areAllLocked, deleteElements, reorderElements, toggleLock } from "./operations";
 import { createShape } from "./shape";
 
 let counter = 0;
@@ -73,5 +73,75 @@ describe("areAllLocked", () => {
 
   it("بدون انتخاب → false", () => {
     expect(areAllLocked([shape("A", true)], new Set())).toBe(false);
+  });
+});
+
+describe("reorderElements — z-order (منبعِ واحد)", () => {
+  const ids = (els: { id: string }[]) => els.map((e) => e.id).join("");
+
+  it("★ front: انتخاب به انتهای آرایه (رو) می‌رود", () => {
+    const els = [shape("A"), shape("B"), shape("C")];
+    expect(ids(reorderElements(els, new Set(["A"]), "front"))).toBe("BCA");
+  });
+
+  it("★ back: انتخاب به ابتدای آرایه (ته) می‌رود", () => {
+    const els = [shape("A"), shape("B"), shape("C")];
+    expect(ids(reorderElements(els, new Set(["C"]), "back"))).toBe("CAB");
+  });
+
+  it("★ forward: یک پله به سمتِ رو", () => {
+    const els = [shape("A"), shape("B"), shape("C")];
+    expect(ids(reorderElements(els, new Set(["A"]), "forward"))).toBe("BAC");
+  });
+
+  it("★ backward: یک پله به سمتِ ته", () => {
+    const els = [shape("A"), shape("B"), shape("C")];
+    expect(ids(reorderElements(els, new Set(["C"]), "backward"))).toBe("ACB");
+  });
+
+  it("★ forwardِ چندتاییِ ناپیوسته — هر کدام یک پله، بدون به‌هم‌ریختنِ ترتیبِ داخلی", () => {
+    const els = [shape("A"), shape("B"), shape("C"), shape("D")];
+    // A(sel) و C(sel) هر کدام یک پله به جلو از همسایه‌ی نامنتخبشان
+    expect(ids(reorderElements(els, new Set(["A", "C"]), "forward"))).toBe("BADC");
+  });
+
+  it("★ front ترتیبِ نسبیِ خودِ انتخاب را حفظ می‌کند", () => {
+    const els = [shape("A"), shape("B"), shape("C"), shape("D")];
+    expect(ids(reorderElements(els, new Set(["A", "C"]), "front"))).toBe("BDAC");
+  });
+
+  it("index دست نمی‌خورد — بازتولیدش با موتور است (ADR-007)", () => {
+    const els = [shape("A"), shape("B"), shape("C")];
+    const before = new Map(els.map((e) => [e.id, e.index]));
+    for (const e of reorderElements(els, new Set(["A"]), "front")) {
+      expect(e.index).toBe(before.get(e.id));
+    }
+  });
+
+  it("فقط عناصرِ جابه‌جاشده bumpVersion می‌گیرند", () => {
+    const els = [shape("A"), shape("B"), shape("C")];
+    const next = reorderElements(els, new Set(["A"]), "front"); // → B C A
+    const byId = new Map(next.map((e) => [e.id, e]));
+    // A جابه‌جا شد (۰→۲)، B و C هم شیفت خوردند (۱→۰، ۲→۱) → همه version می‌گیرند
+    expect(byId.get("A")!.versionNonce).not.toBe(els[0]!.versionNonce);
+    expect(byId.get("B")!.versionNonce).not.toBe(els[1]!.versionNonce);
+  });
+
+  it("عنصرِ خارجِ انتخاب که موقعیتش عوض نشده، همان شیء می‌ماند", () => {
+    // back روی C: [A,B,C] → [C,A,B]. عنصری که سرِ جایش می‌ماند نیست، ولی
+    // forward روی C که آخر است → بدون تغییر، همان آرایه.
+    const els = [shape("A"), shape("B"), shape("C")];
+    expect(reorderElements(els, new Set(["C"]), "forward")).toBe(els);
+  });
+
+  it("بدون انتخاب → همان آرایه", () => {
+    const els = [shape("A"), shape("B")];
+    expect(reorderElements(els, new Set(), "front")).toBe(els);
+  });
+
+  it("انتخابِ حذف‌شده نادیده گرفته می‌شود → همان آرایه", () => {
+    const c = { ...shape("C"), isDeleted: true };
+    const els = [shape("A"), shape("B"), c];
+    expect(reorderElements(els, new Set(["C"]), "front")).toBe(els);
   });
 });

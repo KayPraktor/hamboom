@@ -27,6 +27,7 @@ import {
   PeerCursors,
   PeerSelections,
   recomputeFrameMembership,
+  reorderElements,
   rerouteConnector,
   StatusBar,
   toExcalidraw,
@@ -44,6 +45,7 @@ import {
   type ImageTool,
   type ContextMenuTool,
   type MenuActionId,
+  type ReorderOp,
   type StickyTool,
   type StrokePoint,
   type StylePatch,
@@ -328,25 +330,47 @@ export function App() {
   }, []);
 
   /**
-   * کنش‌های منوی راست‌کلیک. کاری‌ها: حذف، تکثیر، قفل — همه از توابعِ **مشترکِ**
-   * `elements/*` (نه inline)، تا پنل استایل هم از همان منبع بیاید. بقیه coming-soon.
+   * تغییرِ لایه (z-order) — منبعِ واحدِ منو (جلوترین/عقب‌ترین) و پنل (جلو/عقب).
+   * `reorderElements` فقط ترتیبِ آرایه را می‌چیند؛ موتور ایندکسِ کسری را بازتولید
+   * می‌کند (ADR-007). ژستِ کاربر = یک `commitGesture` (IMMEDIATELY، یک undo).
    */
-  const onMenuAction = useCallback((id: MenuActionId) => {
+  const applyReorder = useCallback((op: ReorderOp) => {
     const api = apiRef.current;
     if (!api) return;
     const hb = api.getSceneElements().map((el) => fromExcalidraw(el as never));
     const ids = new Set(Object.keys(api.getAppState().selectedElementIds));
-
-    if (id === "delete") {
-      commitGesture(api, deleteElements(hb, ids).map(toExcalidraw));
-    } else if (id === "duplicate") {
-      const { elements, newIds } = duplicateElements(hb, ids);
-      commitGesture(api, elements.map(toExcalidraw), { select: newIds });
-    } else if (id === "lock") {
-      commitGesture(api, toggleLock(hb, ids).map(toExcalidraw));
-    }
+    const next = reorderElements(hb, ids, op);
+    if (next === hb) return; // بدون تغییر
+    commitGesture(api, next.map(toExcalidraw));
     refreshCountsRef.current?.();
   }, []);
+
+  /**
+   * کنش‌های منوی راست‌کلیک. کاری‌ها: حذف، تکثیر، قفل، لایه — همه از توابعِ **مشترکِ**
+   * `elements/*` (نه inline)، تا پنل استایل هم از همان منبع بیاید. بقیه coming-soon.
+   */
+  const onMenuAction = useCallback(
+    (id: MenuActionId) => {
+      const api = apiRef.current;
+      if (!api) return;
+      if (id === "bringToFront") return applyReorder("front");
+      if (id === "sendToBack") return applyReorder("back");
+
+      const hb = api.getSceneElements().map((el) => fromExcalidraw(el as never));
+      const ids = new Set(Object.keys(api.getAppState().selectedElementIds));
+
+      if (id === "delete") {
+        commitGesture(api, deleteElements(hb, ids).map(toExcalidraw));
+      } else if (id === "duplicate") {
+        const { elements, newIds } = duplicateElements(hb, ids);
+        commitGesture(api, elements.map(toExcalidraw), { select: newIds });
+      } else if (id === "lock") {
+        commitGesture(api, toggleLock(hb, ids).map(toExcalidraw));
+      }
+      refreshCountsRef.current?.();
+    },
+    [applyReorder],
+  );
 
   /**
    * بزرگ/کوچک‌نمایی حول مرکز — منطق در `zoom.ts`. appState-only، بدون ورودی undo.
@@ -927,6 +951,8 @@ export function App() {
                 // همان `toggleLock`ِ منوی راست‌کلیک — منبعِ واحد.
                 writeScene(read.api, toggleLock(read.elements, read.selectedIds));
               }}
+              // همان `reorderElements`ِ منو (جلوترین/عقب‌ترین) — پنل یک‌پله (جلو/عقب).
+              onReorder={applyReorder}
             />
           </div>
         ) : null}

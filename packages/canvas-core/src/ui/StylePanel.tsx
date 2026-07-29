@@ -1,6 +1,6 @@
 import type { HbElement } from "@hamboom/shared-types";
 
-import { areAllLocked } from "../elements/operations";
+import { areAllLocked, type ReorderOp } from "../elements/operations";
 import { commonStyle, type StylePatch } from "../elements/style";
 import { HB_TYPO } from "../theme/tokens";
 
@@ -51,6 +51,8 @@ export interface StylePanelProps {
   onChange: (patch: StylePatch) => void;
   /** toggle قفل — همان `toggleLock`ِ منوی راست‌کلیک (منبعِ واحد، ADR-024). */
   onToggleLock: () => void;
+  /** تغییرِ لایه یک‌پله — همان `reorderElements`ِ منو (منبعِ واحد، ADR-007/024). */
+  onReorder: (op: ReorderOp) => void;
 }
 
 function ColorRow({
@@ -84,7 +86,13 @@ function ColorRow({
   );
 }
 
-export function StylePanel({ elements, selectedIds, onChange, onToggleLock }: StylePanelProps) {
+export function StylePanel({
+  elements,
+  selectedIds,
+  onChange,
+  onToggleLock,
+  onReorder,
+}: StylePanelProps) {
   if (selectedIds.size === 0) return null;
 
   const current = commonStyle(elements, selectedIds);
@@ -178,12 +186,22 @@ export function StylePanel({ elements, selectedIds, onChange, onToggleLock }: St
       <div className="hb-style-row">
         <span className="hb-style-label">چیدمان</span>
         <div className="hb-style-group" role="group" aria-label="چیدمان و قفل">
-          {/* لایه‌بندی کارِ گام ۵٫۱ است (fractional index، ADR-007) — همین‌جا و در
-              منوی راست‌کلیک coming-soon، و در ۵٫۱ هر دو به یک تابع وصل می‌شوند. */}
-          <button type="button" className="hb-style-chip" disabled title="بردن به جلو · به‌زودی">
+          {/* لایه‌بندی (گام ۵٫۱): یک‌پله جلو/عقب. همان `reorderElements`ی که منوی
+              راست‌کلیک برای جلوترین/عقب‌ترین صدا می‌زند — منبعِ واحد (ADR-007/024). */}
+          <button
+            type="button"
+            className="hb-style-chip"
+            title="یک لایه جلو"
+            onClick={() => onReorder("forward")}
+          >
             جلو
           </button>
-          <button type="button" className="hb-style-chip" disabled title="بردن به عقب · به‌زودی">
+          <button
+            type="button"
+            className="hb-style-chip"
+            title="یک لایه عقب"
+            onClick={() => onReorder("backward")}
+          >
             عقب
           </button>
           <button
