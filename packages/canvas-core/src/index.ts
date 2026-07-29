@@ -127,6 +127,8 @@ export type { DuplicateOptions } from "./elements/duplicate";
 
 export { deleteElements, toggleLock, areAllLocked, reorderElements } from "./elements/operations";
 export type { ReorderOp } from "./elements/operations";
+export { alignElements, distributeElements } from "./elements/align";
+export type { AlignEdge, DistributeAxis } from "./elements/align";
 
 export { createFontString, measureLineWidth, clearMeasureCache } from "./text/measure";
 

@@ -1,5 +1,6 @@
 import type { HbElement } from "@hamboom/shared-types";
 
+import type { AlignEdge, DistributeAxis } from "../elements/align";
 import { areAllLocked, type ReorderOp } from "../elements/operations";
 import { commonStyle, type StylePatch } from "../elements/style";
 import { HB_TYPO } from "../theme/tokens";
@@ -53,6 +54,10 @@ export interface StylePanelProps {
   onToggleLock: () => void;
   /** تغییرِ لایه یک‌پله — همان `reorderElements`ِ منو (منبعِ واحد، ADR-007/024). */
   onReorder: (op: ReorderOp) => void;
+  /** هم‌ترازی (۲+ عنصر) — `alignElements`. مختصاتِ بوم، بدونِ آینه (P6). */
+  onAlign: (edge: AlignEdge) => void;
+  /** توزیعِ یکنواخت (۳+ عنصر) — `distributeElements`. */
+  onDistribute: (axis: DistributeAxis) => void;
 }
 
 function ColorRow({
@@ -92,6 +97,8 @@ export function StylePanel({
   onChange,
   onToggleLock,
   onReorder,
+  onAlign,
+  onDistribute,
 }: StylePanelProps) {
   if (selectedIds.size === 0) return null;
 
@@ -181,6 +188,101 @@ export function StylePanel({
             ))}
           </div>
         </div>
+      ) : null}
+
+      {selectedIds.size >= 2 ? (
+        <>
+          {/* هم‌ترازی — مختصاتِ بوم، آینه نمی‌شود (P6). «چپ» همیشه کمینه‌ی x. */}
+          <div className="hb-style-row">
+            <span className="hb-style-label">هم‌ترازی افقی</span>
+            <div className="hb-style-group" role="group" aria-label="هم‌ترازی افقی">
+              <button
+                type="button"
+                className="hb-style-chip"
+                aria-label="هم‌ترازی چپ"
+                title="چپ"
+                onClick={() => onAlign("left")}
+              >
+                چپ
+              </button>
+              <button
+                type="button"
+                className="hb-style-chip"
+                aria-label="هم‌ترازی وسطِ افقی"
+                title="وسط"
+                onClick={() => onAlign("hcenter")}
+              >
+                وسط
+              </button>
+              <button
+                type="button"
+                className="hb-style-chip"
+                aria-label="هم‌ترازی راست"
+                title="راست"
+                onClick={() => onAlign("right")}
+              >
+                راست
+              </button>
+            </div>
+          </div>
+          <div className="hb-style-row">
+            <span className="hb-style-label">هم‌ترازی عمودی</span>
+            <div className="hb-style-group" role="group" aria-label="هم‌ترازی عمودی">
+              <button
+                type="button"
+                className="hb-style-chip"
+                aria-label="هم‌ترازی بالا"
+                title="بالا"
+                onClick={() => onAlign("top")}
+              >
+                بالا
+              </button>
+              <button
+                type="button"
+                className="hb-style-chip"
+                aria-label="هم‌ترازی وسطِ عمودی"
+                title="وسط"
+                onClick={() => onAlign("vcenter")}
+              >
+                وسط
+              </button>
+              <button
+                type="button"
+                className="hb-style-chip"
+                aria-label="هم‌ترازی پایین"
+                title="پایین"
+                onClick={() => onAlign("bottom")}
+              >
+                پایین
+              </button>
+            </div>
+          </div>
+          {selectedIds.size >= 3 ? (
+            <div className="hb-style-row">
+              <span className="hb-style-label">توزیع</span>
+              <div className="hb-style-group" role="group" aria-label="توزیع یکنواخت">
+                <button
+                  type="button"
+                  className="hb-style-chip"
+                  aria-label="توزیعِ افقی"
+                  title="افقی"
+                  onClick={() => onDistribute("horizontal")}
+                >
+                  افقی
+                </button>
+                <button
+                  type="button"
+                  className="hb-style-chip"
+                  aria-label="توزیعِ عمودی"
+                  title="عمودی"
+                  onClick={() => onDistribute("vertical")}
+                >
+                  عمودی
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       <div className="hb-style-row">

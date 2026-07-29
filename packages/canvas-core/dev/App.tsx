@@ -4,6 +4,7 @@ import {
   HB_STICKY_PALETTE,
   HamboomCanvas,
   StylePanel,
+  alignElements,
   applyStickyPalette,
   applyStyle,
   commitGesture,
@@ -19,6 +20,7 @@ import {
   createStickyTool,
   createText,
   deleteElements,
+  distributeElements,
   duplicateElements,
   fromExcalidraw,
   getKind,
@@ -39,6 +41,8 @@ import {
   ZoomControl,
   zoomAroundCenter,
   zoomStep,
+  type AlignEdge,
+  type DistributeAxis,
   type DrawStrokeOutbound,
   type DrawTool,
   type HbShapeKind,
@@ -153,19 +157,24 @@ export function App() {
     //   تغییرات کاربر. اگر شمارنده‌ها فقط به آن وصل باشند، استیکی ساخته می‌شود
     //   ولی نمایشگر صفر می‌ماند و آدم فکر می‌کند فیچر خراب است. در مرورگر
     //   گرفته شد: صحنه دو عنصر داشت و نمایشگر صفر نشان می‌داد.
-    const refreshCounts = () => {
+    const refreshCounts = (appState: ReturnType<typeof api.getAppState> = api.getAppState()) => {
       const scene = api.getSceneElements();
       const live = scene.filter((el) => !el.isDeleted);
       setElementCount(live.length);
       setStickyCount(live.filter((el) => getKind(el) === "sticky").length);
 
-      const selected = api.getAppState().selectedElementIds;
+      const selected = appState.selectedElementIds;
       setSnapshot({
         elements: scene.map((el) => fromExcalidraw(el as never)),
         selectedIds: new Set(scene.filter((el) => selected[el.id]).map((el) => el.id)),
       });
     };
-    api.onChange(refreshCounts);
+    // ★ انتخاب را از appStateِ **آرگومانِ** onChange بخوان، نه `api.getAppState()`.
+    //   وقتی انتخاب از خودِ موتور عوض می‌شود (کلیک، Ctrl+A، کادر)، getAppState داخلِ
+    //   همان onChange یک فریمْ کهنه است — پس پنل استایل یک انتخاب عقب می‌ماند و بخشِ
+    //   هم‌ترازی (۲+ عنصر) هرگز ظاهر نمی‌شود. appStateِ callback مقدارِ معتبر است
+    //   (همان درسِ Q1: از مقدارِ معتبرِ callbackِ موتور استفاده کن، نه getAppState).
+    api.onChange((_elements, next) => refreshCounts(next));
     // ★ reroute کانکتورها هنگام حرکت عنصر متصل — مسیر حالت مشتق‌شده است
     //   (ADR-008). این نسخه‌ی ساده‌ی دمو کاری را می‌کند که binder واقعی M2
     //   خواهد کرد: هر کانکتور را با جعبه‌ی فعلی دو سرش دوباره route می‌کند.
@@ -772,6 +781,26 @@ export function App() {
     refreshCountsRef.current?.();
   }, []);
 
+  /** هم‌ترازیِ انتخاب (۲+ عنصر) — `alignElements`، یک ژست undo. */
+  const onAlign = useCallback(
+    (edge: AlignEdge) => {
+      const read = readScene();
+      if (!read || read.selectedIds.size < 2) return;
+      writeScene(read.api, alignElements(read.elements, read.selectedIds, edge));
+    },
+    [readScene, writeScene],
+  );
+
+  /** توزیعِ یکنواختِ انتخاب (۳+ عنصر) — `distributeElements`. */
+  const onDistribute = useCallback(
+    (axis: DistributeAxis) => {
+      const read = readScene();
+      if (!read || read.selectedIds.size < 3) return;
+      writeScene(read.api, distributeElements(read.elements, read.selectedIds, axis));
+    },
+    [readScene, writeScene],
+  );
+
   /** پنل استایل — همان عملیات از منوی راست‌کلیک هم می‌آید (گام ۴٫۳). */
   const onStyleChange = useCallback(
     (patch: StylePatch) => {
@@ -952,6 +981,8 @@ export function App() {
               }}
               // همان `reorderElements`ِ منو (جلوترین/عقب‌ترین) — پنل یک‌پله (جلو/عقب).
               onReorder={applyReorder}
+              onAlign={onAlign}
+              onDistribute={onDistribute}
             />
           </div>
         ) : null}
