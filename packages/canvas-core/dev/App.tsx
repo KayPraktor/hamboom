@@ -29,6 +29,7 @@ import {
   recomputeFrameMembership,
   reorderElements,
   rerouteConnector,
+  sceneToOverlayPixel,
   StatusBar,
   toExcalidraw,
   toggleLock,
@@ -465,19 +466,17 @@ export function App() {
       const host = hostRef.current;
       if (!api || !host) return { x: sceneX, y: sceneY };
       const st = api.getAppState();
-      // `zoom.value` در موتور یک عددِ برندشده است؛ عددِ ساده‌ی state را به همان
-      // شکل cast می‌کنیم (منبعش خودِ همان مقدار از onScrollChange بود).
-      const p = sceneCoordsToViewportCoords(
-        { sceneX, sceneY },
-        {
-          ...st,
-          scrollX: viewport.scrollX,
-          scrollY: viewport.scrollY,
-          zoom: { value: viewport.zoom } as typeof st.zoom,
-        },
-      );
       const rect = host.getBoundingClientRect();
-      return { x: p.x - rect.left, y: p.y - rect.top };
+      // ★ ریاضیِ پروجکشن در canvas-core است (`sceneToOverlayPixel`) — منبعِ واحد
+      //   که M2 هم می‌زند. `viewport` از state (معتبر، از onScrollChange)، نه از
+      //   getAppState که یک فریمْ کهنه است (باگِ Q1). offsetLeft/Top با pan/zoom
+      //   عوض نمی‌شوند، پس از appState خواندنشان بی‌خطر است.
+      return sceneToOverlayPixel(
+        { x: sceneX, y: sceneY },
+        viewport,
+        { offsetLeft: st.offsetLeft, offsetTop: st.offsetTop },
+        { left: rect.left, top: rect.top },
+      );
     },
     [viewport],
   );

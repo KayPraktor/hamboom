@@ -9,7 +9,8 @@ import "./peer-selections.css";
  *
  * دورِ هر عنصری که یک همتا انتخاب کرده، یک قابِ رنگیِ او می‌کشد. `selectedIds`
  * از `PeerState` می‌آید و مرزِ عنصر از صحنه‌ی محلی؛ نگاشتِ صحنه→پیکسل تزریق
- * می‌شود (مثل `PeerCursors`). لایه شفاف و `pointer-events: none`.
+ * می‌شود (مثل `PeerCursors`، پروجکتورِ استاندارد `sceneToOverlayPixel`). لایه
+ * شفاف و `pointer-events: none`.
  *
  * ⚠️ موقعیت با `transform`ِ فیزیکی (مختصاتِ بوم، استثنای ADR-016). رنگِ قاب
  * از `peer.user.color` است — رنگ، نه property جهت‌دار.

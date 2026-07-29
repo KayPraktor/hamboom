@@ -19,5 +19,7 @@ export { PeerAvatars } from "./PeerAvatars";
 export type { PeerAvatarsProps } from "./PeerAvatars";
 export { PeerSelections } from "./PeerSelections";
 export type { PeerSelectionsProps } from "./PeerSelections";
+export { sceneToOverlayPixel } from "./presence-projection";
+export type { OverlayViewport } from "./presence-projection";
 export { HB_TOOLS, HB_TOOL_SHORTCUTS, toolForShortcut } from "./toolbar-tools";
 export type { ToolId, ToolMeta } from "./toolbar-tools";
