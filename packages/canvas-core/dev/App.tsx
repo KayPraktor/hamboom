@@ -20,6 +20,7 @@ import {
   createSticky,
   createStickyTool,
   createText,
+  cycleSelection,
   deleteElements,
   distributeElements,
   duplicateElements,
@@ -321,11 +322,30 @@ export function App() {
       if (target?.tagName === "TEXTAREA" || target?.tagName === "INPUT") return;
       if (event.metaKey || event.ctrlKey || event.altKey) return; // Ctrl+Z و … دست موتور
 
-      // Tab = استیکیِ بعدی در امتداد آخری (رفتار خاصِ ابزار استیکی).
+      // Tab: اگر ابزارِ استیکی فعال است → استیکیِ بعدی؛ وگرنه Tab/Shift+Tab بینِ
+      // عناصر پیمایش می‌کند (دسترس‌پذیریِ ۵٫۴). Escape/Enter/کلیدهای جهت دستِ موتورند.
       if (event.key === "Tab") {
         event.preventDefault();
-        toolRef.current?.createNext();
-        refreshCountsRef.current?.();
+        if (toolRef.current?.isActive()) {
+          toolRef.current.createNext();
+          refreshCountsRef.current?.();
+        } else {
+          const api = apiRef.current;
+          if (api) {
+            const hb = api.getSceneElements().map((el) => fromExcalidraw(el as never));
+            const ids = new Set(Object.keys(api.getAppState().selectedElementIds));
+            const nextId = cycleSelection(hb, ids, event.shiftKey ? "previous" : "next");
+            if (nextId) {
+              api.updateScene({
+                appState: { selectedElementIds: { [nextId]: true } } as never,
+                captureUpdate: "NEVER",
+              });
+              const el = api.getSceneElements().find((e) => e.id === nextId);
+              if (el) api.scrollToContent([el], { fitToContent: false, animate: true });
+              refreshCountsRef.current?.();
+            }
+          }
+        }
         return;
       }
       // بقیه‌ی میانبرها از همان جدولِ نوار ابزار می‌آیند (یک منبع).

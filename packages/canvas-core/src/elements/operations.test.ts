@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { areAllLocked, deleteElements, reorderElements, toggleLock } from "./operations";
+import type { HbElement } from "@hamboom/shared-types";
+
+import {
+  areAllLocked,
+  cycleSelection,
+  deleteElements,
+  reorderElements,
+  toggleLock,
+} from "./operations";
 import { createShape } from "./shape";
 
 let counter = 0;
@@ -143,5 +151,45 @@ describe("reorderElements — z-order (منبعِ واحد)", () => {
     const c = { ...shape("C"), isDeleted: true };
     const els = [shape("A"), shape("B"), c];
     expect(reorderElements(els, new Set(["C"]), "front")).toBe(els);
+  });
+});
+
+describe("cycleSelection — پیمایشِ کیبوردی (ترتیبِ خواندنِ RTL)", () => {
+  const at = (id: string, x: number, y: number, extra: Record<string, unknown> = {}): HbElement => {
+    const s = createShape({ shape: "rectangle", x, y, ...seed() }).shape;
+    return { ...s, id, ...extra } as unknown as HbElement;
+  };
+  // ترتیبِ خواندن: y صعودی، سپس x نزولی → A(x100,y0), B(x0,y0), C(x50,y100)
+  const els = () => [at("A", 100, 0), at("B", 0, 0), at("C", 50, 100)];
+
+  it("★ بدون انتخاب، next اولین (به ترتیبِ خواندن) را می‌دهد", () => {
+    expect(cycleSelection(els(), new Set(), "next")).toBe("A");
+  });
+
+  it("★ next بعدی را می‌دهد و از آخر wrap می‌کند", () => {
+    expect(cycleSelection(els(), new Set(["A"]), "next")).toBe("B");
+    expect(cycleSelection(els(), new Set(["B"]), "next")).toBe("C");
+    expect(cycleSelection(els(), new Set(["C"]), "next")).toBe("A");
+  });
+
+  it("★ previous قبلی را می‌دهد و wrap می‌کند", () => {
+    expect(cycleSelection(els(), new Set(["A"]), "previous")).toBe("C");
+    expect(cycleSelection(els(), new Set(), "previous")).toBe("C");
+  });
+
+  it("متنِ مقید، حذف‌شده و قفل رد می‌شوند", () => {
+    const withExtras = [
+      at("A", 100, 0),
+      at("TXT", 90, 0, { containerId: "A" }),
+      at("DEL", 50, 0, { isDeleted: true }),
+      at("LOCK", 20, 0, { locked: true }),
+      at("B", 0, 0),
+    ];
+    expect(cycleSelection(withExtras, new Set(["A"]), "next")).toBe("B");
+    expect(cycleSelection(withExtras, new Set(["B"]), "next")).toBe("A");
+  });
+
+  it("خالی → null", () => {
+    expect(cycleSelection([], new Set(), "next")).toBeNull();
   });
 });

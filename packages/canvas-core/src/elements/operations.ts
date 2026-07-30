@@ -112,3 +112,38 @@ export function reorderElements(
   // فقط عناصری که جایشان عوض شده version می‌گیرند.
   return next.map((el, i) => (el === elements[i] ? el : bumpVersion(el)));
 }
+
+/**
+ * پیمایشِ کیبوردیِ بین عناصر — گام ۵٫۴ (دسترس‌پذیری). id عنصرِ بعدی/قبلی را برای
+ * انتخاب برمی‌گرداند، به ترتیبِ **خواندنِ RTL**: بالا→پایین، و در هر ردیف راست→چپ
+ * (`y` صعودی، سپس `x` نزولی).
+ *
+ * فقط عناصرِ **top-levelِ قابلِ انتخاب** پیمایش می‌شوند: حذف‌شده، قفل، و **متنِ مقید**
+ * (که `containerId` دارد) رد می‌شوند. دور می‌زند (wrap). بدونِ انتخابِ فعلی، از
+ * ابتدا (next) یا انتها (previous) شروع می‌کند. اگر چیزی نبود `null`.
+ *
+ * خالص است — صداکننده (دمو/M2) با نتیجه انتخاب را ست و عنصر را در نما می‌آورد.
+ */
+export function cycleSelection(
+  elements: HbElement[],
+  selectedIds: ReadonlySet<string>,
+  direction: "next" | "previous",
+): string | null {
+  const navigable = elements
+    .filter(
+      (el) =>
+        !el.isDeleted && !el.locked && (el as { containerId?: string | null }).containerId == null,
+    )
+    .sort((a, b) => a.y - b.y || b.x - a.x);
+  if (navigable.length === 0) return null;
+
+  const current = navigable.findIndex((el) => selectedIds.has(el.id));
+  const step = direction === "next" ? 1 : -1;
+  const nextIndex =
+    current === -1
+      ? direction === "next"
+        ? 0
+        : navigable.length - 1
+      : (current + step + navigable.length) % navigable.length;
+  return navigable[nextIndex]!.id;
+}

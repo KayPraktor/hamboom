@@ -130,7 +130,13 @@ export type { DuplicateOptions } from "./elements/duplicate";
 export { pasteElements, textToStickies } from "./elements/clipboard";
 export type { TextToStickyOptions } from "./elements/clipboard";
 
-export { deleteElements, toggleLock, areAllLocked, reorderElements } from "./elements/operations";
+export {
+  deleteElements,
+  toggleLock,
+  areAllLocked,
+  reorderElements,
+  cycleSelection,
+} from "./elements/operations";
 export type { ReorderOp } from "./elements/operations";
 export { alignElements, distributeElements } from "./elements/align";
 export type { AlignEdge, DistributeAxis } from "./elements/align";
