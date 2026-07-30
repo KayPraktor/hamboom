@@ -669,10 +669,24 @@ versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `fact
       `applyReorder`ِ دمو. **تاییدِ مرورگر:** پنلِ «عقب» عنصر را یک لایه پایین برد و منوی «بردن به
       عقب» به ته؛ **یک** Ctrl+Z هر دو را برگرداند (commitGesture IMMEDIATELY + bumpVersion، ADR-026).
 
-### گام ۵٫۲ — Undo/Redo
-- [ ] undo/redo باید **کل یک ژست** را یک واحد ببیند (بر اساس `gestureId`)
-- [ ] در حالت متصل، undo نباید کار کاربران دیگر را برگرداند (آماده‌سازی برای `Y.UndoManager` با `trackedOrigins` در M2)
-- [ ] تست: ساخت فریم با ۳ فرزند، سپس یک `Ctrl+Z` → همه با هم برمی‌گردند
+### گام ۵٫۲ — Undo/Redo ✅ (۱۴۰۵/۰۵/۰۷)
+
+> **بیشترِ این گام قبلاً با [ADR-026](ARCHITECTURE_DECISIONS.md#adr-026) ساخته شده بود.**
+> مکانیزمِ «یک ژست = یک undo» همان `captureUpdate: "IMMEDIATELY"` است که همه‌ی نوشتن‌ها
+> از `commitGesture` می‌گیرند و قاعده‌ی ESLintِ `require-capture-update` اجباری‌اش می‌کند.
+
+- [x] undo/redo کلِ یک ژست را یک واحد می‌بیند — ✅ مکانیزمِ ADR-026 (`commitGesture`
+      IMMEDIATELY). در M1 مرزِ ژست همان فراخوانیِ capture است؛ `gestureId` مکانیزمِ
+      گروه‌بندیِ M2 است (در `ElementChangeSet` قرارداد از قبل هست). **تاییدِ مرورگر:**
+      ساختِ فریم+فرزندان (۵ عنصر) → **یک** Ctrl+Z همه را برگرداند، redo همه را بازگرداند.
+- [x] در حالت متصل، undo کار دیگران را برنگرداند — **آماده‌سازیِ M2 مستند شد**: `applyRemoteChanges`
+      باید `captureUpdate: "NEVER"` بنویسد و روی تراکنش‌های Yjs `origin` بگذارد تا
+      `Y.UndoManager` با `trackedOrigins` کار دیگران را برنگرداند ([sync/README](packages/canvas-core/src/sync/README.md)
+      + ADR-026/ADR-012). M1 شبکه ندارد، پس اینجا فقط قرارداد است.
+- [x] تست «فریم با ۳ فرزند → یک Ctrl+Z همه برمی‌گردند» — ✅ در مرورگر تایید شد؛ **تستِ واحدِ
+      اتمیک‌بودنِ ژست** (`scene-commit.test.ts`: ژستِ چندعنصری = یک `updateScene`) اضافه شد.
+      تستِ تکرارپذیرِ خودِ undoِ موتور به harnessِ مرورگریِ گام ۶٫۱ موکول است (خانواده‌ی G-1؛
+      jsdom undo ندارد).
 
 ### گام ۵٫۳ — کلیپ‌بورد
 - [ ] کپی/پیست داخل بوم (با id جدید و آفست)

@@ -1,12 +1,13 @@
 # PROGRESS — canvas-core
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۰۷ (2026-07-29)
-**گام فعلی: فاز ۵ — ★ گام ۵٫۱ کامل → بعدی ۵٫۲ (undo/redo).** z-order، align/distribute،
-snap، و انتخاب/گروهِ بومی همه انجام و **تاییدِ چشمیِ مالک** شد؛ همپوشانیِ نوار وضعیت/پنل
-با منبعِ واحدِ overlay رفع شد ([ADR-027](ARCHITECTURE_DECISIONS.md#adr-027)). (فاز ۴ کامل — mini-map موکول.)
+**گام فعلی: فاز ۵ — ★ گام‌های ۵٫۱ و ۵٫۲ کامل → بعدی ۵٫۳ (کلیپ‌بورد).** z-order،
+align/distribute، snap، انتخاب/گروهِ بومی (تاییدِ چشمیِ مالک)، و undo/redoِ ژستی
+(ADR-026) همه انجام شد؛ همپوشانیِ overlay با منبعِ واحد رفع شد
+([ADR-027](ARCHITECTURE_DECISIONS.md#adr-027)). (فاز ۴ کامل — mini-map موکول.)
 پله‌ی [ADR-003](ARCHITECTURE_DECISIONS.md#adr-003): **A** (بسته npm، بدون patch)
 
-**۵۲۴ تست سبز** (۴۴ shared-types، ۴۳۸ canvas-core، ۴۲ i18n). `typecheck` · `lint` ·
+**۵۲۵ تست سبز** (۴۴ shared-types، ۴۳۹ canvas-core، ۴۲ i18n). `typecheck` · `lint` ·
 `lint:css` · `format:check` · `license:check` (self-test ۱۷/۱۷ + ۶۵۵ پکیج) — همه سبز.
 درخت git تمیز، همه‌چیز کامیت شده.
 
@@ -314,13 +315,20 @@ inline-size: fit-content` (نه `left` — گیتِ Stylelint)، عمودیْ `i
   می‌شود (همان درسِ Q1: مقدارِ معتبرِ callback، نه getAppState). منطقاً درست و typecheck
   سبز؛ **در مرورگرِ این session به همان دلیلِ بالا قابلِ تایید نبود.**
 
-### مانده‌ی ۵٫۱ (بعدی)
+### ✅ گام ۵٫۱ کامل (تاییدِ چشمیِ مالک، ۱۴۰۵/۰۵/۰۷)
 
-طبق پروب، اغلب «روشن‌کردن/تایید»اند نه ساختِ نو:
-- **انتخابِ کادر + `Shift+Click`** و **گروه‌بندی** (`groupIds` + `Ctrl+G`) — بومی؛ تایید
-  در مرورگر + نمایشِ گروه در منوی RTL. (تاییدِ مرورگر همان محدودیتِ انتخاب را دارد.)
-- **snap + راهنمای هم‌ترازی + شبکه** — بومی ولی خاموش؛ روشن‌کردنِ `objectsSnapModeEnabled`
-  (و toggleِ `gridModeEnabled`).
+انتخابِ کادر + `Shift+Click` و گروه‌بندی (بومیِ `groupIds`/`Ctrl+G`) و snap (پیش‌فرض روشن +
+toggleِ شبکه) همه در مرورگرِ واقعیِ مالک تایید شدند. تنها ایرادِ چک‌لیست (همپوشانیِ نوار
+وضعیت/پنل) با [ADR-027](ARCHITECTURE_DECISIONS.md#adr-027) رفع شد.
+
+### ✅ گام ۵٫۲ — Undo/Redo (۱۴۰۵/۰۵/۰۷)
+
+بیشترش از قبل با [ADR-026](ARCHITECTURE_DECISIONS.md#adr-026) ساخته شده بود: «یک ژست =
+یک undo» همان `captureUpdate: "IMMEDIATELY"`ِ `commitGesture` است (قاعده‌ی ESLint اجباری‌اش
+می‌کند). **تاییدِ مرورگر:** ساختِ فریم+فرزندان (۵ عنصر) → یک Ctrl+Z همه را برگرداند و redo
+بازگرداند. **تستِ واحدِ اتمیک‌بودنِ ژست** اضافه شد. undoِ ایزوله در حالتِ متصل (Y.UndoManager
+با trackedOrigins) کارِ M2 است و در `sync/README` مستند است. تستِ تکرارپذیرِ undoِ موتور →
+harnessِ ۶٫۱ (jsdom undo ندارد).
 
 **mini-map:** موکول به بعد از فاز ۴ (در TODO گام ۴٫۳ با `[!]` ثبت شد).
 

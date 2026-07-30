@@ -39,4 +39,22 @@ describe("commitGesture / commitSystemUpdate", () => {
     commitSystemUpdate(f.api, []);
     expect(f.calls[0]!.appState).toBeUndefined();
   });
+
+  it("★ ژستِ چندعنصری اتمیک است — یک updateScene با همه‌ی عناصر (گام ۵٫۲)", () => {
+    // ناوردای undoِ ژستی: کلِ یک ژست باید در **یک** فراخوانیِ IMMEDIATELY برود تا
+    // موتور آن را یک ورودی undo ببیند (ساختِ فریم با فرزندان → یک Ctrl+Z). اگر
+    // کسی روزی این ژست را به چند updateScene بشکند، اینجا قرمز می‌شود.
+    const f = fakeApi();
+    const gesture = [
+      { id: "frame" },
+      { id: "childA" },
+      { id: "childB" },
+      { id: "boundTextA" },
+      { id: "boundTextB" },
+    ];
+    commitGesture(f.api, gesture, { select: ["frame"] });
+    expect(f.calls).toHaveLength(1); // یک فراخوانی = یک ورودی undo
+    expect(f.calls[0]!.elements).toEqual(gesture); // همه‌ی عناصرِ ژست با هم
+    expect(f.calls[0]!.captureUpdate).toBe("IMMEDIATELY");
+  });
 });
