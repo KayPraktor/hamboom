@@ -648,8 +648,12 @@ versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `fact
 
 - [ ] انتخاب چندتایی با کادر و با `Shift+Click` — **بومی؛ فقط تایید لازم است**
 - [ ] گروه‌بندی (`Ctrl+G` / `Ctrl+Shift+G`) — **بومی (`groupIds`)؛ تایید + نمایش در منوی RTL**
-- [ ] راهنمای هم‌ترازی (alignment guides) هنگام درگ — **بومی، خاموش؛ روشن‌کردنِ `objectsSnapModeEnabled`**
-- [ ] snap به عناصر دیگر و به شبکه — **بومی، خاموش؛ روشن‌کردن + toggleِ شبکه**
+- [x] راهنمای هم‌ترازی (alignment guides) هنگام درگ — ✅ روشن شد: `objectsSnapModeEnabled: true`
+      در initialDataِ [`HamboomCanvas`](packages/canvas-core/src/engine/HamboomCanvas.tsx). config در
+      مرورگر تایید شد؛ **دیدنِ خطوطِ راهنما هنگام درگ در چک‌لیستِ تاییدِ چشمیِ PROGRESS.**
+- [x] snap به عناصر دیگر و به شبکه — ✅ snap به عناصر پیش‌فرض روشن؛ snap به شبکه با toggleِ
+      «شبکه» در دمو (`gridModeEnabled`). config + toggle در مرورگر تایید شد؛ **رفتارِ snap
+      در چک‌لیستِ چشمی.**
 - [x] **ابزار هم‌ترازی: چپ/راست/وسط، توزیع یکنواخت** — ✅ (۱۴۰۵/۰۵/۰۷) `alignElements`/
       `distributeElements` در [`elements/align.ts`](packages/canvas-core/src/elements/align.ts)
       (خالص؛ مختصاتِ بوم، **بدونِ آینه** P6؛ متنِ مقید با ظرفش حرکت می‌کند؛ ۱۲ تستِ دست‌محاسبه).

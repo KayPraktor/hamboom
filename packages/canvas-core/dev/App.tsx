@@ -126,6 +126,7 @@ export function App() {
    */
   const [viewport, setViewport] = useState({ scrollX: 0, scrollY: 0, zoom: 1 });
   const [readOnly, setReadOnly] = useState(false);
+  const [gridOn, setGridOn] = useState(false);
   const { peers, emitPointer } = usePresence();
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
@@ -536,6 +537,18 @@ export function App() {
     });
   }, []);
 
+  /** toggleِ گرید — snap به شبکه با `gridModeEnabled` است (snap به عناصر جداست و
+   *  همیشه روشن). appState-only، بدون ورودی undo. */
+  const toggleGrid = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    setGridOn((prev) => {
+      const next = !prev;
+      api.updateScene({ appState: { gridModeEnabled: next } as never, captureUpdate: "NEVER" });
+      return next;
+    });
+  }, []);
+
   /**
    * انتخابِ ابزار از نوار (یا میانبر). این لایه‌ی سیم‌کشی است: ابزارهای موتور با
    * `setActiveTool`، ابزارهای سفارشی (استیکی/قلم) با activate، تصویر با انتخابگرِ
@@ -920,6 +933,14 @@ export function App() {
             aria-pressed={readOnly}
           >
             فقط‌خواندنی{readOnly ? " (روشن)" : ""}
+          </button>
+          <button
+            type="button"
+            className={`hb-style-chip${gridOn ? " is-selected" : ""}`}
+            onClick={toggleGrid}
+            aria-pressed={gridOn}
+          >
+            شبکه{gridOn ? " (روشن)" : ""}
           </button>
         </div>
 

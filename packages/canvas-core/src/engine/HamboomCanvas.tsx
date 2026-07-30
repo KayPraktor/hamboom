@@ -101,6 +101,10 @@ export function HamboomCanvas({
           // پیش‌فرض موتور `"left"` است — یعنی متن فارسی چپ‌چین. مقدار منطقی از
           // `defaultTextAlignFor` می‌آید تا با بقیه‌ی لایه‌ها یک منبع داشته باشد.
           currentItemTextAlign: defaultTextAlignFor(defaultDirection),
+          // گام ۵٫۱ — snap به عناصر + خطوطِ راهنمای هم‌ترازی هنگام درگ، به‌صورت
+          // پیش‌فرض روشن (سبکِ میرو). snap به شبکه با `gridModeEnabled` جداست و
+          // در دمو با یک toggle آزمودنی است.
+          objectsSnapModeEnabled: true,
         },
       }}
     />
