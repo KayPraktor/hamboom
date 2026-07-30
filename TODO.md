@@ -710,8 +710,13 @@ versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `fact
 > imperative-ها تستِ واحدِ سبز دارند.
 
 ### گام ۵٫۴ — دسترس‌پذیری و کارایی
-- [ ] پیمایش با کیبورد بین عناصر، `Escape` برای لغو، `Enter` برای ویرایش
-- [ ] `aria-label` فارسی روی همه‌ی دکمه‌ها
+- [x] پیمایش با کیبورد بین عناصر، `Escape`/`Enter`/جهت‌ها — `cycleSelection` در
+      `operations.ts` (خالص، ترتیبِ خواندنِ RTL، wrap؛ ۵ تست) + `Tab`/`Shift+Tab` در دمو
+      (**تاییدِ مرورگر: چرخش بین ۳ عنصر + wrap**). `Escape`/`Enter`/nudgeِ جهت‌دار بومیِ موتورند
+      (دمو دستشان نمی‌زند).
+- [x] `aria-label` فارسی روی همه‌ی دکمه‌ها — ممیزیِ [`ui/a11y.test.tsx`](packages/canvas-core/src/ui/a11y.test.tsx):
+      هر دکمه‌ی Toolbar/StylePanel/ZoomControl/ContextMenu/PeerAvatars نامِ در دسترس دارد
+      (aria-label یا متن). همه سبز — از قبل کامل بود، حالا نگهبان دارد.
 - [~] **بنچمارک ۲۰۰۰ عنصر / ۳۰fps** — صفحه‌ی بنچمارک ساخته شد ([`dev/Bench.tsx`](packages/canvas-core/dev/Bench.tsx)،
       مسیر `#bench`): N عنصرِ واقعی + حلقه‌ی rAFِ ۴ثانیه‌ای که pan/zoom را هر فریم عوض می‌کند،
       FPS = فریم÷مدت. **محیطِ خودکار رندرِ واقعی ندارد → مالک روی مرورگرِ خودش اجرا می‌کند و
