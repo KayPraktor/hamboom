@@ -1,4 +1,5 @@
 import { formatZoomPercent } from "./zoom";
+import "./overlay-layout.css";
 import "./zoom-control.css";
 
 /**
@@ -15,7 +16,11 @@ export interface ZoomControlProps {
 
 export function ZoomControl({ zoom, onZoomIn, onZoomOut, onFit }: ZoomControlProps) {
   return (
-    <div className="hb-zoom" role="group" aria-label="بزرگ‌نمایی">
+    <div
+      className="hb-zoom hb-overlay hb-overlay--bottom-start"
+      role="group"
+      aria-label="بزرگ‌نمایی"
+    >
       <button type="button" className="hb-zoom-btn" aria-label="کوچک‌نمایی" onClick={onZoomOut}>
         −
       </button>

@@ -1,13 +1,8 @@
 /*
- * کنترلِ بزرگ‌نمایی — گام ۴٫۳. گوشه‌ی پایین-مبدأ (inline-start)، فقط logical
- * properties (ADR-016). در RTL خودش سمت راست می‌نشیند.
+ * کنترلِ بزرگ‌نمایی — گام ۴٫۳. جای‌گذاری از منبعِ واحد:
+ * `hb-overlay hb-overlay--bottom-start` روی root (ADR-027). اینجا فقط ظاهر.
  */
 .hb-zoom {
-  position: absolute;
-  inset-block-end: 20px;
-  inset-inline-start: 20px;
-  z-index: 6;
-
   display: inline-flex;
   align-items: center;
   gap: 2px;

@@ -1,13 +1,9 @@
 /*
- * نوار وضعیت — گام ۴٫۳. گوشه‌ی بالا-مبدأ (inline-start)، فقط logical properties
- * (ADR-016). در RTL خودش سمت راست می‌نشیند، بدون کد شرطی.
+ * نوار وضعیت — گام ۴٫۳. جای‌گذاری از منبعِ واحد می‌آید: کلاسِ `hb-overlay
+ * hb-overlay--top-center` روی root (نقشه‌ی اسلات در `overlay-layout.css`).
+ * اینجا فقط ظاهر است، نه موقعیت (ADR-027).
  */
 .hb-statusbar {
-  position: absolute;
-  inset-block-start: 12px;
-  inset-inline-start: 12px;
-  z-index: 6;
-
   display: inline-flex;
   align-items: center;
   gap: 8px;

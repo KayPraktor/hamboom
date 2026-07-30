@@ -1,5 +1,6 @@
 import type { PeerState } from "../sync/contract";
 
+import "./overlay-layout.css";
 import "./peer-avatars.css";
 
 /**
@@ -19,7 +20,11 @@ export interface PeerAvatarsProps {
 export function PeerAvatars({ peers, onFollow }: PeerAvatarsProps) {
   if (peers.length === 0) return null;
   return (
-    <div className="hb-peer-avatars" role="group" aria-label="کاربرانِ آنلاین">
+    <div
+      className="hb-peer-avatars hb-overlay hb-overlay--top-end"
+      role="group"
+      aria-label="کاربرانِ آنلاین"
+    >
       {peers.map((peer) => {
         const initial = peer.user.displayName.trim().charAt(0) || "؟";
         return (

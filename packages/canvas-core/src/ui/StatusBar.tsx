@@ -1,6 +1,7 @@
 import { t } from "@hamboom/i18n";
 
 import type { ConnectionState, SaveState } from "../sync/contract";
+import "./overlay-layout.css";
 import "./statusbar.css";
 
 /**
@@ -55,7 +56,11 @@ function saveText(save: SaveState): string {
 
 export function StatusBar({ connection, save }: StatusBarProps) {
   return (
-    <div className="hb-statusbar" role="status" aria-live="polite">
+    <div
+      className="hb-statusbar hb-overlay hb-overlay--top-center"
+      role="status"
+      aria-live="polite"
+    >
       <span className={`hb-status-dot ${CONNECTION_TONE[connection.status]}`} aria-hidden="true" />
       <span className="hb-status-conn">{connectionText(connection)}</span>
       <span className="hb-status-sep" aria-hidden="true">

@@ -1,0 +1,70 @@
+/*
+ * منبعِ واحدِ جای‌گذاریِ overlayهای دورِ بوم (chrome) — گام ۵٫۱، درسِ
+ * [ADR-024](../../../../ARCHITECTURE_DECISIONS.md#adr-024) / قراردادِ
+ * [ADR-027](../../../../ARCHITECTURE_DECISIONS.md#adr-027).
+ *
+ * ── چرا این فایل هست ───────────────────────────────────────────────────
+ * قبلاً هر overlay گوشه‌ی خودش را جدا در CSSِ خودش hardcode می‌کرد و هیچ‌کس کلِ
+ * چیدمان را نمی‌دید؛ نتیجه: نوارِ وضعیت و پنلِ استایل هر دو top-start شدند و روی
+ * هم افتادند. حالا **جای‌گذاری فقط اینجاست** و «نقشه‌ی اسلات» زیر تنها جایی است
+ * که تصمیم می‌گیرد چه چیزی کجا می‌نشیند — پس دو overlay یک گوشه را نمی‌گیرند و
+ * overlayِ جدید (مثلاً mini-map) هم از همین‌جا اسلات می‌گیرد، نه با آفستِ دستی.
+ *
+ * ── نقشه‌ی اسلات (هر overlay دقیقاً یکی) ────────────────────────────────
+ *   top-start      → StylePanel        (پنل استایل — بالا-راست در RTL)
+ *   top-center     → StatusBar         (نوار وضعیت)
+ *   top-end        → PeerAvatars       (آواتارِ همتاها — بالا-چپ در RTL)
+ *   bottom-start   → ZoomControl       (پایین-راست در RTL)
+ *   bottom-center  → Toolbar           (نوار ابزار)
+ *   bottom-end     → [رزرو] mini-map   (گام موکول‌شده)
+ *
+ * منطقی است (`inset-inline`/`inset-block`) پس در RTL خودش آینه می‌شود — این‌ها
+ * chromeِ دورِ بوم‌اند، نه مختصاتِ داخلِ بوم؛ استثنای ADR-016 فقط برای دومی است.
+ * لایه‌های تمام‌بوم (`PeerCursors`/`PeerSelections` با `inset: 0`) اسلات نیستند و
+ * از این سیستم مستثنایند.
+ */
+
+:root {
+  --hb-overlay-gap: 16px;
+}
+
+.hb-overlay {
+  position: absolute;
+  z-index: 6;
+}
+
+.hb-overlay--top-start {
+  inset-block-start: var(--hb-overlay-gap);
+  inset-inline-start: var(--hb-overlay-gap);
+}
+
+.hb-overlay--top-end {
+  inset-block-start: var(--hb-overlay-gap);
+  inset-inline-end: var(--hb-overlay-gap);
+}
+
+.hb-overlay--bottom-start {
+  inset-block-end: var(--hb-overlay-gap);
+  inset-inline-start: var(--hb-overlay-gap);
+}
+
+.hb-overlay--bottom-end {
+  inset-block-end: var(--hb-overlay-gap);
+  inset-inline-end: var(--hb-overlay-gap);
+}
+
+/* مرکزِ افقی با margin-inline: auto (نه left: 50%) — سازگار با گیتِ Stylelintِ ADR-016. */
+.hb-overlay--top-center,
+.hb-overlay--bottom-center {
+  inset-inline: 0;
+  margin-inline: auto;
+  inline-size: fit-content;
+}
+
+.hb-overlay--top-center {
+  inset-block-start: var(--hb-overlay-gap);
+}
+
+.hb-overlay--bottom-center {
+  inset-block-end: var(--hb-overlay-gap);
+}

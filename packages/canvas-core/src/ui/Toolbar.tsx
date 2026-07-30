@@ -2,6 +2,7 @@ import { t } from "@hamboom/i18n";
 
 import { toolIcon } from "./toolbar-icons";
 import { HB_TOOLS, type ToolId } from "./toolbar-tools";
+import "./overlay-layout.css";
 import "./toolbar.css";
 
 /**
@@ -26,7 +27,11 @@ export interface ToolbarProps {
 
 export function Toolbar({ activeTool, onSelectTool }: ToolbarProps) {
   return (
-    <div className="hb-toolbar" role="toolbar" aria-label="ابزارها">
+    <div
+      className="hb-toolbar hb-overlay hb-overlay--bottom-center"
+      role="toolbar"
+      aria-label="ابزارها"
+    >
       {HB_TOOLS.map((tool) => {
         const label = t(tool.labelKey);
         const active = activeTool === tool.id;

@@ -988,24 +988,24 @@ export function App() {
           hidden
           onChange={(event) => void onImageFilePicked(event)}
         />
+        {/* StylePanel خودش موقعیت می‌گیرد (اسلاتِ top-start از overlay-layout) —
+            دیگر wrapperِ موقعیت‌دهِ دمو لازم نیست (ADR-027). */}
         {snapshot.selectedIds.size > 0 ? (
-          <div className="hb-style-dock">
-            <StylePanel
-              elements={snapshot.elements}
-              selectedIds={snapshot.selectedIds}
-              onChange={onStyleChange}
-              onToggleLock={() => {
-                const read = readScene();
-                if (!read || read.selectedIds.size === 0) return;
-                // همان `toggleLock`ِ منوی راست‌کلیک — منبعِ واحد.
-                writeScene(read.api, toggleLock(read.elements, read.selectedIds));
-              }}
-              // همان `reorderElements`ِ منو (جلوترین/عقب‌ترین) — پنل یک‌پله (جلو/عقب).
-              onReorder={applyReorder}
-              onAlign={onAlign}
-              onDistribute={onDistribute}
-            />
-          </div>
+          <StylePanel
+            elements={snapshot.elements}
+            selectedIds={snapshot.selectedIds}
+            onChange={onStyleChange}
+            onToggleLock={() => {
+              const read = readScene();
+              if (!read || read.selectedIds.size === 0) return;
+              // همان `toggleLock`ِ منوی راست‌کلیک — منبعِ واحد.
+              writeScene(read.api, toggleLock(read.elements, read.selectedIds));
+            }}
+            // همان `reorderElements`ِ منو (جلوترین/عقب‌ترین) — پنل یک‌پله (جلو/عقب).
+            onReorder={applyReorder}
+            onAlign={onAlign}
+            onDistribute={onDistribute}
+          />
         ) : null}
       </main>
     </div>

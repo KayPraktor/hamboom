@@ -1,11 +1,8 @@
 /*
- * فهرستِ آواتارِ آنلاین — گام ۴٫۴. گوشه‌ی بالا-انتها (inline-end). فقط logical.
+ * فهرستِ آواتارِ آنلاین — گام ۴٫۴. جای‌گذاری از منبعِ واحد:
+ * `hb-overlay hb-overlay--top-end` روی root (ADR-027). اینجا فقط ظاهر.
  */
 .hb-peer-avatars {
-  position: absolute;
-  inset-block-start: 12px;
-  inset-inline-end: 12px;
-  z-index: 6;
   display: inline-flex;
   align-items: center;
 }

@@ -5,6 +5,7 @@ import { areAllLocked, type ReorderOp } from "../elements/operations";
 import { commonStyle, type StylePatch } from "../elements/style";
 import { HB_TYPO } from "../theme/tokens";
 
+import "./overlay-layout.css";
 import "./style-panel.css";
 
 /**
@@ -107,7 +108,7 @@ export function StylePanel({
   const allLocked = areAllLocked(elements, selectedIds);
 
   return (
-    <aside className="hb-style-panel" aria-label="استایل">
+    <aside className="hb-style-panel hb-overlay hb-overlay--top-start" aria-label="استایل">
       <ColorRow
         label="رنگ خط"
         value={current.strokeColor}

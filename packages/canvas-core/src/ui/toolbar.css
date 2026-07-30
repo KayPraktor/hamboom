@@ -1,18 +1,8 @@
 /*
- * نوار ابزارِ شناورِ پایین-وسط — گام ۴٫۲.
- *
- * ADR-016 — فقط logical properties. مرکزِ افقی با `inset-inline: 0` +
- * `margin-inline: auto` + `inline-size: fit-content` (نه `left: 50%`)، پس در
- * LTR و RTL یکسان وسط می‌نشیند و گیتِ Stylelint را رد نمی‌کند.
+ * نوار ابزارِ شناورِ پایین-وسط — گام ۴٫۲. جای‌گذاری از منبعِ واحد:
+ * `hb-overlay hb-overlay--bottom-center` روی root (ADR-027). اینجا فقط ظاهر.
  */
 .hb-toolbar {
-  position: absolute;
-  inset-block-end: 20px;
-  inset-inline: 0;
-  margin-inline: auto;
-  inline-size: fit-content;
-  z-index: 6;
-
   display: flex;
   gap: 4px;
   padding: 6px;
