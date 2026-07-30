@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { Bench } from "./Bench";
 import { Palette } from "./Palette";
 import { SpikeEditing } from "./SpikeEditing";
 import { SpikeText } from "./SpikeText";
@@ -17,6 +18,7 @@ const PAGES: Record<string, typeof App> = {
   "#spike": SpikeText,
   "#spike-edit": SpikeEditing,
   "#palette": Palette,
+  "#bench": Bench,
 };
 const Page = PAGES[window.location.hash] ?? App;
 
