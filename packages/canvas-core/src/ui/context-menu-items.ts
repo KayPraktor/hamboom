@@ -31,18 +31,11 @@ export interface MenuItemMeta {
 }
 
 export const HB_MENU_ITEMS: readonly MenuItemMeta[] = [
-  {
-    id: "copy",
-    labelKey: "action.copy",
-    requiresSelection: true,
-    comingSoon: true,
-    shortcut: "Ctrl+C",
-  },
+  { id: "copy", labelKey: "action.copy", requiresSelection: true, shortcut: "Ctrl+C" },
   {
     id: "paste",
     labelKey: "action.paste",
     requiresSelection: false,
-    comingSoon: true,
     shortcut: "Ctrl+V",
     dividerAfter: true,
   },

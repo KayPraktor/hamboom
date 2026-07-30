@@ -30,8 +30,15 @@ describe("isMenuItemEnabled", () => {
     expect(isMenuItemEnabled(copyAsImage, true)).toBe(false);
   });
 
-  it("paste نیازی به انتخاب ندارد (ولی فعلاً coming-soon)", () => {
+  it("★ paste بدونِ انتخاب هم فعال است (نیازی به انتخاب ندارد، coming-soon هم نیست — ۵٫۳)", () => {
     expect(paste.requiresSelection).toBe(false);
-    expect(isMenuItemEnabled(paste, false)).toBe(false); // چون coming-soon
+    expect(paste.comingSoon).toBeUndefined();
+    expect(isMenuItemEnabled(paste, false)).toBe(true);
+  });
+
+  it("★ copy نیازمندِ انتخاب است و coming-soon نیست (۵٫۳)", () => {
+    const copy = HB_MENU_ITEMS.find((i) => i.id === "copy")!;
+    expect(isMenuItemEnabled(copy, false)).toBe(false);
+    expect(isMenuItemEnabled(copy, true)).toBe(true);
   });
 });

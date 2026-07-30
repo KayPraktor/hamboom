@@ -122,8 +122,13 @@ export type { DrawTool, DrawToolOptions, DrawStrokeOutbound } from "./tools/draw
 export { createContextMenuTool } from "./tools/context-menu-tool";
 export type { ContextMenuTool, ContextMenuToolOptions } from "./tools/context-menu-tool";
 
-export { duplicateElements } from "./elements/duplicate";
+export { createClipboardTool } from "./tools/clipboard-tool";
+export type { ClipboardTool, ClipboardToolOptions } from "./tools/clipboard-tool";
+
+export { duplicateElements, cloneElements, collectWithBoundText } from "./elements/duplicate";
 export type { DuplicateOptions } from "./elements/duplicate";
+export { pasteElements, textToStickies } from "./elements/clipboard";
+export type { TextToStickyOptions } from "./elements/clipboard";
 
 export { deleteElements, toggleLock, areAllLocked, reorderElements } from "./elements/operations";
 export type { ReorderOp } from "./elements/operations";

@@ -10,6 +10,7 @@ import {
   commitGesture,
   commitSystemUpdate,
   ContextMenu,
+  createClipboardTool,
   createConnector,
   createContextMenuTool,
   createDrawTool,
@@ -42,6 +43,7 @@ import {
   zoomAroundCenter,
   zoomStep,
   type AlignEdge,
+  type ClipboardTool,
   type DistributeAxis,
   type DrawStrokeOutbound,
   type DrawTool,
@@ -134,6 +136,7 @@ export function App() {
   const imageToolRef = useRef<ImageTool | null>(null);
   const drawToolRef = useRef<DrawTool | null>(null);
   const contextMenuToolRef = useRef<ContextMenuTool | null>(null);
+  const clipboardToolRef = useRef<ClipboardTool | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const hostRef = useRef<HTMLElement | null>(null);
   /** آخرین وضعیتِ فقط‌خواندنی — تا guardهای پایدار بدونِ re-subscribe بخوانند. */
@@ -300,6 +303,15 @@ export function App() {
         setMenu({ x, y, hasSelection: Object.keys(selected).length > 0 });
       },
     });
+
+    // کلیپ‌بورد — **بعد از** image-tool ساخته می‌شود تا روی paste، پیستِ تصویر اول
+    // به image-tool برسد و این ابزار تصویر را defer کند (هماهنگیِ paste).
+    clipboardToolRef.current?.destroy();
+    clipboardToolRef.current = createClipboardTool({
+      api,
+      authorId: "u_demo",
+      onChanged: () => refreshCountsRef.current?.(),
+    });
   }, []);
 
   useEffect(() => {
@@ -335,6 +347,8 @@ export function App() {
       drawToolRef.current = null;
       contextMenuToolRef.current?.destroy();
       contextMenuToolRef.current = null;
+      clipboardToolRef.current?.destroy();
+      clipboardToolRef.current = null;
       for (const url of urls.values()) URL.revokeObjectURL(url);
       urls.clear();
     };
@@ -366,6 +380,9 @@ export function App() {
       if (!api) return;
       if (id === "bringToFront") return applyReorder("front");
       if (id === "sendToBack") return applyReorder("back");
+      // کپی/پیست: همان ابزارِ کلیپ‌بورد که Ctrl+C/V می‌زند (منبعِ واحد).
+      if (id === "copy") return void clipboardToolRef.current?.copySelection();
+      if (id === "paste") return clipboardToolRef.current?.pasteFromStore();
 
       const hb = api.getSceneElements().map((el) => fromExcalidraw(el as never));
       const ids = new Set(Object.keys(api.getAppState().selectedElementIds));
