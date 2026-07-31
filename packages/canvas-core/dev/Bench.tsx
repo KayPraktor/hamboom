@@ -28,6 +28,12 @@ interface BenchResult {
   p95FrameMs: number;
   pctFramesAbove30: number;
   pass: boolean;
+  // توزیعِ زمانیِ فریم‌های کند (>۳۳ms) — تعیین می‌کند jank warmup است یا پایدار.
+  slowFrames: number;
+  slowPerSecond: number[]; // شمارشِ فریمِ کند در هر ثانیه (۴ سطل)
+  worstFrameAtMs: number; // زمانِ بدترین فریم از شروع
+  warmupSlow: number; // فریمِ کند در ۵۰۰ms اول
+  steadySlow: number; // فریمِ کند بعد از ۵۰۰ms
 }
 
 /** ~`target` عنصرِ صحنه بساز — ترکیبِ استیکی/شکل/متن برای بارِ رندرِ واقع‌گرایانه. */
@@ -104,12 +110,13 @@ export function Bench() {
       setStatus(`اندازه‌گیریِ pan/zoom روی ${sceneCount} عنصر (۴ ثانیه)…`);
 
       const DURATION = 4000;
-      const frameMs: number[] = [];
+      // هر فریم: مدت (dt) و زمانِ وقوع از شروع (at) — at برای توزیعِ زمانی لازم است.
+      const frames: { dt: number; at: number }[] = [];
       await new Promise<void>((resolve) => {
         let last = performance.now();
         const start = last;
         const loop = (t: number) => {
-          frameMs.push(t - last);
+          frames.push({ dt: t - last, at: t - start });
           last = t;
           const p = (t - start) / 1000;
           api.updateScene({
@@ -129,13 +136,25 @@ export function Bench() {
         });
       });
 
-      const fts = frameMs.slice(3); // چند فریمِ گرم‌کردن را بینداز
-      const total = fts.reduce((a, b) => a + b, 0);
-      const avgFps = Math.round((fts.length / total) * 1000);
-      const worstFps = Math.round(1000 / Math.max(...fts));
-      const sorted = [...fts].sort((a, b) => a - b);
+      const SLOW_MS = 1000 / 30; // ۳۳٫۳ms = مرزِ ۳۰fps
+      // آمارِ سرخط: ۳ فریمِ اولِ warmup را می‌اندازد (مثلِ قبل، تا میانگین منصف باشد).
+      const dts = frames.slice(3).map((f) => f.dt);
+      const total = dts.reduce((a, b) => a + b, 0);
+      const avgFps = Math.round((dts.length / total) * 1000);
+      const worstFps = Math.round(1000 / Math.max(...dts));
+      const sorted = [...dts].sort((a, b) => a - b);
       const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
-      const pctAbove30 = Math.round((fts.filter((f) => f <= 1000 / 30).length / fts.length) * 100);
+      const pctAbove30 = Math.round((dts.filter((d) => d <= SLOW_MS).length / dts.length) * 100);
+
+      // توزیعِ زمانی روی **کلِ** فریم‌ها (شاملِ warmup) — تا معلوم شود jank کجاست.
+      const slow = frames.filter((f) => f.dt > SLOW_MS);
+      const slowPerSecond = [0, 0, 0, 0];
+      for (const f of slow) {
+        const bucket = Math.min(3, Math.floor(f.at / 1000));
+        slowPerSecond[bucket] = (slowPerSecond[bucket] ?? 0) + 1;
+      }
+      const worst = frames.reduce((m, f) => (f.dt > m.dt ? f : m), frames[0]!);
+
       const res: BenchResult = {
         sceneCount,
         avgFps,
@@ -143,6 +162,11 @@ export function Bench() {
         p95FrameMs: Math.round(p95 * 10) / 10,
         pctFramesAbove30: pctAbove30,
         pass: avgFps >= 30,
+        slowFrames: slow.length,
+        slowPerSecond,
+        worstFrameAtMs: Math.round(worst.at),
+        warmupSlow: slow.filter((f) => f.at < 500).length,
+        steadySlow: slow.filter((f) => f.at >= 500).length,
       };
       (window as unknown as { __benchResult: BenchResult }).__benchResult = res;
       setResult(res);
@@ -186,6 +210,16 @@ export function Bench() {
               <ResultRow label="بدترین FPS" value={String(result.worstFps)} />
               <ResultRow label="فریمِ p95" value={`${result.p95FrameMs}ms`} />
               <ResultRow label="٪ فریمِ ≥۳۰fps" value={`${result.pctFramesAbove30}٪`} />
+              <ResultRow label="فریمِ کند (>۳۳ms)" value={String(result.slowFrames)} />
+              <ResultRow
+                label="پخشِ فریمِ کند (هر ثانیه)"
+                value={result.slowPerSecond.join(" · ")}
+              />
+              <ResultRow
+                label="warmup / پایدار"
+                value={`${result.warmupSlow} (۵۰۰ms اول) / ${result.steadySlow} (بعد)`}
+              />
+              <ResultRow label="بدترین فریم در" value={`${result.worstFrameAtMs}ms`} />
             </>
           ) : null}
         </dl>

@@ -717,12 +717,13 @@ versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `fact
 - [x] `aria-label` فارسی روی همه‌ی دکمه‌ها — ممیزیِ [`ui/a11y.test.tsx`](packages/canvas-core/src/ui/a11y.test.tsx):
       هر دکمه‌ی Toolbar/StylePanel/ZoomControl/ContextMenu/PeerAvatars نامِ در دسترس دارد
       (aria-label یا متن). همه سبز — از قبل کامل بود، حالا نگهبان دارد.
-- [~] **بنچمارک ۲۰۰۰ عنصر / ۳۰fps** — صفحه‌ی بنچمارک ساخته شد ([`dev/Bench.tsx`](packages/canvas-core/dev/Bench.tsx)،
-      مسیر `#bench`): N عنصرِ واقعی + حلقه‌ی rAFِ ۴ثانیه‌ای که pan/zoom را هر فریم عوض می‌کند،
-      FPS = فریم÷مدت. **محیطِ خودکار رندرِ واقعی ندارد → مالک روی مرورگرِ خودش اجرا می‌کند و
-      عدد را می‌دهد** (`http://localhost:5180/#bench`، دکمه‌ی «۲۰۰۰ عنصر»). منتظرِ عدد.
-- [ ] اگر بنچمارک رد شد: culling عناصر خارج از viewport
-- **معیار پذیرش:** `docs/perf-baseline.md` با اعداد واقعیِ مالک (بعد از دریافتِ عدد)
+- [x] **بنچمارک ۲۰۰۰ عنصر / ۳۰fps** — صفحه‌ی [`dev/Bench.tsx`](packages/canvas-core/dev/Bench.tsx)
+      (مسیر `#bench`). **اجرای مالک: میانگین ۵۰fps ✓ (پاس)**، بدترین ۱۴، p95=۴۱٫۵ms، ۸۶٪ فریم ≥۳۰.
+      نتیجه در [`docs/perf-baseline.md`](docs/perf-baseline.md) (با p95 و ٪زیر۳۰، نه فقط میانگین).
+- [~] **تصمیمِ culling** — معیار پاس شد ولی p95=۴۱٫۵ms/۱۴٪ فریمِ زیر۳۰ = لرزشِ محسوس. بنچ
+      حالا **توزیعِ زمانیِ فریمِ کند** (هر ثانیه + warmup/پایدار + زمانِ بدترین) را ثبت می‌کند؛
+      اگر جانک warmup باشد culling لازم نیست، اگر پخش باشد لازم است. **منتظرِ اجرای دوباره‌ی مالک.**
+- **معیار پذیرش:** ✅ `docs/perf-baseline.md` با اعداد واقعیِ مالک نوشته شد.
 
 ---
 
