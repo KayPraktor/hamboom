@@ -1,17 +1,19 @@
 # PROGRESS — canvas-core
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۰۷ (2026-07-29)
-**گام فعلی: فاز ۶ (تحویل) — گام ۶٫۱ در جریان: بخشِ M1 تمام، دو گپ بلوکه.** فازهای ۰–۵
-کامل. در ۶٫۱ کارهای درونِ دامنه‌ی M1 انجام شد: **پوششِ تست ≥۶۰٪ (گیتِ دائمی)**، **تستِ
-یکپارچه**، **README پکیج**، **sync/README نهایی**، **dependencies.md کامل**. دو گپ بلوکه
-ماند: **G-1** (پیش‌نیازش binderِ M2 است — خارج از دامنه) و **G-2** (Playwright؛ تصمیمِ مالک +
-غیرقابلِ‌تایید در این محیط). **کارایی: ۲۰۰۰ عنصر ۱۴۴fps، صفر jank؛ culling رد شد چون هزینه
-O(visible) است** ([`docs/perf-baseline.md`](docs/perf-baseline.md)).
+**گام فعلی: فاز ۶ (تحویل) — گام ۶٫۱ تقریباً کامل؛ فقط G-1 بلوکه (پیش‌نیازِ M2).** فازهای
+۰–۵ کامل. در ۶٫۱ انجام شد: **پوششِ تست ≥۶۰٪ (گیتِ دائمی)**، **تستِ یکپارچه**، **README
+پکیج**، **sync/README نهایی**، **dependencies.md کامل**، و — پس از تاییدِ مالک —
+**Playwright + harnessِ E2E** که **G-2** (رگرسیونِ جهتِ متن، ADR-025) و صفِ موارد «فقط
+تاییدِ چشمی» را خودکار کرد. تنها گپِ باقی‌مانده **G-1** است (تستِ دو-نمونه‌ایِ sync — خارج
+از دامنه‌ی M1، پیش‌نیازش binderِ M2). **کارایی: ۲۰۰۰ عنصر ۱۴۴fps، صفر jank؛ culling رد شد
+چون O(visible) است** ([`docs/perf-baseline.md`](docs/perf-baseline.md)).
 پله‌ی [ADR-003](ARCHITECTURE_DECISIONS.md#adr-003): **A** (بسته npm، بدون patch)
 
-**۵۶۰ تست سبز** (۴۴ shared-types، ۴۷۴ canvas-core، ۴۲ i18n). `typecheck` · `lint` ·
-`lint:css` · `format:check` · `license:check` (self-test ۱۷/۱۷ + ۶۷۸ پکیج) · پوششِ
-`elements/`+`text/`+`sync/` ≥۶۰٪ (گیتِ threshold) — همه سبز. درخت git تمیز، همه‌چیز کامیت شده.
+**۵۶۰ تستِ واحد + ۹ تستِ E2E سبز** (واحد: ۴۴ shared-types، ۴۷۴ canvas-core، ۴۲ i18n).
+`typecheck` · `lint` · `lint:css` · `format:check` · `license:check` (self-test ۱۷/۱۷ +
+۶۸۱ پکیج) · پوششِ `elements/`+`text/`+`sync/` ≥۶۰٪ (گیتِ threshold) · E2E ۹/۹ (Chromium) —
+همه سبز. درخت git تمیز، همه‌چیز کامیت شده.
 
 ---
 
@@ -402,16 +404,36 @@ cut از `deleteElements`، defer تصویر به image-tool). منو و Ctrl+C/
   (snapshotِ `pnpm license:list`، هر ۶۷۸ پکیج بر حسبِ لایسنس) + توضیحِ لایسنس‌های بیرونِ
   هسته‌ی پنج‌گانه (OFL برای فونت، dualها، public-domainها).
 
-### ⛔ دو گپِ بلوکه (با دلیل، نه انجام‌نشده‌ی خاموش)
+### ✅ Playwright + harnessِ E2E — G-2 و صفِ «فقط تاییدِ چشمی» خودکار شد
+
+مالک نگاهِ بزرگ‌تر را خواست: کلِ پروژه به دیوارِ «pane composite نمی‌کند» خورده بود
+(bidi، پالت، تصویر، قلم، نوار ابزار، هم‌ترازی، box-select، گروه، snap، کلیپ‌بورد، بنچمارک).
+اول **probeِ عملی‌بودن** زدم (بدونِ آلوده‌کردنِ ریپو، همه در scratchpad): Chromium ۱۹۱MiB از
+`cdn.playwright.dev` نصب شد ✓، composite کرد و **اسکرین‌شاتِ واقعیِ دمو** خوانده شد ✓،
+`fillText` روی canvasِ **وصل** پیکسل تولید کرد ✓. مالک تایید کرد → افزوده شد.
+
+- **افزوده:** `@playwright/test` (Apache-2.0، dev-only؛ `license:check` سبز — ۶۸۱ پکیج) +
+  [`playwright.config.ts`](packages/canvas-core/playwright.config.ts) با `webServer`ِ دمو +
+  اسکریپتِ `test:e2e`. باینریِ مرورگر فقط برای تست (نه dev/runtime — P3).
+- **G-2 ✅** — [`e2e/text-direction.spec.ts`](packages/canvas-core/e2e/text-direction.spec.ts):
+  شمارنده‌ی فراخوانیِ wrapperِ `fillText` هنگام رندرِ واقعی > ۰ (نگهبانِ خودِ ADR-025).
+- **رگرسیونِ بصری/تعاملی (۸ تستِ دیگر):** پالت (golden پیکسلیِ CSS)، نوار ابزار (۱۱ + aria)،
+  نوار وضعیت/zoomِ فارسی، **نگهبانِ همپوشانیِ ADR-027** (همان باگِ ۵٫۱)، صفر خطای کنسول، و
+  **تعاملِ trusted**: ساختِ گروهی + **undo/redoِ کیبوردیِ خودِ موتور** (harnessِ undo که از
+  ۵٫۲/۳ موکول بود، بالاخره خودکار شد) + میانبرِ N.
+- **یافته‌های ثبت‌شده (تا کسی دوباره تلاش نکند):** `getImageData` روی canvasِ GPUـیِ موتور
+  بلانک است (اسکرین‌شاتِ Playwright کار می‌کند، خواندنِ مستقیم نه)؛ اثرِ خودِ `ctx.direction`
+  در این Chromium پیکسلی سنجش‌پذیر نیست؛ golden از canvas به‌خاطرِ seedِ تازه‌ی rough.js
+  ناپایدار است (golden فقط برای CSSِ قطعی)؛ کیبوردِ undo باید به کانتینرِ excalidraw
+  focus شود، نه document. همه در [`canvas-core/CLAUDE.md`](packages/canvas-core/CLAUDE.md).
+
+### ⛔ گپِ باقی‌مانده — G-1 (بلوکه، پیش‌نیازِ M2)
 
 - **G-1 — تستِ دو-نمونه‌ای با بوم واقعی + رندرِ حضور:** پیش‌نیازش **binderِ M2** است؛
   شبکه/Yjs خارج از دامنه‌ی M1 است، پس در این ماژول **اصلاً قابلِ نوشتن نیست**. گپ در
   `sync/README.md` برای M2 مستند است (شاملِ درسِ Q1: از `sceneToOverlayPixel` و
-  `onScrollChange` استفاده کن، نه getAppStateِ کهنه).
-- **G-2 — رگرسیونِ هش پیکسلیِ جهتِ متن (Playwright):** دو مانع — (۱) Playwright وابستگیِ
-  سنگین است که مالک در ۱٫۴ عمداً موکول کرد؛ افزودنش **تصمیمِ مالک** است. (۲) این محیطِ
-  خودکار composite نمی‌کند، پس خودِ تستِ پیکسلی اینجا **قابلِ تایید نیست** — و قاعده این
-  است که چیزِ تاییدنشده را انجام‌شده ننویسیم. آماده برای وقتی مالک وابستگی را تایید کند.
+  `onScrollChange` استفاده کن، نه getAppStateِ کهنه). حالا که Playwright هست، نیمه‌ی
+  **رندرِ حضور** (re-projectِ Q1) هم با همین harness خودکارشدنی است — وقتی binder آمد.
 
 **گام ۶٫۲ (آماده‌سازی برای M2)** هنوز شروع نشده — قدمِ بعدی.
 

@@ -19,7 +19,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -28,6 +29,7 @@
   "devDependencies": {
     "@hamboom/eslint-config": "workspace:*",
     "@hamboom/tsconfig": "workspace:*",
+    "@playwright/test": "^1.62.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.1.0",

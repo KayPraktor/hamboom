@@ -19,6 +19,8 @@ coverage/
 *.lcov
 test-results/
 playwright-report/
+blob-report/
+playwright/.cache/
 
 # محیط — هرگز commit نشود (اصل P7)
 .env

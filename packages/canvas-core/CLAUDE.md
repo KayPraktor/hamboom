@@ -47,9 +47,11 @@ ADR-003، ADR-007، ADR-008، ADR-010، ADR-016، ADR-017، ADR-022.
 ## دستورات
 
 ```bash
-pnpm --filter @hamboom/canvas-core dev        # دموی لوکال روی 127.0.0.1:5180
-pnpm --filter @hamboom/canvas-core test       # vitest یک‌بار
+pnpm --filter @hamboom/canvas-core dev           # دموی لوکال روی 127.0.0.1:5180
+pnpm --filter @hamboom/canvas-core test          # vitest یک‌بار
 pnpm --filter @hamboom/canvas-core test:watch
+pnpm --filter @hamboom/canvas-core test:coverage # پوشش + گیتِ ۶۰٪ (elements/text/sync)
+pnpm --filter @hamboom/canvas-core test:e2e      # Playwright — مرورگرِ واقعی (نیاز: playwright install chromium)
 pnpm --filter @hamboom/canvas-core typecheck
 pnpm --filter @hamboom/canvas-core lint
 ```
@@ -70,6 +72,19 @@ pnpm --filter @hamboom/canvas-core lint
 | **تغییر `version` بدون `versionNonce`** | تغییر ورودی undo جدا نمی‌سازد؛ یک Ctrl+Z کل عملیات قبلی را برمی‌گرداند | همیشه `bumpVersion()` که هر دو را بالا می‌برد (ADR-026) |
 | گروه‌کردن چند تغییر زیر یک undo | — | همه در **یک** `updateScene({ captureUpdate: "IMMEDIATELY" })` (ADR-026) |
 | **`NEVER`/`EVENTUALLY` خطِ پایه‌ی تاریخچه را جلو می‌برند** | در جریان دو-مرحله‌ای (مثلاً تصویرِ pending→saved)، اگر مرحله‌ی اول `NEVER` باشد و دوم `IMMEDIATELY`، یک undo فقط مرحله‌ی دوم را برمی‌گرداند نه کل ساخت را | **creation** را در مرحله‌ی اول `IMMEDIATELY` بگذار و به‌روزرسانی‌های بعدیِ همان ژست را `NEVER` (گام ۳٫۶) |
+
+## تله‌های تستِ E2E (Playwright — گام ۶٫۱)
+
+Playwright یک Chromiumِ **واقعی** اجرا می‌کند که composite می‌کند و رویدادِ **trusted**
+می‌سازد — همان چیزی که موتور می‌پذیرد. این‌ها را حین ساختِ harness یاد گرفتیم:
+
+| تله | نشانه | راه درست |
+|---|---|---|
+| **`getImageData` روی canvasِ موتور بلانک است** | خواندنِ مستقیمِ پیکسل همیشه سفید برمی‌گردد (canvas روی GPU composite می‌شود) | برای پیکسل، **اسکرین‌شاتِ Playwright** بگیر (`toHaveScreenshot`/`screenshot`)، نه `getImageData` |
+| **`ctx.direction` در canvas پیکسلی سنجش‌پذیر نیست** | خروجیِ `fillText` با ltr/rtl فرقی نمی‌کند؛ run‌های دوجهته بازچینش نمی‌شوند | جهتِ متن را با **شمارنده‌ی فراخوانیِ wrapper** بسنج (نگهبانِ ADR-025)، نه diff پیکسلی |
+| **golden از canvas ناپایدار است** | rough.js هر شکل را با seedِ تازه می‌کشد → diff بینِ اجراها | golden فقط برای رابطِ **CSSـیِ قطعی** (مثلِ پالت)؛ برای canvas از ادعای رفتاری استفاده کن |
+| **کلیکِ ماوس روی canvas، کیبورد را به موتور نمی‌رساند** | `Ctrl+Z` بعد از کلیک بی‌اثر است (undo کار نمی‌کند) با اینکه activeElement کانتینر است | کانتینرِ `.excalidraw-container` را **صریح focus** کن، بعد `page.keyboard.press("Control+KeyZ")` |
+| **canvasِ وصل‌نشده `ctx.direction` را نادیده می‌گیرد** | canvasِ `createElement`نشده در DOM، در هدلس direction را اعمال نمی‌کند | برای probeِ رندر، canvas را به DOM append کن |
 
 ## نکات فنی
 

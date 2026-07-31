@@ -131,6 +131,7 @@ const outbound = await adapter.connect(inbound); // inbound را بوم/باین
 pnpm --filter @hamboom/canvas-core dev            # دموی لوکال روی 127.0.0.1:5180
 pnpm --filter @hamboom/canvas-core test           # vitest یک‌بار
 pnpm --filter @hamboom/canvas-core test:coverage  # پوشش + گیتِ ۶۰٪ روی elements/text/sync
+pnpm --filter @hamboom/canvas-core test:e2e       # Playwright — مرورگرِ واقعی (اول: playwright install chromium)
 pnpm --filter @hamboom/canvas-core typecheck
 pnpm --filter @hamboom/canvas-core lint
 ```
