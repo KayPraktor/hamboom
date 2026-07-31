@@ -1,9 +1,10 @@
 # وابستگی‌ها و لایسنس‌ها
 
-> اصل **P1** — فقط MIT / Apache-2.0 / BSD / ISC / 0BSD.
+> اصل **P1** — هسته‌ی مجاز MIT / Apache-2.0 / BSD / ISC / 0BSD، به‌علاوه‌ی چند
+> لایسنسِ permissiveِ معادل که با دلیل به allow-list افزوده شده‌اند (پایین).
 > گیت خودکار: `pnpm license:check` (شامل `--self-test` ارزیاب SPDX).
-> این سند برای وابستگی‌های **مهم و تصمیم‌دار** است، نه فهرست کامل درخت —
-> فهرست کامل را `pnpm license:list` می‌دهد.
+> بخشِ **وابستگی‌های تصمیم‌دار** پایین دستی نگه‌داری می‌شود؛ بخشِ **فهرستِ کاملِ
+> لایسنس‌ها** یک snapshotِ تولیدشده از `pnpm license:list` است.
 
 ---
 
@@ -32,6 +33,42 @@
 Andrew Maney». یک باگ بسته‌بندی است، نه یک تصمیم سیاستی.
 
 زنجیره: `khroma` ← `mermaid` ← `@excalidraw/mermaid-to-excalidraw` ← `@excalidraw/excalidraw`
+
+---
+
+## فهرستِ کاملِ لایسنس‌های درختِ وابستگی
+
+> **snapshotِ تولیدشده** با `pnpm license:list` — تاریخ ۱۴۰۵/۰۵/۰۷ (2026-07-29).
+> منبعِ حقیقتِ زنده همان دستور است؛ این جدول برای مرورِ یک‌نگاهه در تحویل است.
+> گیت (`pnpm license:check`) هر ۶۷۸ پکیج را می‌سنجد و **همه مجازند** (اصل P1).
+
+| لایسنس | تعداد پکیج | توضیح |
+|---|---:|---|
+| MIT | ۵۲۸ | هسته‌ی مجاز |
+| ISC | ۶۰ | هسته‌ی مجاز |
+| Apache-2.0 | ۳۸ | هسته‌ی مجاز |
+| BSD-3-Clause | ۱۷ | هسته‌ی مجاز |
+| BSD-2-Clause | ۱۴ | هسته‌ی مجاز |
+| BlueOak-1.0.0 | ۶ | permissive، بدون شرطِ سرایت‌کننده |
+| MIT-0 | ۴ | MIT بدونِ شرطِ حفظِ نوتیس |
+| Python-2.0 | ۲ | permissive |
+| CC0-1.0 | ۲ | معادلِ public domain (داده، نه کد) |
+| OFL-1.1 | ۱ | فونتِ Vazirmatn — [ADR-017](../ARCHITECTURE_DECISIONS.md#adr-017) |
+| (MPL-2.0 OR Apache-2.0) | ۱ | dual؛ شاخه‌ی Apache-2.0 انتخاب می‌شود |
+| (MIT AND Zlib) | ۱ | هر دو permissive |
+| Unlicense | ۱ | معادلِ public domain |
+| 0BSD | ۱ | هسته‌ی مجاز |
+| CC-BY-4.0 | ۱ | داده/محتوا (نه کدِ لینک‌شونده) — با گیت مجاز شمرده شد |
+| Unknown | ۱ | `khroma` — استثنای مستند (بالا)؛ در واقع MIT |
+| **جمع** | **۶۷۸** | — |
+
+**درباره‌ی لایسنس‌های بیرونِ هسته‌ی پنج‌گانه:** allow-listِ گیت عمداً چند لایسنسِ
+permissiveِ معادل را هم می‌پذیرد (BlueOak، MIT-0، CC0، Python-2.0، Unlicense،
+عبارت‌های `OR`/`AND` که شاخه‌ی آزاد دارند)، و `OFL-1.1` طبق [ADR-017](../ARCHITECTURE_DECISIONS.md#adr-017)
+فقط برای فونت. تنها موردِ `Unknown` (khroma) در
+[`scripts/license-exceptions.json`](../scripts/license-exceptions.json) با دلیل ثبت
+شده. **مرجعِ نهایی، خروجیِ زنده‌ی گیت است، نه این جدول** — اگر درخت عوض شد، دوباره
+`pnpm license:list` بگیر.
 
 ---
 
