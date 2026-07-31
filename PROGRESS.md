@@ -1,13 +1,13 @@
 # PROGRESS — canvas-core
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۰۷ (2026-07-29)
-**گام فعلی: فاز ۵ — ★ گام‌های ۵٫۱–۵٫۳ کامل → بعدی ۵٫۴ (دسترس‌پذیری و کارایی).**
-z-order/align/snap/گروه، undo/redoِ ژستی، و کلیپ‌بورد (کپی/پیست/برش + متن→استیکی؛
-copy-as-PNG موکول) همه انجام شد؛ همپوشانیِ overlay با منبعِ واحد رفع شد
-([ADR-027](ARCHITECTURE_DECISIONS.md#adr-027)). (فاز ۴ کامل — mini-map موکول.)
+**گام فعلی: ★ فاز ۵ کامل (۵٫۱–۵٫۴) → بعدی فاز ۶ (تحویل، گام ۶٫۱).** انتخاب/گروه/چیدمان،
+undo/redoِ ژستی، کلیپ‌بورد (copy-as-PNG موکول)، و دسترس‌پذیری+کارایی همه انجام و تاییدِ
+مالک شد. **کارایی: ۲۰۰۰ عنصر در استفاده‌ی واقعی ۱۴۴fps، صفر jank؛ culling رد شد چون هزینه
+O(visible) است** ([`docs/perf-baseline.md`](docs/perf-baseline.md)). (فاز ۴ کامل — mini-map موکول.)
 پله‌ی [ADR-003](ARCHITECTURE_DECISIONS.md#adr-003): **A** (بسته npm، بدون patch)
 
-**۵۳۶ تست سبز** (۴۴ shared-types، ۴۵۰ canvas-core، ۴۲ i18n). `typecheck` · `lint` ·
+**۵۴۶ تست سبز** (۴۴ shared-types، ۴۶۰ canvas-core، ۴۲ i18n). `typecheck` · `lint` ·
 `lint:css` · `format:check` · `license:check` (self-test ۱۷/۱۷ + ۶۵۵ پکیج) — همه سبز.
 درخت git تمیز، همه‌چیز کامیت شده.
 
@@ -289,7 +289,7 @@ viewport هنگام pan/zoom — Q1/Q2)** · G-2 تست رگرسیون هش پی
 بیشتری می‌دهد، و مدرن‌تر است. مرکزِ افقی با `inset-inline: 0 + margin-inline: auto +
 inline-size: fit-content` (نه `left` — گیتِ Stylelint)، عمودیْ `inset-block-end`.
 
-## فاز ۵ در جریان — گام ۵٫۱
+## ✅ فاز ۵ کامل (۵٫۱–۵٫۴) — بعدی: فاز ۶ (تحویل، گام ۶٫۱)
 
 ### ✅ z-order (لایه‌بندی) — تمام و تاییدِ مرورگر (۱۴۰۵/۰۵/۰۷)
 
@@ -341,6 +341,25 @@ toggleِ شبکه) همه در مرورگرِ واقعیِ مالک تایید �
 بازگرداند. **تستِ واحدِ اتمیک‌بودنِ ژست** اضافه شد. undoِ ایزوله در حالتِ متصل (Y.UndoManager
 با trackedOrigins) کارِ M2 است و در `sync/README` مستند است. تستِ تکرارپذیرِ undoِ موتور →
 harnessِ ۶٫۱ (jsdom undo ندارد).
+
+### ✅ گام ۵٫۳ — کلیپ‌بورد (۱۴۰۵/۰۵/۰۷)
+
+`cloneElements` از `duplicateElements` استخراج شد (منبعِ واحد)؛ `clipboard.ts`
+(`pasteElements`/`textToStickies`) + `clipboard-tool.ts` (کلیپ‌بوردِ درون‌حافظه‌ای + token،
+cut از `deleteElements`، defer تصویر به image-tool). منو و Ctrl+C/X/V. **تاییدِ چشمیِ مالک:
+همه درست** (کپی/پیست+آفست، cut+بازگردانی، متنِ چندخطی→استیکیِ کنارِهم، پیستِ تصویر واگذار
+شد بدونِ استیکیِ متنی، منوی راست‌کلیک). copy-as-PNG موکول (نیازِ export + دسترسیِ کلیپ‌بورد).
+
+### ✅ گام ۵٫۴ — دسترس‌پذیری و کارایی (۱۴۰۵/۰۵/۰۷)
+
+- **کیبورد:** `cycleSelection` (خالص، ترتیبِ خواندنِ RTL، wrap) + `Tab`/`Shift+Tab` در دمو
+  (تاییدِ مرورگر). `Escape`/`Enter`/nudge بومیِ موتور.
+- **aria:** ممیزیِ `ui/a11y.test.tsx` — هر دکمه نامِ در دسترس دارد (نگهبانِ رگرسیون).
+- **کارایی — culling رد شد (با شواهد):** بنچِ `#bench`. **استفاده‌ی واقعی (zoom ۱): ۲۰۰۰
+  عنصر ۱۴۴fps، صفر فریمِ کند.** آزمایشِ قطعی: ۱۰۰۰ و ۲۰۰۰ در zoom ۱ هر دو ۱۴۳–۱۴۴ →
+  دوبرابرشدنِ کل بی‌اثر → هزینه **O(visible)**، موتور خودش off-screen را cull می‌کند →
+  virtualization زائد، **ساخته نشد**. «۴۵fps»ِ اولیه artifactِ sweepِ تهاجمیِ zoom-out بود
+  (+ یک فریمِ ترمینال که رفع شد). دلیلِ کامل در [`docs/perf-baseline.md`](docs/perf-baseline.md).
 
 **mini-map:** موکول به بعد از فاز ۴ (در TODO گام ۴٫۳ با `[!]` ثبت شد).
 
