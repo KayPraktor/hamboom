@@ -22,6 +22,7 @@ import {
  */
 
 interface BenchResult {
+  mode: string;
   sceneCount: number;
   avgFps: number;
   worstFps: number;
@@ -93,21 +94,23 @@ export function Bench() {
     "بوم آماده — یک اندازه را بزن (تبِ مرورگر باید جلو و دیده باشد).",
   );
   const [running, setRunning] = useState(false);
+  const [aggressive, setAggressive] = useState(true);
   const [result, setResult] = useState<BenchResult | null>(null);
 
   const run = useCallback(
-    async (target: number) => {
+    async (target: number, aggressive: boolean) => {
       const api = apiRef.current;
       if (!api || running) return;
       setRunning(true);
       setResult(null);
 
+      const modeLabel = aggressive ? "تهاجمی (zoom out)" : "واقع‌گرایانه (zoom ۱)";
       setStatus(`ساختِ ~${target} عنصر…`);
       await new Promise((r) => setTimeout(r, 30));
       api.updateScene({ elements: buildScene(target) as never, captureUpdate: "NEVER" });
       const sceneCount = api.getSceneElements().length;
       await new Promise((r) => setTimeout(r, 400)); // اولین رندر بنشیند
-      setStatus(`اندازه‌گیریِ pan/zoom روی ${sceneCount} عنصر (۴ ثانیه)…`);
+      setStatus(`اندازه‌گیریِ pan/zoom [${modeLabel}] روی ${sceneCount} عنصر (۴ ثانیه)…`);
 
       const DURATION = 4000;
       // هر فریم: مدت (dt) و زمانِ وقوع از شروع (at) — at برای توزیعِ زمانی لازم است.
@@ -116,19 +119,33 @@ export function Bench() {
         let last = performance.now();
         const start = last;
         const loop = (t: number) => {
-          frames.push({ dt: t - last, at: t - start });
+          const at = t - start;
+          // ★ فریمِ ترمینال (بعد از پایانِ پنجره) ثبت **نمی‌شود**: dtِ آن، فاصله‌ی
+          //   بعد از اندازه‌گیری است (teardown/زمان‌بندیِ آخرین rAF)، نه jankِ واقعی —
+          //   و قبلاً میانگین و «بدترین» را کج می‌کرد (فریمِ ~۱ثانیه‌ایِ آخر).
+          if (at >= DURATION) {
+            resolve();
+            return;
+          }
+          frames.push({ dt: t - last, at });
           last = t;
-          const p = (t - start) / 1000;
-          api.updateScene({
-            appState: {
-              scrollX: Math.sin(p * 2) * 600,
-              scrollY: Math.cos(p * 1.5) * 400,
-              zoom: { value: 1 + 0.25 * Math.sin(p) },
-            } as never,
-            captureUpdate: "NEVER",
-          });
-          if (t - start < DURATION) requestAnimationFrame(loop);
-          else resolve();
+          const p = at / 1000;
+          // تهاجمی: pan بزرگ + zoom out (عناصرِ زیادی روی صفحه). واقع‌گرایانه: zoom ۱،
+          // pan کوچک — همان تعدادِ عنصری که یک کاربرِ واقعی می‌بیند (~ده‌ها). این دو
+          // نشان می‌دهند jank از تعدادِ **روی صفحه** است یا از تعدادِ **کلِ** صحنه.
+          const appState = aggressive
+            ? {
+                scrollX: Math.sin(p * 2) * 600,
+                scrollY: Math.cos(p * 1.5) * 400,
+                zoom: { value: 1 + 0.25 * Math.sin(p) },
+              }
+            : {
+                scrollX: Math.sin(p * 2) * 250,
+                scrollY: Math.cos(p * 1.5) * 180,
+                zoom: { value: 1 },
+              };
+          api.updateScene({ appState: appState as never, captureUpdate: "NEVER" });
+          requestAnimationFrame(loop);
         };
         requestAnimationFrame((t) => {
           last = t;
@@ -156,6 +173,7 @@ export function Bench() {
       const worst = frames.reduce((m, f) => (f.dt > m.dt ? f : m), frames[0]!);
 
       const res: BenchResult = {
+        mode: modeLabel,
         sceneCount,
         avgFps,
         worstFps,
@@ -184,6 +202,27 @@ export function Bench() {
           <p className="hb-subtitle">هدفِ گام ۵٫۴: ۲۰۰۰ عنصر در pan/zoom بالای ۳۰fps</p>
         </div>
 
+        <div className="hb-style-group" role="group" aria-label="حالتِ pan">
+          <button
+            type="button"
+            className={`hb-style-chip${aggressive ? " is-selected" : ""}`}
+            aria-pressed={aggressive}
+            disabled={running}
+            onClick={() => setAggressive(true)}
+          >
+            تهاجمی (zoom out)
+          </button>
+          <button
+            type="button"
+            className={`hb-style-chip${!aggressive ? " is-selected" : ""}`}
+            aria-pressed={!aggressive}
+            disabled={running}
+            onClick={() => setAggressive(false)}
+          >
+            واقع‌گرایانه (zoom ۱)
+          </button>
+        </div>
+
         <div className="hb-style-group" role="group" aria-label="اندازه‌ی بنچمارک">
           {[1000, 2000, 3000, 5000].map((n) => (
             <button
@@ -191,7 +230,7 @@ export function Bench() {
               type="button"
               className="hb-style-chip"
               disabled={running}
-              onClick={() => void run(n)}
+              onClick={() => void run(n, aggressive)}
             >
               {n} عنصر
             </button>
@@ -202,6 +241,7 @@ export function Bench() {
           <ResultRow label="وضعیت" value={status} />
           {result ? (
             <>
+              <ResultRow label="حالت" value={result.mode} />
               <ResultRow label="عناصرِ صحنه" value={String(result.sceneCount)} />
               <ResultRow
                 label="FPS میانگین"
