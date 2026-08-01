@@ -35,9 +35,20 @@ test("Ctrl+C/Ctrl+V عناصر را کپی می‌کند و پیستِ دوبا�
   await expect.poll(() => sceneElementCount(page)).toBe(9);
 });
 
-// ⚠️ **cut/paste عمداً اینجا تست نشد — یک ناهنجاریِ واقعی پیدا شد که باید مالک بررسی کند.**
-//    برشِ N عنصر (Ctrl+X) صحنه را درست خالی می‌کند (→۰)، ولی Ctrl+V بعدش صرفِ‌نظر از N
-//    همیشه به **۲** می‌رسد (n=۱/۲/۳ همه → ۲؛ با contextِ تازه و عناصرِ جدا هم تکرارشد).
-//    copy/paste (بالا) تمیز round-trip می‌کند، پس ایراد در مسیرِ **cut→paste** است
-//    (احتمالاً تعاملِ کلیپ‌بوردِ سیستم در ابزار). چون تاییدِ صحتش نامعلوم است، تستِ
-//    cut نوشته نشد تا رفتارِ مشکوک codify نشود — گزارش به مالک برای بررسیِ clipboard-tool.
+test("Ctrl+X عناصر را می‌بُرد و Ctrl+V هر سه را برمی‌گرداند", async ({ page }) => {
+  await gotoDemo(page);
+  await threeRects(page);
+
+  await focusEngine(page);
+  await page.keyboard.press("Control+KeyA");
+  await expect.poll(() => selectedCount(page)).toBe(3);
+
+  // برش = کپی + حذف → صحنه خالی می‌شود.
+  await page.keyboard.press("Control+KeyX");
+  await expect.poll(() => sceneElementCount(page)).toBe(0);
+
+  // چسباندن → **هر سه** برمی‌گردند (نه یک استیکی). این همان باگی بود که با گرفتنِ
+  //   انتخاب در keydown (قبل از حذفِ موتور) رفع شد؛ این تست نگهبانِ رگرسیونش است.
+  await page.keyboard.press("Control+KeyV");
+  await expect.poll(() => sceneElementCount(page)).toBe(3);
+});

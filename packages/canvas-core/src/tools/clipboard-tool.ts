@@ -157,8 +157,13 @@ export function createClipboardTool(options: ClipboardToolOptions): ClipboardToo
     if (hasImage) return;
 
     const text = event.clipboardData?.getData("text/plain") ?? "";
-    // دادهٔ داخلیِ ما (token) → عناصر را paste کن.
-    if (store.length > 0 && text === token) {
+    // دادهٔ داخلیِ ما → عناصر را paste کن. دو نشانه‌ی «داخلی»:
+    //   ۱) token خودمان (مسیرِ copy).
+    //   ۲) فرمتِ کلیپ‌بوردِ خودِ Excalidraw. **چرا لازم است:** موتور روی Ctrl+X
+    //      (cut) کلیپ‌بورد را با فرمتِ خودش می‌نویسد و token ما را پاک می‌کند؛ بدونِ
+    //      این تشخیص، paste بعدِ cut متن را «خارجی» می‌پنداشت و به‌جای بازگرداندنِ
+    //      عناصر یک استیکی می‌ساخت (باگِ «cut→paste همیشه ۲»؛ با تستِ E2E گرفته شد).
+    if (store.length > 0 && (text === token || text.startsWith('{"type":"excalidraw/clipboard"'))) {
       event.preventDefault();
       event.stopImmediatePropagation();
       doPasteStore();
@@ -172,6 +177,19 @@ export function createClipboardTool(options: ClipboardToolOptions): ClipboardToo
     }
   };
 
+  // ★ Ctrl+X را در **keydownِ capture روی document** هم می‌گیریم تا store را **قبل**
+  //   از حذفِ موتور پر کنیم. موتور صفحه‌کلید را روی خودِ canvas گوش می‌دهد (تله‌ی
+  //   ثبت‌شده)، پس در فاز capture، این listenerِ document زودتر از موتور اجرا می‌شود.
+  //   بدونِ این، موتور روی Ctrl+X انتخاب را حذف می‌کند و رویدادِ `cut`ِ ما دیرتر می‌رسد
+  //   که دیگر چیزی برای grab نمانده — store خالی می‌ماند و paste یک استیکی می‌ساخت.
+  //   (copy این مشکل را ندارد چون حذفی در کار نیست؛ onCopy خودش grab می‌کند.)
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (isTyping(event.target)) return;
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+    if (event.key === "x" || event.key === "X") grab();
+  };
+
+  root?.addEventListener("keydown", onKeyDown as EventListener, { capture: true });
   root?.addEventListener("copy", onCopy as EventListener, { capture: true });
   root?.addEventListener("cut", onCut as EventListener, { capture: true });
   root?.addEventListener("paste", onPaste as EventListener, { capture: true });
@@ -184,6 +202,7 @@ export function createClipboardTool(options: ClipboardToolOptions): ClipboardToo
     pasteFromStore: doPasteStore,
     hasClip: () => store.length > 0,
     destroy: () => {
+      root?.removeEventListener("keydown", onKeyDown as EventListener, { capture: true });
       root?.removeEventListener("copy", onCopy as EventListener, { capture: true });
       root?.removeEventListener("cut", onCut as EventListener, { capture: true });
       root?.removeEventListener("paste", onPaste as EventListener, { capture: true });

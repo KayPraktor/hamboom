@@ -4,14 +4,14 @@
 **گام فعلی: ★ M1 تحویل‌شدنی — فازهای ۰–۶ کامل (۶٫۱ و ۶٫۲ بسته شد).** بوم، متنِ فارسی،
 مدلِ داده + قراردادِ sync، عناصر، رابطِ RTL، تعامل/صیقل، کارایی، و تحویل (تست+مستند+
 آماده‌سازیِ M2) همه انجام شد. **گپ‌های ثبت‌شده برای بعد:** G-1 (تستِ دو-نمونه‌ایِ sync — خارج
-از دامنه، پیش‌نیازش binderِ M2)، mini-map و copy-as-PNG (موکول)، و **ناهنجاریِ cut/paste**
-(نیاز به بررسیِ مالک — پایین). **کارایی: ۲۰۰۰ عنصر ۱۴۴fps، صفر jank؛ culling رد شد چون
+از دامنه، پیش‌نیازش binderِ M2)، mini-map و copy-as-PNG (موکول)، و **ریسکِ StrictMode برای M3**
+([ADR-028](ARCHITECTURE_DECISIONS.md#adr-028) — پایین). **کارایی: ۲۰۰۰ عنصر ۱۴۴fps، صفر jank؛ culling رد شد چون
 O(visible) است** ([`docs/perf-baseline.md`](docs/perf-baseline.md)).
 پله‌ی [ADR-003](ARCHITECTURE_DECISIONS.md#adr-003): **A** (بسته npm، بدون patch/fork).
 
-**۵۶۰ تستِ واحد + ۱۵ تستِ E2E سبز** (واحد: ۴۴ shared-types، ۴۷۴ canvas-core، ۴۲ i18n).
+**۵۶۰ تستِ واحد + ۱۶ تستِ E2E سبز** (واحد: ۴۴ shared-types، ۴۷۴ canvas-core، ۴۲ i18n).
 `typecheck` · `lint` · `lint:css` · `format:check` · `license:check` (self-test ۱۷/۱۷ +
-۶۸۱ پکیج) · پوششِ `elements/`+`text/`+`sync/` ≥۶۰٪ (گیتِ threshold) · E2E ۱۵/۱۵ (Chromium) —
+۶۸۱ پکیج) · پوششِ `elements/`+`text/`+`sync/` ≥۶۰٪ (گیتِ threshold) · E2E ۱۶/۱۶ (Chromium) —
 همه سبز. درخت git تمیز، همه‌چیز کامیت شده.
 
 ## ★ خلاصه‌ی تحویلِ M1 (گام ۶٫۲)
@@ -444,10 +444,16 @@ cut از `deleteElements`، defer تصویر به image-tool). منو و Ctrl+C/
   می‌پذیرد — **box-select**، **Shift+Click** (افزودن/کم‌کردن)، **گروه‌بندی** (Ctrl+G/Ctrl+Shift+G
   با بررسیِ groupIds)، **snap** (درگ نزدیکِ عنصر → مختصاتِ نهاییْ دقیقاً چسبیده، نه نزدیک)، و
   **کپی/پیستِ کلیپ‌بورد** (Ctrl+C/V، آبشاری؛ با دسترسیِ کلیپ‌بوردِ Playwright).
-- **⚠️ ناهنجاریِ cut/paste (برای بررسیِ مالک):** copy/paste تمیز است، ولی **Ctrl+X سپس Ctrl+V،
-  صرفِ‌نظر از تعدادِ عناصرِ بریده‌شده، همیشه به ۲ می‌رسد** (n=۱/۲/۳ همه → ۲؛ پایدار و تکرارپذیر).
-  ایراد در مسیرِ cut→paste ابزارِ کلیپ‌بورد است (احتمالاً تعاملِ کلیپ‌بوردِ سیستم). تستِ cut
-  نوشته نشد تا رفتارِ مشکوک codify نشود — گزارش شد تا مالک `clipboard-tool` را بررسی کند.
+- **✅ باگِ cut/paste رفع شد (قبلاً ناهنجار بود):** ریشه — موتور Ctrl+X را روی canvas می‌گرفت و
+  انتخاب را **قبل از** رویدادِ `cut`ِ ابزار حذف می‌کرد؛ پس `grab()` خالی می‌ماند و کلیپ‌بورد
+  فرمتِ خودِ Excalidraw را داشت → paste یک استیکی (۲) می‌ساخت. رفع: (۱) گرفتنِ انتخاب در
+  **keydownِ capture** (قبل از حذفِ موتور)؛ (۲) شناختنِ فرمتِ کلیپ‌بوردِ Excalidraw به‌عنوان
+  داخلی در paste. حالا cut(N)→paste(N). تستِ cut به harness اضافه شد (۱۶ تستِ E2E).
+- **★ ریسکِ StrictMode ثبت شد ([ADR-028](ARCHITECTURE_DECISIONS.md#adr-028)):** برداشتنِ StrictMode
+  از دمو فقط دور زدن بود؛ ناسازگاریِ StrictMode با APIِ امریِ Excalidraw یک **ریسکِ واقعیِ
+  مصرف‌کننده** است (apps/web در M3 احتمالاً StrictMode دارد). ADR-028 مکانیزم، راهِ‌حلِ نامزدِ
+  **تاییدنشده** (اشتراک در `useEffect([api])` نه onReady)، و نگهبان (همان تستِ refreshCounts) را
+  ثبت می‌کند تا M2/M3 غافلگیر نشوند.
 - **یافته‌های ثبت‌شده (تا کسی دوباره تلاش نکند):** `getImageData` روی canvasِ GPUـیِ موتور
   بلانک است (اسکرین‌شاتِ Playwright کار می‌کند، خواندنِ مستقیم نه)؛ اثرِ خودِ `ctx.direction`
   در این Chromium پیکسلی سنجش‌پذیر نیست؛ golden از canvas به‌خاطرِ seedِ تازه‌ی rough.js
