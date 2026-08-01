@@ -34,6 +34,51 @@ export async function sceneElementCount(page: Page): Promise<number> {
   });
 }
 
+/**
+ * کانتینرِ excalidraw را صریح focus می‌کند تا کیبورد به موتور برسد.
+ * ★ تله‌ی ثبت‌شده: موتور صفحه‌کلید را روی کانتینرِ خودش گوش می‌دهد نه document، و
+ * کلیکِ برنامه‌ایِ ماوس این focus را برقرار نمی‌کند. در مرورگرِ واقعی بعدِ تعاملِ
+ * کاربر خودکار است؛ اینجا صریح می‌کنیمش.
+ */
+export async function focusEngine(page: Page): Promise<void> {
+  await page.locator(".excalidraw-container").evaluate((el) => {
+    (el as HTMLElement).tabIndex = -1;
+    (el as HTMLElement).focus();
+  });
+}
+
+/** تعدادِ عناصرِ انتخاب‌شده از appStateِ موتور. */
+export async function selectedCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const w = window as unknown as {
+      __hbApi?: { getAppState(): { selectedElementIds?: Record<string, boolean> } };
+      __api?: { getAppState(): { selectedElementIds?: Record<string, boolean> } };
+    };
+    const api = w.__hbApi ?? w.__api;
+    if (!api) return -1;
+    return Object.keys(api.getAppState().selectedElementIds ?? {}).length;
+  });
+}
+
+/**
+ * کدام بخش‌های شرطیِ پنلِ استایل الان دیده می‌شوند.
+ * ★ تطبیق روی «ترازی»/«توزیع» (بدونِ ZWNJ) تا سلکتورِ CSS با نیم‌فاصله‌ی aria-label
+ * درگیر نشود — «هم‌ترازی» یک U+200C دارد که مطابقتِ رشته‌ای را می‌شکند.
+ */
+export async function panelSections(page: Page): Promise<{ align: boolean; distribute: boolean }> {
+  return page.evaluate(() => {
+    const p = document.querySelector(".hb-style-panel");
+    if (!p) return { align: false, distribute: false };
+    const labels = [...p.querySelectorAll("[aria-label]")].map(
+      (e) => e.getAttribute("aria-label") ?? "",
+    );
+    return {
+      align: labels.some((l) => l.includes("ترازی")),
+      distribute: labels.some((l) => l.includes("توزیع")),
+    };
+  });
+}
+
 /** خطِ راهنما: هیچ دو مستطیلی نباید همپوشانی داشته باشند (نگهبانِ ADR-027). */
 export function rectsOverlap(
   a: { x: number; y: number; width: number; height: number },

@@ -85,6 +85,9 @@ Playwright یک Chromiumِ **واقعی** اجرا می‌کند که composite 
 | **golden از canvas ناپایدار است** | rough.js هر شکل را با seedِ تازه می‌کشد → diff بینِ اجراها | golden فقط برای رابطِ **CSSـیِ قطعی** (مثلِ پالت)؛ برای canvas از ادعای رفتاری استفاده کن |
 | **کلیکِ ماوس روی canvas، کیبورد را به موتور نمی‌رساند** | `Ctrl+Z` بعد از کلیک بی‌اثر است (undo کار نمی‌کند) با اینکه activeElement کانتینر است | کانتینرِ `.excalidraw-container` را **صریح focus** کن، بعد `page.keyboard.press("Control+KeyZ")` |
 | **canvasِ وصل‌نشده `ctx.direction` را نادیده می‌گیرد** | canvasِ `createElement`نشده در DOM، در هدلس direction را اعمال نمی‌کند | برای probeِ رندر، canvas را به DOM append کن |
+| **StrictMode + APIِ امریِ Excalidraw ناسازگارند** | StrictMode موتور را دوبار mount/unmount می‌کند؛ بعدش `onChange → setSnapshot` مرده می‌مانَد و پنل با **هیچ** انتخابِ موتوری به‌روز نمی‌شود (منطقِ refreshCounts درست است). لغوِ listener درمانش نکرد | دموی امری را در `<StrictMode>` نپیچان (`dev/main.tsx`)؛ اپِ اصلی StrictMode را روی کامپوننت‌های خودش داشته باشد |
+| **کیبوردِ `Escape` انتخاب را در این نسخه پاک نمی‌کند** | `press("Escape")` بعد از انتخاب، selection را صفر نمی‌کند | برای لغوِ انتخاب، روی فضای خالیِ بوم کلیک کن |
+| **سلکتورِ aria-labelِ فارسی با نیم‌فاصله (ZWNJ) match نمی‌شود** | `[aria-label='هم‌ترازی افقی']` چیزی پیدا نمی‌کند چون U+200C در رشته هست | با `page.evaluate` روی زیررشته‌ی بدونِ ZWNJ («ترازی»/«توزیع») تطبیق بده |
 
 ## نکات فنی
 
