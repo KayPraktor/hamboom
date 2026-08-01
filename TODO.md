@@ -795,11 +795,18 @@ versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `fact
       لایسنسِ درختِ وابستگی (snapshotِ `pnpm license:list`، هر ۶۷۸ پکیج بر حسبِ لایسنس) +
       توضیحِ لایسنس‌های بیرونِ هسته‌ی پنج‌گانه (OFL برای فونت، dualها، public-domainها).
 
-### گام ۶٫۲ — آماده‌سازی برای M2
-- [ ] چک کن `canvas-core` **هیچ import ای** از شبکه، Yjs، یا `@hamboom/sdk` ندارد
-- [ ] `local-adapter` به‌عنوان مرجع پیاده‌سازی، کامنت‌گذاری کامل شده باشد
-- [ ] فهرست صریح «چیزی که M2 باید پیاده کند» در `sync/README.md`
-- [ ] `PROGRESS.md` نهایی: چه چیزی ساخته شد، چه محدودیت‌هایی ماند، کدام پله‌ی ADR-003 هستیم
+### گام ۶٫۲ — آماده‌سازی برای M2 ✅ (۱۴۰۵/۰۵/۰۷)
+- [x] **canvas-core هیچ import شبکه/Yjs/sdk ندارد** — با grep تایید شد (yjs، y-*، @hamboom/sdk،
+      @hamboom/storage، @hamboom/auth-core، axios، ws، socket + fetch/WebSocket/XHR/EventSource:
+      صفر مورد در `src/`). و **گیتِ دائمی**: `canvasCoreBoundaries()` در
+      [`eslint.config.js`](packages/canvas-core/eslint.config.js) این import‌ها را خطا می‌کند.
+- [x] **local-adapter مرجعِ کامنت‌گذاری‌شده** — [`sync/local-adapter.ts`](packages/canvas-core/src/sync/local-adapter.ts)
+      از گام ۲٫۲ با JSDocِ کامل «مرجعِ پیاده‌سازی برای M2» + نگهبانِ echo + تگ‌گذاریِ origin
+      + وضعیتِ اتصال/ذخیره. مرور شد؛ کافی است.
+- [x] **فهرستِ «M2 باید پیاده کند»** — در [`sync/README.md`](packages/canvas-core/src/sync/README.md)
+      (۱۰ مورد + گپ‌های G-1/G-2). در این گام به‌روز شد: G-2 ✅ (۶٫۱)، و اینکه زیرساختِ E2E
+      برای نیمه‌ی رندرِ حضورِ G-1 آماده است.
+- [x] **PROGRESS.md نهایی** — خلاصه‌ی تحویلِ M1 (چه ساخته شد / محدودیت‌ها / پله‌ی ADR-003 = A).
 
 ---
 
