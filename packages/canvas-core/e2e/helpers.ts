@@ -79,6 +79,177 @@ export async function panelSections(page: Page): Promise<{ align: boolean; distr
   });
 }
 
+interface EngineApi {
+  getAppState(): {
+    scrollX: number;
+    scrollY: number;
+    zoom: { value: number };
+    selectedElementIds?: Record<string, boolean>;
+  };
+  getSceneElements(): Array<{
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    isDeleted?: boolean;
+    groupIds?: string[];
+  }>;
+  scrollToContent(els: unknown, opts: { fitToContent: boolean; animate: boolean }): void;
+  updateScene(data: { elements: unknown; captureUpdate: string }): void;
+}
+
+/**
+ * عناصرِ زنده را در یک ردیفِ افقیِ **بدونِ همپوشانی** بچین و وسط بیاور — تا کلیکِ
+ * دقیق روی هر کدام ممکن شود (سازنده‌های دمو عناصر را تصادفی نزدیکِ مبدأ می‌گذارند
+ * که روی هم می‌افتند و کلیکِ دقیق را ناممکن می‌کنند). NEVER چون ژستِ کاربر نیست.
+ */
+export async function spreadElementsInRow(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __hbApi?: EngineApi; __api?: EngineApi };
+    const api = (w.__hbApi ?? w.__api)!;
+    const els = api.getSceneElements().filter((e) => !e.isDeleted);
+    // پرکردنِ رنگ لازم است: شکلِ بدونِ پر فقط با کلیک روی **لبه** انتخاب می‌شود، نه
+    // مرکزِ توخالی — پس برای کلیکِ قابلِ‌اتکا در مرکز، یک پس‌زمینه می‌دهیم.
+    api.updateScene({
+      elements: els.map((e, i) => ({ ...e, x: i * 400, y: 0, backgroundColor: "#a5d8ff" })),
+      captureUpdate: "NEVER",
+    });
+    api.scrollToContent(api.getSceneElements(), { fitToContent: true, animate: false });
+  });
+  await page.waitForTimeout(300);
+}
+
+/** جعبه‌ی محیطیِ همه‌ی عناصرِ زنده در مختصاتِ **صفحه** — برای box-select با ماوس. */
+async function sceneUnionBox(page: Page) {
+  return page.evaluate(() => {
+    const w = window as unknown as { __hbApi?: EngineApi; __api?: EngineApi };
+    const api = (w.__hbApi ?? w.__api)!;
+    const st = api.getAppState();
+    const r = document.querySelector("canvas.excalidraw__canvas.static")!.getBoundingClientRect();
+    const z = st.zoom.value;
+    const a = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    for (const e of api.getSceneElements().filter((x) => !x.isDeleted)) {
+      const sx = r.left + (e.x + st.scrollX) * z;
+      const sy = r.top + (e.y + st.scrollY) * z;
+      a.minX = Math.min(a.minX, sx);
+      a.minY = Math.min(a.minY, sy);
+      a.maxX = Math.max(a.maxX, sx + e.width * z);
+      a.maxY = Math.max(a.maxY, sy + e.height * z);
+    }
+    return a;
+  });
+}
+
+/** مرکزِ صفحه‌ایِ همه‌ی عناصرِ زنده — برای کلیک/Shift+کلیک. */
+export async function elementCenters(page: Page): Promise<Array<{ x: number; y: number }>> {
+  return page.evaluate(() => {
+    const w = window as unknown as { __hbApi?: EngineApi; __api?: EngineApi };
+    const api = (w.__hbApi ?? w.__api)!;
+    const st = api.getAppState();
+    const r = document.querySelector("canvas.excalidraw__canvas.static")!.getBoundingClientRect();
+    const z = st.zoom.value;
+    return api
+      .getSceneElements()
+      .filter((e) => !e.isDeleted)
+      .map((e) => ({
+        x: r.left + (e.x + e.width / 2 + st.scrollX) * z,
+        y: r.top + (e.y + e.height / 2 + st.scrollY) * z,
+      }));
+  });
+}
+
+/** همه‌ی محتوا را وسط بیاور، بعد با یک درگِ ماوس دورشان کادر بکش (box-select). */
+export async function boxSelectEverything(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __hbApi?: EngineApi; __api?: EngineApi };
+    const api = (w.__hbApi ?? w.__api)!;
+    api.scrollToContent(api.getSceneElements(), { fitToContent: true, animate: false });
+  });
+  await page.waitForTimeout(300);
+  const b = await sceneUnionBox(page);
+  await page.mouse.move(b.minX - 30, b.minY - 30);
+  await page.mouse.down();
+  await page.mouse.move(b.maxX + 30, b.maxY + 30, { steps: 10 });
+  await page.mouse.up();
+}
+
+/** عناصرِ زنده را در موقعیت‌های داده‌شده بگذار (با پر، برای کلیک/درگِ قابلِ‌اتکا) و وسط بیاور. */
+export async function placeElements(
+  page: Page,
+  positions: Array<{ x: number; y: number }>,
+): Promise<void> {
+  await page.evaluate((pos) => {
+    const w = window as unknown as { __hbApi?: EngineApi; __api?: EngineApi };
+    const api = (w.__hbApi ?? w.__api)!;
+    const els = api.getSceneElements().filter((e) => !e.isDeleted);
+    api.updateScene({
+      elements: els.map((e, i) => ({
+        ...e,
+        x: pos[i]?.x ?? e.x,
+        y: pos[i]?.y ?? e.y,
+        backgroundColor: "#a5d8ff",
+      })),
+      captureUpdate: "NEVER",
+    });
+    api.scrollToContent(api.getSceneElements(), { fitToContent: true, animate: false });
+  }, positions);
+  await page.waitForTimeout(400);
+}
+
+/** x‌های گردشده‌ی همه‌ی عناصرِ زنده (به ترتیبِ صحنه). */
+export async function elementXs(page: Page): Promise<number[]> {
+  return page.evaluate(() => {
+    const w = window as unknown as { __hbApi?: EngineApi; __api?: EngineApi };
+    const api = (w.__hbApi ?? w.__api)!;
+    return api
+      .getSceneElements()
+      .filter((e) => !e.isDeleted)
+      .map((e) => Math.round(e.x));
+  });
+}
+
+/** عنصرِ شماره‌ی `index` را با درگِ ماوس به اندازه‌ی (dx,dy) در مختصاتِ **صحنه** جابه‌جا کن. */
+export async function dragElementBy(
+  page: Page,
+  index: number,
+  dxScene: number,
+  dyScene: number,
+): Promise<void> {
+  const d = await page.evaluate((i) => {
+    const w = window as unknown as { __hbApi?: EngineApi; __api?: EngineApi };
+    const api = (w.__hbApi ?? w.__api)!;
+    const st = api.getAppState();
+    const r = document.querySelector("canvas.excalidraw__canvas.static")!.getBoundingClientRect();
+    const z = st.zoom.value;
+    const e = api.getSceneElements().filter((x) => !x.isDeleted)[i]!;
+    return {
+      cx: r.left + (e.x + e.width / 2 + st.scrollX) * z,
+      cy: r.top + (e.y + e.height / 2 + st.scrollY) * z,
+      z,
+    };
+  }, index);
+  await page.mouse.move(d.cx, d.cy);
+  await page.mouse.down();
+  await page.mouse.move(d.cx + dxScene * d.z, d.cy + dyScene * d.z, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+}
+
+/** شناسه‌ی گروه‌هایی که عناصرِ انتخاب‌شده به آن‌ها تعلق دارند. */
+export async function selectedGroupIds(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const w = window as unknown as { __hbApi?: EngineApi; __api?: EngineApi };
+    const api = (w.__hbApi ?? w.__api)!;
+    const sel = api.getAppState().selectedElementIds ?? {};
+    const gids = new Set<string>();
+    for (const e of api.getSceneElements()) {
+      if (sel[e.id]) for (const g of e.groupIds ?? []) gids.add(g);
+    }
+    return [...gids];
+  });
+}
+
 /** خطِ راهنما: هیچ دو مستطیلی نباید همپوشانی داشته باشند (نگهبانِ ADR-027). */
 export function rectsOverlap(
   a: { x: number; y: number; width: number; height: number },

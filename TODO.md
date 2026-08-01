@@ -746,13 +746,22 @@ versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `fact
       `getImageData` روی canvasِ GPUـیِ موتور سفیدِ خالی می‌دهد؛ اثرِ خودِ `ctx.direction`
       در این Chromium پیکسلی سنجش‌پذیر نیست؛ golden از canvas به‌خاطرِ seedِ تازه‌ی rough.js
       ناپایدار است — جزئیات در سرِ فایلِ spec.
-- [x] **harnessِ E2E (رگرسیونِ بصری/تعاملی) — ✅ افزوده شد.** Playwright + `webServer`ِ دمو
-      ([`playwright.config.ts`](packages/canvas-core/playwright.config.ts))؛ `pnpm --filter
-      @hamboom/canvas-core test:e2e`. ۹ تستِ سبز و پایدار در مرورگرِ واقعی — همان صفِ موارد
-      که تا حالا «فقط تاییدِ چشمیِ مالک» بودند: پالت (golden)، نوار ابزار (۱۱ + aria)، نوار
-      وضعیت/zoomِ فارسی، **نگهبانِ همپوشانیِ ADR-027**، صفر خطای کنسول، و **تعاملِ trusted**:
-      ساختِ گروهی + **undo/redoِ خودِ موتور با کیبورد** (harnessِ undo که از ۵٫۲/۳ موکول بود)
-      و میانبرِ N. (کِشِش به align/box-select/group/snap/clipboard قدمِ بعدیِ آسانِ همین harness است.)
+- [x] **harnessِ E2E (رگرسیونِ بصری/تعاملی) — ✅ افزوده و کامل شد.** Playwright + `webServer`ِ
+      دمو ([`playwright.config.ts`](packages/canvas-core/playwright.config.ts))؛ `pnpm --filter
+      @hamboom/canvas-core test:e2e`. **۱۵ تستِ سبز و پایدار** در مرورگرِ واقعی — کلِ صفِ
+      موارد که تا حالا «فقط تاییدِ چشمیِ مالک» بودند:
+  - **بصری/رابط:** پالت (golden)، نوار ابزار (۱۱ + aria)، نوار وضعیت/zoomِ فارسی،
+        **نگهبانِ همپوشانیِ ADR-027**، صفر خطای کنسول.
+  - **★ نگهبانِ refreshCounts:** multi-select → بخشِ هم‌ترازی/توزیع (کدِ هرگز خودکار
+        اجرانشده) — **و یک باگِ StrictMode را گرفت** (رفع در `dev/main.tsx`).
+  - **تعاملِ trusted:** box-select، Shift+Click، گروه‌بندی (Ctrl+G/Ctrl+Shift+G)، snap
+        (مختصاتِ دقیقِ چسبیدن)، ساختِ گروهی + **undo/redoِ کیبوردیِ موتور** (harnessِ undo)،
+        میانبرِ N، و **کپی/پیستِ کلیپ‌بورد** (Ctrl+C/V، آبشاری).
+- [!] **cut/paste (Ctrl+X→Ctrl+V): ناهنجاری پیدا شد — نیاز به بررسیِ مالک.** copy/paste تمیز
+      round-trip می‌کند، ولی برشِ N عنصر و سپس پیست، صرفِ‌نظر از N، همیشه به **۲** می‌رسد
+      (n=۱/۲/۳ همه؛ با contextِ تازه و عناصرِ جدا هم تکرارشد). ایراد در مسیرِ **cut→paste**
+      ابزارِ کلیپ‌بورد است (احتمالاً تعاملِ کلیپ‌بوردِ سیستم). تستِ cut عمداً نوشته نشد تا
+      رفتارِ مشکوک codify نشود؛ توضیح در سرِ `e2e/clipboard.spec.ts`.
 - [!] **G-1 (از گام ۲٫۲ + حضورِ ۴٫۴): بلوکه — پیش‌نیازش binderِ M2 است.**
       تست دو-نمونه‌ای با بوم **واقعی** (دو `<HamboomCanvas>` با یک آداپتور). **خارج از
       دامنه‌ی M1:** شبکه/Yjs/binder کارِ M2 است، پس این تست در M1 اصلاً قابلِ نوشتن نیست
