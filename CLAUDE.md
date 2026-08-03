@@ -10,7 +10,7 @@
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۲۲ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
 | [TODO.md](TODO.md) | گام‌های ماژول فعال (الان: `realtime-sync`) با معیار پذیرش |
-| [TODO-M1-canvas-core.md](TODO-M1-canvas-core.md) | بایگانیِ TODOِ M1 (تمام‌شده) — مرجعِ تاریخی |
+| [TODO-M1-canvas-core.md](TODO-M1-canvas-core.md) · [PROGRESS-M1-canvas-core.md](PROGRESS-M1-canvas-core.md) | بایگانیِ M1 (تمام‌شده) — مرجعِ تاریخی |
 | [docs/iranian-miro-spec.md](docs/iranian-miro-spec.md) | سند محصول |
 
 ## اصول غیرقابل‌مذاکره
@@ -49,8 +49,10 @@ pnpm format
 ## وضعیت فعلی
 
 - **ماژول فعال:** M2 — `realtime-sync` (تازه شروع شده)
-- **گام بعدی:** ۰٫۱ — نوشتنِ ADR-029/030/031 برای پنج تصمیمِ مرزیِ D-1 تا D-5 که مالک در
-  ۱۴۰۵/۰۵/۱۲ تایید کرد (جدولِ صدرِ [TODO.md](TODO.md)). بعدش ۰٫۲ (اسکلت + گیتِ مرزها).
+- **گام بعدی:** ۰٫۲ — اسکلتِ `ydoc-schema` / `canvas-sync` / `apps/realtime` + گیتِ مرزها.
+  گام ۰٫۱ (ADR-029/030/031 برای تصمیم‌های D-1 تا D-5) تمام شد.
+- **دروازه‌ی فاز ۱:** تا probeِ StrictMode (گام ۱٫۱) سبز نشود، **هیچ خطی از binder نوشته
+  نمی‌شود** ([ADR-028](ARCHITECTURE_DECISIONS.md#adr-028)).
 - **قیدِ فعال:** M2 باید **بدون هیچ تغییری در `shared-types`** تمام شود — شکلِ claimهای
   `rtToken` عمداً داخلِ پورتِ `BoardAuthority` می‌ماند. اگر لازم شد، **متوقف شو و بپرس**.
 - **M1 تمام و تحویل‌شده:** فازهای ۰ تا ۶ کامل. گپِ بازِ ارث‌رسیده: **G-1** (تستِ دو-نمونه‌ای
