@@ -1,835 +1,615 @@
-# TODO.md — ماژول M1: `canvas-core`
+# TODO.md — ماژول M2: `realtime-sync`
 
 > **این فایل برای اجرا با `/loop` در یک session جداست.**
 >
-> **قبل از شروع بخوان:** [PLAN.md](PLAN.md) بخش‌های ۲، ۷ و ۸ + [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) (به‌ویژه ADR-003، ADR-007، ADR-010، ADR-016، ADR-017، ADR-022).
+> **قبل از شروع بخوان:** [PLAN.md](PLAN.md) بخش‌های ۵٫۳ (پروتکل WebSocket)، ۶ (جدول‌های
+> `board_updates` و `board_snapshots`)، ۷ (مدل Yjs) و ۸ + [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)
+> — به‌ویژه ADR-004، ADR-006، ADR-007، ADR-008، ADR-009، ADR-012، ADR-021، ADR-022،
+> ADR-026، ADR-028 — و ★ [`packages/canvas-core/src/sync/README.md`](packages/canvas-core/src/sync/README.md)
+> که **سند تحویلِ M1 به همین ماژول** است.
 >
-> **دامنه:** `packages/canvas-core/` و پکیج‌های پشتیبانش. این ماژول **هیچ کد شبکه، احراز هویت یا Yjs** ندارد.
-> بوم باید کاملاً آفلاین کار کند و از طریق یک آداپتور با دنیای بیرون حرف بزند.
+> **TODOِ ماژول قبلی (M1 — تمام و تحویل‌شده):** [TODO-M1-canvas-core.md](TODO-M1-canvas-core.md)
 >
-> **خروجی نهایی:** یک دمو لوکال (`pnpm --filter @hamboom/canvas-core dev`) که در آن می‌شود
-> استیکی فارسی ساخت، کانکتور کشید، فریم درست کرد، و همه‌چیز RTL و فارسی است — **بدون هیچ سروری**.
+> **دامنه:** `packages/ydoc-schema/`، `packages/canvas-sync/`، `apps/realtime/` و یک برشِ
+> **حداقلی** از زیرساخت. این ماژول **هیچ فایلی در `packages/canvas-core/` را تغییر نمی‌دهد**
+> به‌جز موارد صریحِ گام ۶٫۴ (بستنِ گپ G-1 در مستندات).
+>
+> **خروجی نهایی:** `docker compose up -d && pnpm dev` → دو تبِ مرورگر روی یک بورد؛ تغییر در
+> یکی فوراً در دیگری؛ مکان‌نما/انتخاب/حضور زنده؛ `Ctrl+Z` فقط کار خودت را برمی‌گرداند؛ بستن و
+> بازکردنِ تب سند را از دیتابیس برمی‌گرداند؛ قطعِ شبکه کار را از دست نمی‌دهد — **بدون هیچ حسابِ
+> ابری و بدون هیچ سرویسِ خارجی** (P2/P3).
 
 ---
 
 ## قوانین اجرای loop
 
-1. **ترتیب را رعایت کن.** گام‌ها به هم وابسته‌اند. گام ۲ دروازه‌ی کل ماژول است.
-2. **بعد از هر گام:** `pnpm typecheck && pnpm lint && pnpm --filter @hamboom/canvas-core test` باید سبز باشد.
-3. **تیک زدن فقط بعد از تحقق «معیار پذیرش».** اگر معیار محقق نشد، ننویس «انجام شد».
-4. **هیچ dependency ای اضافه نکن** مگر لایسنسش MIT/Apache-2.0/BSD/ISC باشد. لایسنس را چک کن و در `docs/dependencies.md` ثبت کن.
-5. **هیچ فایلی خارج از `packages/canvas-core/`، `packages/shared-types/`، `packages/ui/`، `packages/i18n/` و ریشه‌ی پیکربندی دست نزن** — بقیه‌ی ماژول‌ها مال session های دیگرند.
-6. **تغییر `packages/shared-types` نیاز به تایید مالک دارد** (ADR-021). اگر لازم شد، پیشنهاد را در `PROGRESS.md` بنویس و **متوقف شو**.
-7. **پایان هر session:** `PROGRESS.md` را با «چه شد / چه تصمیمی گرفتم / قدم بعد» به‌روز کن.
-8. اگر گامی **بلوکه شد**، آن را با `[!]` علامت بزن، دلیل را بنویس، و به گام بعدیِ مستقل برو — کل loop را متوقف نکن.
+۱. **ترتیب را رعایت کن.** گام‌ها به هم وابسته‌اند. **فاز ۰ و فاز ۱ دروازه‌ی کل ماژول‌اند** —
+   تصمیم‌های مرزی (D-1..D-5) پاسخ گرفته‌اند، ولی **تا سبزشدنِ سه probeِ فاز ۱ هیچ کدِ محصولی
+   نوشته نمی‌شود** — به‌ویژه گام ۱٫۱ که دروازه‌ی کلِ binder است.
+۲. **بعد از هر گام:** `pnpm typecheck && pnpm lint && pnpm test` باید سبز باشد.
+۳. **تیک زدن فقط بعد از تحققِ «معیار پذیرش».** اگر محقق نشد، ننویس «انجام شد».
+۴. **هیچ dependency ای اضافه نکن** مگر لایسنسش MIT/Apache-2.0/BSD/ISC/0BSD باشد؛ بعد از هر
+   افزودن `pnpm license:check` و ثبت در `docs/dependencies.md` (P1).
+۵. **فایل‌های خارج از دامنه را دست نزن.** `packages/canvas-core/`، `packages/i18n/`،
+   `packages/shared-types/src/` مالِ ماژول‌های دیگرند.
+۶. **تغییر `packages/shared-types` نیاز به تایید مالک دارد** (ADR-021). پیشنهاد را در
+   `PROGRESS.md` بنویس و **متوقف شو**. ★ **قیدِ صریحِ مالک (۱۴۰۵/۰۵/۱۲):** این ماژول قرار است
+   **بدونِ هیچ تغییری در `shared-types`** تمام شود. اگر جایی به نظر رسید مجبوری دست بزنی،
+   یعنی از تعریفِ تصمیم‌های تاییدشده خارج شده‌ای — **قبلش بپرس**، خودت جلو نرو.
+۷. **پایان هر session:** `PROGRESS.md` را با «چه شد / چه تصمیمی گرفتم / قدم بعد» به‌روز کن.
+۸. اگر گامی **بلوکه شد**، با `[!]` علامت بزن، دلیل بنویس، و به گام مستقلِ بعدی برو —
+   کل loop را متوقف نکن.
+۹. **درسِ بزرگِ M1 را تکرار کن: اول probe، بعد کد.** هر جا رفتارِ Yjs/موتور/شبکه فرض شده،
+   قبل از نوشتنِ منطق با یک آزمایشِ کوچکِ واقعی ثابتش کن. در M1 این الگو (گام‌های ۳٫۲، ۳٫۵،
+   ۳٫۶، ۵٫۱) چند روز کارِ دورریختنی را حذف کرد.
+۱۰. **یک گیتِ آزموده‌نشده گیت نیست.** هر قاعده‌ی ESLint با `RuleTester`، هر گیتِ اسکریپتی با
+   `--self-test`، هر threshold با یک اجرای عمداً شکست‌خورده تایید شود.
 
 ---
 
-## فاز ۰ — اسکلت (تخمین: ۰٫۵ روز)
+## ★ سه چیزی که از M1 به این ماژول ارث رسیده
 
-### گام ۰٫۱ — راه‌اندازی مونوریپو ✅ (۱۴۰۵/۰۴/۳۱)
-- [x] `pnpm-workspace.yaml` با `apps/*` و `packages/*`
-- [x] `turbo.json` با task های `build`, `dev`, `lint`, `typecheck`, `test` و وابستگی `^build`
-- [x] `tsconfig.base.json`: `strict: true`, `noUncheckedIndexedAccess: true`, `moduleResolution: "bundler"`, `target: ES2022`
-- [x] `packages/tsconfig` و `packages/eslint-config` به‌عنوان پکیج‌های مشترک
-- [x] `.gitignore`, `.editorconfig`, `.nvmrc` (Node 24)
-- [x] `scripts/license-check.ts`: پیمایش `pnpm licenses list --json`، خطا روی هر لایسنسی خارج از allow-list
-- **معیار پذیرش:** `pnpm install && pnpm typecheck && pnpm license:check` بدون خطا — ✅ محقق شد
+این‌ها در M1 صریحاً برای M2 ثبت شدند. **هیچ‌کدام «اگر وقت شد» نیستند** — هر سه گامِ خودشان
+را دارند و در معیار پذیرش دیده می‌شوند.
 
-**افزوده‌های خارج از چک‌لیست (تصمیم‌های همین گام):**
-- `scripts/license-check.ts` سه‌سطحی شد (ALLOWED / REVIEW / denied) با ارزیاب کامل عبارت SPDX و
-  `scripts/license-exceptions.json` برای استثناهای تاییدشده. یک `--self-test` با ۱۷ مورد اضافه شد
-  که ثابت می‌کند گیت واقعاً GPL/AGPL/CC-BY-NC را رد می‌کند — بدون آن، گیت لایسنس هرگز آزموده نمی‌شد.
-- `tsconfig.json` ریشه اضافه شد تا `pnpm typecheck` واقعاً چیزی را چک کند
-  (`scripts/**/*.ts` زیر همان قواعد سخت‌گیرانه)، نه اینکه چون هنوز پکیجی وجود ندارد بی‌صدا سبز شود.
-- `packages/eslint-config/boundaries.js`: سازنده‌ی قاعده‌ی مرز وابستگی (PLAN بخش ۲) + پیش‌تنظیم
-  `canvasCoreBoundaries()` که import شبکه/Yjs/auth را در `canvas-core` خطا می‌کند.
-- قاعده‌ی ESLint برای ADR-016 روی style های inline در `react.js` (نسخه‌ی CSS در گام ۴٫۱).
-- Prettier + `.prettierignore` (اسناد فارسی مستثنا — هم‌ترازی جدول prettier برای RTL بدتر است).
-- `git init -b main` و `CLAUDE.md` ریشه (طبق «مرحله صفر» در سند محصول).
-
-### گام ۰٫۲ — پکیج `canvas-core` و دمو ✅ (۱۴۰۵/۰۴/۳۱)
-- [x] `packages/canvas-core/package.json` — نام `@hamboom/canvas-core`، `type: "module"`, exports با `./` و `./sync`
-- [x] ساختار پوشه طبق PLAN بخش ۲: `engine/ elements/ tools/ ui/ text/ theme/ sync/`
-- [x] یک اپ دمو داخل خود پکیج: `packages/canvas-core/dev/` با Vite (این اپ منتشر نمی‌شود، فقط برای توسعه)
-- [x] Vitest + `@testing-library/react` + `jsdom` راه‌اندازی شود
-- [x] `packages/canvas-core/CLAUDE.md`: خلاصه‌ی مسئولیت ماژول + لینک به PLAN/ADR + قواعد ۴ و ۵ بالا
-- **معیار پذیرش:** `pnpm --filter @hamboom/canvas-core dev` یک صفحه‌ی خالی با متن «هم‌بوم» راست‌چین بالا می‌آورد — ✅ در مرورگر تایید شد (`dir=rtl`, `lang=fa`, بدون overflow افقی)
-
-**افزوده‌های خارج از چک‌لیست:**
-- هر پوشه‌ی `src/` یک `README.md` با مسئولیت، قواعد ADR مربوطه و گام TODO خودش دارد —
-  تا session بعدی بداند چه چیزی کجا می‌رود بدون خواندن کل PLAN.
-- `test/setup.ts` پاک‌سازی DOM را **صریح** ثبت می‌کند. testing-library فقط با
-  `globals: true` این کار را خودکار می‌کند و ما globals را خاموش نگه داشته‌ایم؛
-  بدون این، رندرهای تست قبلی باقی می‌مانند (همان باگی که در اولین اجرا گرفت).
-- سند تست هم `dir=rtl` می‌گیرد تا رگرسیون RTL در تست دیده شود.
-- قاعده‌ی مرز وابستگی با یک probe واقعی آزموده شد: `import yjs` و `import @hamboom/sdk`
-  هر دو خطا می‌دهند.
-- `.claude/launch.json` برای بالا آوردن دمو از داخل session.
-- `packages/tsconfig` خودبسنده شد (بدون `extends` به بیرون پکیج) چون از طریق symlink
-  پنپی‌ام مصرف می‌شود و مسیر نسبی به بیرون شکننده است.
+| ارثیه | چیست | کجای این TODO |
+|---|---|---|
+| **گپ G-1** | تست دو-نمونه‌ای با **بوم واقعی** + **رندرِ حضور** (مکان‌نما/هاله/آواتار) + **re-projectِ حضور با هر تغییر viewport شاملِ panِ خالص** + follow. در M1 اصلاً قابل نوشتن نبود چون binder وجود نداشت. | **گام ۳٫۷ (G-1الف — بدون سرور)** و **گام ۶٫۱ (G-1ب — با سرور واقعی)** |
+| **`captureUpdate: "NEVER"` برای remote** | `applyRemoteChanges` باید صحنه را با `NEVER` بنویسد، وگرنه کارِ کاربرِ دیگر در undo stackِ محلیِ این کاربر می‌نشیند و `Ctrl+Z` او کارِ دیگری را برمی‌گرداند (ADR-026 + ADR-012). مکملِ نگهبانِ echo. | **گام ۳٫۲** (پیاده‌سازی + گیتِ خودکار) و **گام ۳٫۴** (انزوای undo) |
+| **probeِ الگوی StrictMode-safe (ADR-028)** | اشتراک‌های موتور (`onChange`/`onScrollChange`) که در callbackِ `excalidrawAPI` بسته می‌شوند زیر StrictMode **مرده** می‌مانند. binderِ M2 دقیقاً همین کار را می‌کند، پس **قبل از نوشتنِ binder** باید الگوی امن اثبات شود. | **گام ۱٫۱** (دروازه‌ی فاز ۱ — قبل از هر خطِ binder) |
 
 ---
 
-## فاز ۱ — دروازه‌ی ریسک: متن فارسی (تخمین: ۱ تا ۳ روز) ⚠️
+## ✅ تصمیم‌های مرزی — پاسخ‌گرفته (مالک، ۱۴۰۵/۰۵/۱۲)
 
-> این فاز **قبل از هر کار دیگری** انجام می‌شود. اگر متن فارسی روی بوم درست کار نکند، بقیه‌ی ماژول بی‌معنی است.
-> نتیجه‌ی این فاز مستقیماً تعیین می‌کند در کدام پله‌ی [ADR-003](ARCHITECTURE_DECISIONS.md#adr-003) هستیم.
+M2 در PLAN «بعد از M1 و M3» قرار داشت، ولی **M3 و M5 هنوز ساخته نشده‌اند**. یعنی چیزهایی که
+PLAN فرض می‌کرد آماده‌اند (`rt-token`، `packages/auth-core`، `packages/storage`،
+`packages/config`، `docker-compose`) وجود ندارند. این پنج تصمیم مرزِ M2 را مشخص کردند.
+**هر پنج‌تا تایید شد** — فقط ADRهایشان مانده (گام ۰٫۱).
 
-### گام ۱٫۱ — نصب Excalidraw و رندر اولیه ✅ (۱۴۰۵/۰۴/۳۱)
-- [x] `@excalidraw/excalidraw` با نسخه‌ی **pin شده** (`0.18.1`، بدون `^`) نصب شود
-- [x] لایسنس تایید و در `docs/dependencies.md` ثبت شود — MIT
-- [x] یک wrapper مینیمال `<HamboomCanvas />` در `engine/HamboomCanvas.tsx`
-- [x] CSS پکیج import شود و در دمو نمایش داده شود
-- **معیار پذیرش:** بوم در دمو می‌آید — ✅ تایید شد (دو canvas، بدون خطا)
+| # | موضوع | تصمیمِ تاییدشده |
+|---|---|---|
+| **D-1** ✅ | **زیرساخت لوکال** — M2 به Postgres (لاگ update) و Redis (pub/sub) نیاز دارد ولی `infra/` وجود ندارد | M2 یک **برشِ حداقلی** می‌سازد: `infra/docker/docker-compose.yml` فقط با `postgres` + `redis` (بدون minio/api/web)، `.env.example`، و `packages/config` (خواندنِ env با zod — تنها نقطه‌ی `process.env`)، با کامنتِ صریح «M5 این را کامل می‌کند» و دقیقاً همان نام‌های PLAN بخش ۳. **جایگزینِ ردشده:** پایداریِ درون‌حافظه‌ای — دوام (ADR-009) قلبِ M2 است، نه feature جانبی. |
+| **D-2** ✅ | **احراز هویت و نقش** — `rtToken` و `effectiveBoardRole` (ADR-012) مالِ M3 اند و وجود ندارند | پورتِ `BoardAuthority` در `apps/realtime` با `DevBoardAuthority` (JWT HS256 با `RT_DEV_JWT_SECRET` + نگاشتِ نقشِ استاتیک از یک فایل JSON)؛ بعداً `AuthCoreBoardAuthority` را M3 پر می‌کند. ★ **قیدِ صریحِ مالک: شکلِ claimهای `rtToken` داخلِ خودِ پورت زندگی می‌کند و به `shared-types` نمی‌رود** — پس این گزینه هیچ تاییدِ ADR-021 لازم ندارد. **اگر جایی به نظر رسید باید `shared-types` عوض شود، یعنی از تعریفِ این گزینه خارج شده‌ای → متوقف شو و بپرس.** |
+| **D-3** ✅ | **snapshot و P4** — ADR-009 می‌گوید Object Storage؛ P4 می‌گوید فقط `packages/storage`؛ که وجود ندارد | پورتِ `SnapshotStore` با پیاده‌سازیِ dev روی فایل‌سیستم (`.data/snapshots/`). M2 **هرگز** `@aws-sdk/*` را import نمی‌کند → P4 با ساخت حفظ می‌شود. ★ **قیدِ مالک: گیتِ ESLintِ این ممنوعیت (`@aws-sdk/*` و `@hamboom/sdk`) باید با `RuleTester` خودآزمون باشد — «قاعده‌ای که خودش تست نشده، گیت نیست»** (همان استانداردِ `require-capture-update`). وقتی M3 `packages/storage` را ساخت، فقط یک پیاده‌سازیِ دوم اضافه می‌شود. |
+| **D-4** ✅ | **کتابخانه‌ی WebSocket** — PLAN نوشته «uWebSockets.js یا ws» | **`ws`** (MIT، جاوااسکریپتِ خالص، سازگار با ویندوز). `uWebSockets.js` از تارِبالِ گیت‌هاب نصب می‌شود نه npm — هم `pnpm license:check` را دور می‌زند (نقضِ روحِ P1) و هم روی ویندوزِ محیطِ توسعه شکننده است. ترابری پشتِ یک seamِ نازک تا اگر بار ایجاب کرد بدون بازنویسی عوض شود. |
+| **D-5** ✅ | **جای binder** — PLAN می‌گوید `ydoc-schema/src/binder.ts`، ولی خودِ PLAN بخش ۲ می‌گوید `ydoc-schema → canvas-core ❌`. PLAN با خودش ناسازگار است | **پکیجِ سوم.** `packages/ydoc-schema` خالص می‌ماند (Y.Doc، codec، migration، پروتکل — بدون React، بدون canvas-core، قابلِ استفاده در **سرور**)، و binder به `packages/canvas-sync` می‌رود که مجاز است هر دو را ببیند. لایه‌بندی حفظ می‌شود و سرور تایپ‌های موتورِ رندر را نمی‌کِشد. |
 
-**دو مشکل جدی که حین این گام پیدا و رفع شد:**
-- **نقض اصل P2:** Excalidraw بدون `window.EXCALIDRAW_ASSET_PATH` فونت‌هایش را از
-  `esm.sh` دانلود می‌کند — بی‌صدا، بدون خطا. حل شد با `scripts/copy-excalidraw-fonts.mjs`
-  (خودمیزبانی ۱۴MB فونت) + `assertAssetPathConfigured()` که نبود تنظیم را به خطای
-  صریح تبدیل می‌کند + چهار تست نگهبان.
-- **تصرف جهت سند:** موتور `document.documentElement.dir/lang` را عوض می‌کند.
-  موقتاً با `document-direction-guard.ts` خنثی شد. جزئیات در ADR-023.
-
-### گام ۱٫۲ — فونت Vazirmatn (بخش انجام‌شده) ⏳
-- [x] Vazirmatn به‌صورت پکیج OFL-1.1 نصب و خودمیزبان شد (`@fontsource-variable/vazirmatn@5.3.0`)
-- [x] `OFL-1.1` به allow-list لایسنس اضافه شد (مطابق ADR-017)
-- [x] gate بارگذاری فونت: بوم تا `document.fonts.ready` رندر نمی‌شود
-- [x] ترفند تزریق فونت با `unicode-range` کشف و در `dev/fonts.css` تایید شد
-- [ ] انتقال `fonts.css` از `dev/` به `src/theme/` (گام ۱٫۴)
-- [ ] `text/font-registry.ts` با `awaitFontsReady()` به‌عنوان API عمومی (گام ۱٫۴)
-
-> این گام عمداً زودتر از موعد و به‌صورت جزئی انجام شد، چون بدون فونت فارسی
-> spike گام ۱٫۳ نتیجه‌ی معتبری نمی‌داد — هیچ‌کدام از ۹ فونت شیپ‌شده‌ی Excalidraw
-> خط عربی را پوشش نمی‌دهند.
-
-### گام ۱٫۲ — بارگذاری فونت Vazirmatn و gate اندازه‌گیری
-- [ ] فایل variable font Vazirmatn (SIL OFL) در `packages/canvas-core/assets/fonts/` — **خودمیزبان، بدون CDN**
-- [ ] `@font-face` با `font-display: block` برای فونت بوم (نه `swap` — تا اندازه‌گیری با فونت اشتباه انجام نشود)
-- [ ] `text/font-registry.ts`: ثبت فونت در رجیستری فونت Excalidraw + یک `awaitFontsReady()` که روی `document.fonts.ready` و `document.fonts.load()` صبر می‌کند
-- [ ] `<HamboomCanvas>` تا آماده شدن فونت، بوم را رندر نکند (اسپینر نشان دهد) — [ADR-017](ARCHITECTURE_DECISIONS.md#adr-017)
-- **معیار پذیرش:** یک تست که ثابت می‌کند `measureText` قبل و بعد از رندر بوم عرض یکسان برمی‌گرداند
-
-### گام ۱٫۳ — ★ spike متن فارسی ✅ (۱۴۰۵/۰۴/۳۱) — **نتیجه: عبور به پله‌ی B، نیاز به تایید مالک**
-
-> **خروجی:** [docs/spike-persian-text.md](docs/spike-persian-text.md) + [ADR-023](ARCHITECTURE_DECISIONS.md#adr-023)
->
-> **جمع‌بندی:** شکل‌دهی حروف ✅، اندازه‌گیری ✅، شکست خط ✅ — هر سه ترس اصلی بی‌مورد بود.
-> فونت با یک ترفند CSS و **بدون patch** حل شد. تنها یک مشکل واقعی ماند:
-> `ctx.direction` هرگز ست نمی‌شود، پس متن فارسی با جهت پایه‌ی LTR چیده می‌شود.
-> **یک patch** لازم است.
->
-> ⚠️ ترتیب bidi تنها موردی است که چشمی تایید نشده (اسکرین‌شات در آن session
-> در دسترس نبود). شواهد عددی قطعی‌اند ولی تایید بصری با مالک است.
-
-<details>
-<summary>شرح اصلی گام (بایگانی)</summary>
-
-### گام ۱٫۳ — ★ spike متن فارسی (مهم‌ترین گام ماژول)
-هدف: بفهمیم دقیقاً چه چیزی از RTL کار می‌کند و چه چیزی نه. **این گام کد محصولی تولید نمی‌کند، شواهد تولید می‌کند.**
-
-- [ ] یک صفحه‌ی تست `dev/spike-text.tsx` بساز که این موارد را کنار هم رندر کند:
-  - متن فارسی ساده تک‌خطی: «سلام دنیا»
-  - متن فارسی چندخطی که باید wrap شود (یک پاراگراف ۵۰ کلمه‌ای)
-  - متن مخلوط فارسی + انگلیسی: «این یک board برای team ماست»
-  - متن مخلوط با عدد: «تعداد ۱۲۳ مورد از 456 مورد»
-  - متن با نشانه‌گذاری در انتها: «آیا این درست است؟» و «(داخل پرانتز)»
-  - متن با emoji و نویسه‌های zero-width
-  - متن داخل ظرف (bound text) با `textAlign` های مختلف
-- [ ] برای هر مورد این‌ها را بررسی و در `docs/spike-persian-text.md` ثبت کن:
-  1. **شکل‌دهی حروف (shaping):** آیا حروف به هم چسبیده‌اند یا جدا رندر شده‌اند؟
-  2. **جهت (bidi):** آیا ترتیب کلمات در متن مخلوط درست است؟ نشانه‌گذاری کجا می‌افتد؟
-  3. **شکست خط (wrap):** آیا خط از وسط یک کلمه یا وسط یک لیگاتور می‌شکند؟
-  4. **اندازه‌گیری:** آیا کادر عنصر با متن واقعی جور است یا کوچک/بزرگ‌تر است؟
-  5. **ویرایشگر inline:** وقتی دابل‌کلیک می‌کنی، متن در textarea درست و راست‌چین است؟ مکان‌نما درست حرکت می‌کند؟
-  6. **انتخاب متن:** درگ روی متن، محدوده‌ی درست را انتخاب می‌کند؟
-- [ ] برای هر مشکل، مشخص کن با کدام روش قابل حل است: **(props/CSS)** / **(patch)** / **(فورک لازم است)**
-- **معیار پذیرش:** فایل `docs/spike-persian-text.md` با جدول ۶×۷ (مورد × معیار) پر شده، و یک جمع‌بندی صریح: «پله‌ی A کافی است» یا «باید به پله‌ی B برویم».
-- **⚠️ اگر جمع‌بندی «فورک لازم است» بود:** ننویس فورک را شروع کن. `PROGRESS.md` را بنویس و **از مالک تایید بگیر** — این تصمیم معماری است، نه تصمیم پیاده‌سازی.
-
-</details>
-
-### گام ۱٫۳ب — تکمیل spike: ویرایش inline، کلیپ‌بورد، اعداد ✅ (۱۴۰۵/۰۴/۳۱)
-
-بعد از سوال مالک اضافه شد. مسیر کد ویرایشگر کاملاً جدا از مسیر رندر است.
-
-- [x] **اعداد فارسی/لاتین** — رقم‌ها کاراکتر «قوی» نیستند، پس جهت را خراب نمی‌کنند.
-      «۱۲۳ مورد از ۴۵۶» و «456 مورد باقی مانده» هر دو درست `rtl` می‌شوند.
-- [x] **ویرایشگر inline** — موتور خودش `dir="auto"` و `unicode-bidi: plaintext`
-      می‌گذارد ✅. تنها ایراد `text-align: left` است که از `element.textAlign`
-      می‌آید؛ با عوض‌کردن پیش‌فرض حل می‌شود، patch لازم ندارد.
-- [x] **مکان‌نما** — ۹ از ۱۱ رشته کاملاً دست‌نخورده. فقط tab متن را عوض می‌کند و
-      مکان‌نما را ۷ کاراکتر عقب می‌اندازد — **روی لاتین هم دقیقاً همان‌طور**،
-      پس باگ زبان‌ناوابسته‌ی بالادست است، نه مسئله‌ی فارسی.
-- [x] **کپی/پیست** — ۴۱ از ۴۱ کاراکتر سالم: ZWNJ، اعداد فارسی، `ي` عربی، emoji.
-- [x] **یافته‌ی طراحی‌ساز:** `dir="auto"` روی «board برای تیم ماست» جواب `ltr`
-      می‌دهد. → [ADR-024](ARCHITECTURE_DECISIONS.md#adr-024): تشخیص جهت باید
-      بر اساس **اکثریت** کاراکترهای قوی باشد، نه اولین.
-- [x] `dev/SpikeEditing.tsx` → `#spike-edit`
-
-> **نکته‌ی روش:** Excalidraw رویدادهای اشاره‌گر مصنوعی را نمی‌پذیرد. صفحه منتظر
-> می‌ماند تا کاربر واقعاً ویرایشگر را باز کند و با `MutationObserver` خودکار
-> probe ها را اجرا می‌کند.
-
-### گام ۱٫۴ — رفع مشکلات متن فارسی ▶️ **آزاد شد (تایید مالک ۱۴۰۵/۰۴/۳۱)**
-
-فهرست به‌روزشده بر اساس یافته‌های ۱٫۳ و ۱٫۳ب:
-
-- [x] `text/bidi.ts` — `detectBaseDirection` **مبتنی بر اکثریت** ([ADR-024](ARCHITECTURE_DECISIONS.md#adr-024))،
-      `isRTLChar`, `isLTRChar`, `countStrongChars`, `resolveDirection`, `defaultTextAlignFor` — ۱۷ تست
-- [x] `text/normalize.ts` — `normalizePersian()` + `persianSearchKey()` — ۱۸ تست.
-      **در فایل جدا، نه در `bidi.ts`** — مسئله‌اش جهت نیست، ورودی است.
-      ⚠️ **کاندید انتقال به `shared-types` قبل از M3:** اگر فقط اینجا نرمال‌سازی کنیم،
-      متنی که از API، قالب یا seed بیاید نرمال‌نشده می‌ماند و در جستجوی M3 مچ نمی‌شود.
-- [x] `engine/canvas-direction.ts` — wrapper روی `fillText`/`strokeText` — ۱۰ تست
-      ([ADR-025](ARCHITECTURE_DECISIONS.md#adr-025))
-- [x] **🔬 تایید تجربی ADR-025** — شمارنده‌ی «فراخوانی hook» هنگام رندر واقعی بالا
-      می‌رود (۳۸ فراخوانی در یک بارگذاری `#spike`). **patch لازم نشد؛ پله‌ی A حفظ شد.**
-- [x] ~~اعمال P-1~~ — لازم نشد. به‌عنوان پشتیبان در `patches/README.md` می‌ماند و
-      به چک‌لیست ارتقای نسخه اضافه شد.
-- [x] پیش‌فرض `element.textAlign` → از `defaultTextAlignFor(defaultDirection)` در
-      `initialData.appState.currentItemTextAlign`
-- [x] `engine/editor-direction.ts` — صفت `dir` روی textarea از `auto` به مقدار صریح.
-      تایید در مرورگر: روی «board برای تیم ماست» نگهبان `rtl` می‌دهد و `dir="auto"`
-      مرورگر `ltr` — دقیقاً همان موردی که ADR-024 برایش وجود دارد. ۱۰ تست.
-- [x] انتقال `fonts.css` به `src/theme/` — حالا `HamboomCanvas` خودش import می‌کند،
-      پس مصرف‌کننده نمی‌تواند فراموشش کند
-- [!] **تست رگرسیون هش پیکسلی — به گام ۶٫۱ موکول شد.**
-      دلیل: jsdom پیکسل تولید نمی‌کند و تست پیکسلی واقعی به مرورگر headless
-      (Playwright) نیاز دارد که یک وابستگی سنگین است و الان فقط برای یک تست
-      اضافه می‌شود. جایگزین فعلی: ۶۴ تست واحد + شمارنده‌ی زنده‌ی `#spike` که
-      در چک‌لیست ارتقای نسخه ثبت شده. در گام ۶٫۱ که تست یکپارچه‌ی مرورگری
-      به‌هرحال لازم است، این هم با آن می‌آید.
-- [ ] برای مشکلات دسته‌ی **props/CSS**: در `text/` حل کن (مثلاً `dir="auto"` روی textarea ویرایشگر، `unicode-bidi: plaintext`، `text-align: start`)
-- [ ] برای مشکلات دسته‌ی **patch**: با `pnpm patch` اصلاح کن. هر patch باید:
-  - در `patches/` باشد
-  - در `patches/README.md` یک ورودی داشته باشد: چه فایلی، چرا، چه چیزی می‌شکند اگر برداشته شود
-  - حداقلی باشد — فقط همان خطی که لازم است
-- [ ] `text/bidi.ts`: توابع کمکی — `detectBaseDirection(text)`, `isRTLChar(ch)`, `normalizePersian(text)` (تبدیل ي/ك عربی به ی/ک فارسی، حذف کشیده‌ی اضافه، نرمال‌سازی نیم‌فاصله)
-- [ ] `text/measure.ts`: پوشش روی اندازه‌گیری متن با کش (کلید: `text|font|size|maxWidth`)
-- [ ] تست snapshot برای هر ۶ مورد spike
-- **معیار پذیرش:** هر ۶ مورد spike روی بوم درست دیده می‌شوند و تست‌ها سبزند. اگر موردی حل نشد، در `docs/spike-persian-text.md` به‌عنوان «محدودیت شناخته‌شده» با اثر محصولی‌اش ثبت شود.
+> **علاوه بر این‌ها یک تعارضِ مدل‌سازی هست که با probe حل می‌شود، نه با نظر:** PLAN بخش ۷٫۳
+> متنِ عناصر را `Y.Text` می‌خواهد (و دلیلِ ADR-004 صریحاً «دو نفر همزمان روی یک استیکی تایپ
+> می‌کنند» است)، ولی `shared-types` متن را `text: z.string()` تعریف کرده. **گام ۱٫۳** این را
+> تجربی حل می‌کند و خروجی‌اش یک ADR است.
 
 ---
 
-## فاز ۲ — قرارداد و مدل داده (تخمین: ۱ روز)
+## ترتیب پیاده‌سازی — و چرا این ترتیب
 
-### گام ۲٫۱ — انواع عناصر در `shared-types`
-> ⚠️ این گام `packages/shared-types` را می‌سازد (اولین‌بار). چون هنوز وجود ندارد، ساختنش مجاز است؛ **تغییر بعدی‌اش نیاز به تایید دارد.**
-
-- [x] `packages/shared-types/src/canvas/element.ts`: zod schema برای `hbElementBase`, `hbCustomData`, `hbKind`, `hbElementType`
-- [x] schema بر اساس **نوع رندر** (`hbShapeElement`, `hbTextElement`, `hbLinearElement`,
-      `hbDrawElement`, `hbImageElement`, `hbFrameElement`) با union تفکیک‌شده روی `type`.
-      **استیکی schema جدا ندارد** — از دید موتور یک `rectangle` است و فقط
-      `customData.hb.kind` فرقش را می‌سازد (ADR-010). این عمدی است.
-- [x] `hbAsset` (متادیتای فایل — بدون باینری)
-- [x] `hbAppState` (وضعیت مشترک بورد: grid، پس‌زمینه)
-- [x] type ها با `z.infer` استخراج شدند، نه دستی
-- [x] **`normalizePersian` منتقل شد** — به‌جای موکول‌کردن به قبل از M3
-- [x] قاعده‌ی ESLint: هیچ `@hamboom/*` در `src/` این پکیج — با probe واقعی آزموده شد
-- [x] `CLAUDE.md` پکیج با قاعده‌ی «تغییر = تایید مالک»
-- **معیار پذیرش:** یک نمونه از هر ۷ نوع ساخته و `parse` می‌شود — ✅ ۳۶ تست
-
-### گام ۲٫۲ — ★ قرارداد `CanvasSyncAdapter` ✅ (۱۴۰۵/۰۴/۳۱)
-
-- [x] `sync/contract.ts` — قرارداد کامل، طبق شکل زیر با دو تفاوت عمدی:
-      `HbElement`/`HbAsset`/`HbAppState` از `shared-types` می‌آیند (نه تعریف محلی)،
-      و `CanvasDocument`/`FocusTarget`/`PeerUser` به‌عنوان type نام‌دار بیرون کشیده شدند.
-- [x] `sync/local-adapter.ts` — پیاده‌سازی in-memory با `LocalSyncHub`، بدون هیچ I/O
-- [x] `sync/README.md` — نمودار جریان داده، دو سناریوی اصلی، چک‌لیست تحویل به M2
-- [x] **نگهبان حلقه‌ی echo** — `assertEmittable` در مرز آداپتور، نه با اعتماد به بوم
-- [x] `SYNC_CONTRACT_VERSION` از `0` به `1` رفت (تست smoke به‌روز شد)
-- **معیار پذیرش:** تغییر بین دو کلاینت رد و بدل می‌شود و **حلقه‌ی بی‌نهایت رخ نمی‌دهد**
-      — ✅ ۱۴ تست، شامل سناریوی «بوم بدرفتار» که عمداً تغییر remote را دوباره emit می‌کند
-
-> **انحراف از متن گام:** معیار پذیرش می‌گفت «دو نمونه‌ی `<HamboomCanvas>` را با یک
-> آداپتور mount کن». به‌جایش آداپتور با یک بوم ساختگی آزموده شد. دلیل: جلوگیری از
-> echo یک خاصیت آداپتور و قرارداد است، نه کامپوننت React؛ و mount کردن دو موتور
-> رندر در jsdom (که پیکسل ندارد) تستی می‌ساخت که کندتر و شکننده‌تر است بدون اینکه
-> چیز بیشتری اثبات کند. تست «بوم بدرفتار» دقیقاً همان حلقه را می‌سازد و می‌گیرد.
-
-<details>
-<summary>شکل قرارداد که در برنامه‌ریزی تعریف شده بود (بایگانی)</summary>
-
-```ts
-// ── واحدهای انتقال ────────────────────────────────────────────
-export type ChangeOrigin = "local-user" | "remote" | "undo" | "system";
-
-export interface ElementChangeSet {
-  /** عناصر ساخته‌شده یا تغییریافته — همیشه شیء کامل، نه patch */
-  upserted: HbElement[];
-  /** id عناصر حذف‌شده (حذف نرم: isDeleted=true) */
-  deleted: string[];
-  /** متادیتای فایل‌های تازه ارجاع‌شده */
-  assets?: HbAsset[];
-  origin: ChangeOrigin;
-  /** برچسب ژست کاربر — همه‌ی تغییرات یک درگ، یک gestureId دارند */
-  gestureId?: string;
-}
-
-export interface PointerState { x: number; y: number; visible: boolean }
-export interface Viewport { scrollX: number; scrollY: number; zoom: number }
-
-export interface PeerState {
-  clientId: number;
-  user: { id: string; displayName: string; color: string; avatarUrl: string | null };
-  pointer: PointerState | null;
-  selectedIds: string[];
-  viewport: Viewport | null;
-  activeTool: string | null;
-  ephemeral?: EphemeralPayload | null;
-}
-
-/** داده‌ی موقت که هرگز ذخیره نمی‌شود — ADR-022 */
-export type EphemeralPayload =
-  | { kind: "draw-stroke"; points: [number, number][]; color: string; width: number }
-  | { kind: "laser"; points: [number, number][] }
-  | { kind: "reaction"; emoji: string; x: number; y: number };
-
-export type ConnectionState =
-  | { status: "connecting" }
-  | { status: "connected"; peers: number }
-  | { status: "reconnecting"; attempt: number; nextRetryMs: number }
-  | { status: "offline"; pendingChanges: number }
-  | { status: "error"; code: string; message: string };
-
-export type SaveState =
-  | { status: "saved"; at: number }
-  | { status: "saving" }
-  | { status: "unsaved"; pendingChanges: number };
-
-export interface CanvasPermissions {
-  canEdit: boolean;
-  canComment: boolean;
-  canExport: boolean;
-  canManageAccess: boolean;
-}
-
-// ── بوم → لایه‌ی sync ─────────────────────────────────────────
-export interface CanvasOutbound {
-  /** تغییر عناصر توسط کاربر محلی. throttle در خود بوم انجام شده. */
-  emitElementChanges(changes: ElementChangeSet): void;
-  /** حرکت مکان‌نما — throttle 40ms */
-  emitPointer(p: PointerState | null): void;
-  emitSelection(ids: string[]): void;
-  /** throttle 100ms — برای قابلیت «دنبال‌کردن کاربر» */
-  emitViewport(v: Viewport): void;
-  emitActiveTool(tool: string | null): void;
-  /** داده‌ی موقت — بدون ذخیره */
-  emitEphemeral(payload: EphemeralPayload | null): void;
-  /** درخواست آپلود فایل. بوم منتظر fileId می‌ماند و تا آن موقع placeholder نشان می‌دهد. */
-  requestAssetUpload(file: File): Promise<HbAsset>;
-  /** درخواست باز کردن یک URL برای فایل موجود (کش‌شونده) */
-  resolveAssetUrl(fileId: string): Promise<string>;
-  /** بوم آماده شد و اولین رندر انجام شد */
-  emitReady(): void;
-}
-
-// ── لایه‌ی sync → بوم ─────────────────────────────────────────
-export interface CanvasInbound {
-  applyRemoteChanges(changes: ElementChangeSet): void;
-  applyPeers(peers: PeerState[]): void;
-  setConnectionState(s: ConnectionState): void;
-  setSaveState(s: SaveState): void;
-  setPermissions(p: CanvasPermissions): void;
-  /** جایگزینی کامل سند — فقط در بارگذاری اولیه یا بازگردانی نسخه */
-  replaceDocument(doc: { elements: HbElement[]; assets: HbAsset[]; appState: HbAppState }): void;
-  /** پرش نما به یک کاربر/عنصر */
-  focusOn(target: { kind: "peer"; clientId: number } | { kind: "element"; id: string }): void;
-}
-
-// ── آداپتوری که M2 پیاده می‌کند ───────────────────────────────
-export interface CanvasSyncAdapter {
-  /** بوم هنگام mount صدا می‌زند و inbound خودش را می‌دهد؛ آداپتور outbound برمی‌گرداند. */
-  connect(inbound: CanvasInbound): Promise<CanvasOutbound>;
-  disconnect(): void;
-}
+```
+فاز ۰  اسکلت + تصمیم‌ها        ← بدون این، فاز ۲ روی فرض ساخته می‌شود
+   ↓
+فاز ۱  سه probeِ ریسک          ← ★ دروازه. StrictMode / codec / متنِ همزمان / undo
+   ↓
+فاز ۲  packages/ydoc-schema    ← مدلِ داده. هم کلاینت هم سرور رویش سوارند
+   ↓
+فاز ۳  packages/canvas-sync    ← binder. ★ اینجا G-1الف بسته می‌شود (بدون سرور)
+   ↓
+فاز ۴  apps/realtime           ← سرور. تا اینجا همه‌چیز درون‌فرایندی آزموده شده
+   ↓
+فاز ۵  تاب‌آوری و آفلاین        ← شبکه‌ی ایران (ریسکِ ثبت‌شده در PLAN بخش ۱۰)
+   ↓
+فاز ۶  تحویل                   ← ★ G-1ب با سرورِ واقعی + بنچمارک + مستندات
 ```
 
-</details>
+**چهار دلیل برای همین ترتیب:**
 
-### گام ۲٫۳ — نگاشت دوطرفه عنصر ✅ (۱۴۰۵/۰۴/۳۱)
-- [x] `elements/mapping.ts`: `toExcalidraw` و `fromExcalidraw`
-- [x] `getKind(element)` — تنها راه مجاز خواندن نوع محصولی، با fallback برای عناصری
-      که نوار ابزار خودِ موتور ساخته و `customData` ندارند
-- [x] `elementKindDiscipline()` در `eslint-config`: خطا روی `===` و `switch` روی نوع‌های
-      رندر، بیرون از `mapping.ts`. فقط روی نام نوع‌های واقعی تطبیق می‌دهد تا
-      `event.type === "click"` گیر نکند — با probe واقعی هر دو جهت آزموده شد.
-- [x] تست round-trip روی هر ۷ نوع + اعتبارسنجی مجدد با `hbElement.parse` — ۱۹ تست
+۱. **binder قبل از سرور.** binder را می‌شود با **دو `Y.Doc` که مستقیم به هم وصل‌اند** کامل
+   آزمود — بدون یک خط کدِ شبکه. اگر اول سرور ساخته شود، هر باگِ binder پشتِ لایه‌ی شبکه
+   پنهان می‌شود و دیباگش چند برابر گران‌تر است. این دقیقاً همان درسِ M1 است که آداپتورِ لوکال
+   قبل از هر شبکه‌ای ساخته شد.
+۲. **G-1 دو نیمه دارد و نیمه‌ی اولش سرور نمی‌خواهد.** «binderِ واقعی + بومِ واقعی، دو نمونه»
+   با دو Y.Doc درون یک صفحه قابل اثبات است. پس G-1الف در فاز ۳ بسته می‌شود (زودترین لحظه‌ی
+   ممکن) و فاز ۶ فقط سرور و reconnect را رویش سوار می‌کند.
+۳. **`ydoc-schema` پایین‌ترین لایه است** و هم binder و هم سرور مصرفش می‌کنند. اگر بعد از
+   binder ساخته شود، شکلش را binder دیکته می‌کند و سرور بعداً باید بازش کند.
+۴. **probeها اول** چون هر سه‌شان می‌توانند **طراحی** را عوض کنند، نه فقط پیاده‌سازی را:
+   اگر الگوی StrictMode-safe پیدا نشود، اشتراک‌های binder باید جایِ دیگری بروند؛ اگر `Y.Text`
+   جواب ندهد، مرزِ قرارداد عوض می‌شود؛ اگر codecِ per-property گران باشد، ADR-007 بازبینی
+   می‌خواهد. کشفِ این‌ها بعد از دو هزار خط کد یعنی دور ریختنِ دو هزار خط کد.
 
-**یک باگ واقعی که تست round-trip گرفت:** `direction` در مسیر رفت به
-`customData.hb` منتقل می‌شود (تا از serialization موتور جان سالم به در ببرد)، ولی
-`fromExcalidraw` آن را به سطح بالا **کپی** می‌کرد بدون اینکه از `customData`
-بردارد — یعنی دو منبع حقیقت، دقیقاً همان چیزی که این لایه قرار بود جلویش را بگیرد.
-حالا برداشته می‌شود، نه کپی.
-- **معیار پذیرش:** تست property-based روی round-trip سبز است
-
----
-
-## فاز ۳ — عناصر هم‌بوم (تخمین: ۳ تا ۵ روز)
-
-### گام ۳٫۱ — پالت و توکن‌های ظاهری ✅ (۱۴۰۵/۰۴/۳۱)
-- [x] `theme/sticky-palette.ts`: ۱۲ رنگ با `{ key, nameFa, bg, text, accent }`
-- [x] `theme/tokens.ts`: رنگ رابط، شعاع، سایه، فاصله، تایپوگرافی، اندازه‌ها
-- [x] `theme/defaults.ts`: پیش‌فرض‌های میرو-استایل
-- [x] `theme/contrast.ts`: پیاده‌سازی WCAG 2.1 — **خودش با مقادیر مرجع مستقل تست شد**
-      (سیاه/سفید = ۲۱، رنگ روی خودش = ۱، روشنایی قرمز/سبز/آبی خالص). یک گیت
-      آزموده‌نشده گیت نیست.
-- [x] تست کنتراست روی **هر ۱۲ رنگ**: متن ≥ ۴٫۵ و accent ≥ ۳ — همه در اولین اجرا سبز
-- [x] تستی که کلیدهای پالت را با `hbStickyColor` در `shared-types` مقایسه می‌کند —
-      اگر یکی به‌روز شود و دیگری نه، سند و رابط از هم جدا می‌شوند
-- [x] صفحه‌ی `#palette` با متن فارسی واقعی روی هر رنگ + عدد کنتراست زنده
-- **معیار پذیرش:** ✅ ۵۰ تست تم سبز؛ دمو ۱۲ رنگ را کنار هم نشان می‌دهد
-      (تایید برنامه‌ای در مرورگر: RTL، بدون overflow، هر ۲۴ بررسی کنتراست ✅)
-
-> ⚠️ **تایید بصری با مالک:** اسکرین‌شات در این session در دسترس نبود. اعداد و
-> مقادیر computed در مرورگر بررسی شدند، ولی قضاوت زیبایی‌شناختی روی هماهنگی
-> رنگ‌ها با توست — `#palette` را باز کن.
-
-### گام ۳٫۲ — استیکی‌نوت ✅ (۱۴۰۵/۰۴/۳۱) — با یک محدودیت ثبت‌شده
-- [x] `elements/sticky.ts`: `createSticky` → ظرف + متن مقید. همه‌چیز تزریق‌پذیر
-      (`makeId`, `random`, `now`, `measure`) تا خروجی در تست قطعی بماند.
-- [x] `tools/sticky-tool.ts`: کلیک روی بوم → ساخت استیکی انتخاب‌شده
-- [!] **ورود فوری به حالت ویرایش متن — با API عمومی ممکن نیست.** `ExcalidrawImperativeAPI`
-      متدی برایش ندارد و `editingTextElement` بخشی از یک view مشتق‌شده است، نه چیزی
-      که `updateScene` بپذیرد؛ ویرایشگر با side-effect ساخته می‌شود نه از روی state.
-      استیکی **انتخاب‌شده** ساخته می‌شود تا کاربر با `Enter` (میانبر خود موتور) وارد
-      ویرایش شود. حل کامل در گام ۴٫۲ با نوار ابزار خودمان.
-- [x] `autoFit`: `fitStickyFontSize` بین ۱۲ و ۴۸، با شکست خط حریصانه.
-      به `createSticky` وصل است (وقتی `measure` داده شود).
-      ⚠️ **به ویرایش زنده وصل نیست** — آن هم به همان یکپارچگی ویرایشگر نیاز دارد.
-- [x] `applyStickyPalette`: تغییر رنگ روی چند انتخاب همزمان، شامل رنگ متن مقید.
-      پنل و منوی راست‌کلیک خودشان کار گام‌های ۴٫۳ اند؛ عملیات اینجاست.
-- [x] `nextStickyPosition`: فاصله‌ی ثابت، جهت منطقی (RTL → چپ)
-- [x] میانبرهای `N` و `Tab` در دمو
-- **معیار پذیرش:** ✅ در مرورگر تایید شد — پنج استیکی با یک کلیک و چهار `Tab`،
-      فاصله‌ی دقیقاً یکنواخت ۲۴۴px، تغییر رنگ روی انتخاب کار می‌کند (زرد + بنفش).
-      متن بلند اندازه‌ی فونت را کم می‌کند (تست واحد).
-
-**دو باگ که فقط در مرورگر دیده شدند، نه در تست:**
-1. `.excalidraw` هنگام فراخوانی `excalidrawAPI` هنوز در DOM نیست — ابزار بی‌صدا
-   ساخته نمی‌شد. حالا به `document` گوش می‌دهد و در لحظه با `closest()` فیلتر می‌کند.
-2. `api.onChange` برای `updateScene` **برنامه‌ای** صدا زده نمی‌شود. شمارنده‌های دمو
-   صفر می‌ماندند در حالی که استیکی ساخته شده بود — یعنی نمایشگر دروغ می‌گفت.
-
-### گام ۳٫۳ — شکل و متن آزاد ✅ (۱۴۰۵/۰۵/۰۱)
-- [x] `elements/factory.ts` — سازنده‌ی پایه‌ی مشترک. **قبل از نوشتن شکل استخراج شد**،
-      چون همان ۳۰ خط boilerplate در استیکی بود و داشت سه‌نسخه‌ای می‌شد. `sticky.ts`
-      هم روی آن بازنویسی شد و هر ۳۳ تستش بدون تغییر سبز ماند.
-- [x] `elements/shape.ts`: مستطیل، بیضی، لوزی + متن مقید اختیاری.
-      فقط مستطیل گوشه‌ی گرد می‌گیرد.
-- [x] `elements/text.ts`: متن آزاد + `realignTextForContent` که وقتی کاربر متن را
-      عوض می‌کند راست‌چینی را با محتوای جدید هم‌راستا می‌کند (جهت صریح دست‌نخورده می‌ماند)
-- [x] `elements/style.ts`: `applyStyle`, `commonStyle`, `withBoundElements` —
-      منطق جدا از رابط، چون همان عملیات از منوی راست‌کلیک و میانبر هم می‌آید
-- [x] `ui/StylePanel.tsx` + `style-panel.css`: رنگ خط، رنگ پر، ضخامت، نوع خط،
-      شفافیت، اندازه متن — فقط logical properties
-- **معیار پذیرش:** ✅ در مرورگر تایید شد — هر سه شکل ساخته و استایل‌دهی می‌شوند،
-      متن آزاد فارسی راست‌چین و متن داخل شکل وسط‌چین است، و پنل در RTL سمت راست
-      می‌نشیند (فاصله ۱۶px از راست، بدون کد شرطی)
-
-**دو مورد که در مرورگر گرفته شد:**
-1. **`requestAnimationFrame` در تب پس‌زمینه اجرا نمی‌شود** — اولین نسخه‌ی
-   تاخیر یک-تیک با rAF بود و به‌روزرسانی معلق می‌ماند. با `setTimeout` جایگزین شد.
-   این در کد محصولی هم تکرارشدنی است، پس در `canvas-core/CLAUDE.md` ثبت شد.
-2. **قاعده‌ی ADR-010 مثبت کاذب می‌داد** — `shape === "rectangle"` (پارامتر تابع)
-   را می‌گرفت. حالا سمت چپ هم باید `.type` باشد. قاعده‌ای که مثبت کاذب می‌دهد
-   دور زده می‌شود و آن‌وقت مورد واقعی را هم نمی‌گیرد.
-
-### گام ۳٫۴ — کانکتور ✅ (۱۴۰۵/۰۵/۰۱)
-- [x] `elements/connector-routing.ts`: `routeConnector(start, end, style)` **خالص و قطعی** —
-      سه سبک، فقط چهار عمل اصلی + `Math.round`، بدون `Math.hypot`/`atan2`/`toFixed`
-      (که دقت آخرین بیتشان بین موتورها تضمین نیست)
-- [x] `elements/connector.ts`: `createConnector` با binding، و `rerouteConnector`
-      (مسیر حالت مشتق‌شده است — ADR-008)
-- [x] برچسب روی کانکتور (در `customData.hb.connector.label`)
-- [!] **دستگیره‌های اتصال و کشیدن به فضای خالی** — به گام ۴٫۲ موکول شد. این‌ها به
-      نوار ابزار و منطق hover نیاز دارند که همان‌جا ساخته می‌شوند؛ اینجا فقط
-      لایه‌ی داده و مسیریابی است.
-- [x] **تست قطعی بودن — دو لایه:** (۱) self-test با ۵ مورد مقدار **دست‌محاسبه**
-      (نه از خروجی کد)، (۲) ممنوعیت صریح توابع غیرقطعی + گرد کردن به ۲ رقم.
-      خودِ «بیت‌به‌بیت بین مرورگرها» در Node اثبات‌شدنی نیست، ولی با محدودکردن به
-      عملیات کاملاً مشخص IEEE 754 و pin کردن مقادیر، سطح واگرایی صفر می‌شود.
-- **معیار پذیرش:** ✅ در مرورگر تایید شد — دو استیکی وصل، یکی حرکت داده شد؛
-      کانکتور از پله‌ی افقی به عمودی reroute شد، **idempotent** (سه reroute بدون
-      تغییر = بدون پرش)، و نقطه‌ی اول روی **لبه‌ی** استیکی نشست نه مرکزش
-      (از داخل شکل رد نمی‌شود)
-
-**دو نکته:**
-- **تغییر افزایشی در `shared-types`** (نیازمند اطلاع مالک — ADR-021): تایپ
-  `HbConnectorStyle` صادر شد. schema `hbConnectorStyle` از قبل بود؛ فقط `z.infer`
-  آن که جا افتاده بود اضافه شد. **قرارداد عوض نشد**، فقط یک تایپِ موجود در دسترس شد.
-- تله‌ی موتور جدید: **`api.onChange` داخل خودش می‌تواند حلقه بسازد** اگر
-  `updateScene` صدا بزند — ولی چون `updateScene` برنامه‌ای onChange تولید نمی‌کند،
-  reroute-on-drag امن است. در `canvas-core/CLAUDE.md` این نکته از قبل ثبت شده بود.
-
-### گام ۳٫۵ — فریم ✅ (۱۴۰۵/۰۵/۰۱)
-> پیش‌نیاز چک شد (مثل ۳٫۲): **API عمومی برای گروه‌کردن undo وجود دارد** —
-> `captureUpdate: "IMMEDIATELY"` روی `updateScene`. → [ADR-026](ARCHITECTURE_DECISIONS.md#adr-026)
-
-- [x] `elements/frame.ts`: `createFrame` با نام فارسی و رنگ برچسب
-- [x] عضویت با `frameId` روی فرزند (نه فهرست روی فریم): `recomputeFrameMembership`.
-      باید **کاملاً** داخل باشد؛ فریم تودرتو → بالاترین z برنده؛ متن مقید مستقل نمی‌شود.
-- [x] `moveFrame`: فریم + همه‌ی فرزندان + متن مقیدشان با یک جابه‌جایی.
-      نوشتن در یک `updateScene(IMMEDIATELY)` = یک ژست، یک undo (ADR-026).
-- [x] `deleteFrameKeepChildren`: حذف فریم فرزندان را رها می‌کند نه نابود (رفتار میرو)
-- [!] **ویرایش inline نام فریم و تغییر اندازه** → گام ۴٫۲/۴٫۳ (نیاز به رابط)
-- **معیار پذیرش:** ✅ در مرورگر تایید شد — فریم + دو استیکی، حرکت فریم؛ هر ۵ عنصر
-      (شامل متن مقید) دقیقاً `+120,+80` حرکت کردند، و **یک undo فقط حرکت را
-      برگرداند و همه‌ی عناصر ماندند**.
-
-**★ یک باگ واقعی که این گام بیرون کشید و همه‌ی جهش‌دهنده‌ها را می‌شکست:**
-تغییر `version` بدون `versionNonce` باعث می‌شد موتور تغییر را برای undo **ثبت
-نکند** — حرکت فریم ورودی undo جدا نمی‌ساخت و یک Ctrl+Z کل ساخت را برمی‌گرداند.
-با آزمون کنترل‌شده در مرورگر ایزوله شد (version++ تنها = بدون increment؛
-versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `factory.ts`
-ساخته شد که هر دو را قطعی بالا می‌برد، و **همه‌ی helper های جهش** روی آن رفتند:
-`moveFrame`, `applyStyle`, `applyStickyPalette`, `recomputeFrameMembership`,
-`deleteFrameKeepChildren`, `realignTextForContent`. یعنی تغییر رنگ و استایل هم
-همین باگ خاموش را داشتند و حالا رفع شده.
-
-### گام ۳٫۶ — تصویر ✅ (۱۴۰۵/۰۵/۰۲)
-> پیش‌نیاز در مرورگر probe شد (مثل ۳٫۲/۳٫۵): عنصر image + `fileId` + `status` را
-> موتور می‌پذیرد، `addFiles` باینری را ثبت می‌کند، و **blob URL** (خروجی
-> `resolveAssetUrl`) به‌عنوان منبع فایل رمزگشایی و رندر می‌شود.
-
-- [x] `elements/image.ts`: `createImage` خالص و تزریق‌پذیر، `validateImageFile`
-      (نوع/حجم)، `fitImageBox` (جا دادن با حفظ نسبت). باینری هرگز روی عنصر نیست.
-- [x] `tools/image-tool.ts`: drag&drop + paste؛ جریان `requestAssetUpload` →
-      درج placeholder (pending) → `resolveAssetUrl` (کش در حافظه) → `addFiles` → saved.
-- [x] محدودیت کلاینت: حداکثر ۲۰MB، فقط `png|jpeg|webp|gif|svg+xml` — پیام خطای فارسی.
-- [x] `local-adapter` از گام ۲٫۲ `URL.createObjectURL` را شبیه‌سازی می‌کند؛ دمو همان
-      outbound را اینلاین دارد.
-- [x] ۲۳ تست جدید (۱۸ عنصر/اعتبارسنجی + ۵ orchestration ابزار).
-- **معیار پذیرش:** ✅ در مرورگر تایید شد — درج با **دکمه، drag&drop، و paste** یک
-      عنصر image (status `saved`، انتخاب‌شده) ساخت؛ **یک undo کل تصویر را برداشت و
-      redo آن را «saved» برگرداند**؛ فرمت غیرمجاز با toast فارسی رد شد. تغییر
-      اندازه/چرخش بومیِ موتور است (عنصر انتخاب‌شده ساخته می‌شود).
-
-**دو مورد که فقط در مرورگر گرفته شد:**
-1. **ترتیب `captureUpdate` در جریان دو-مرحله‌ایِ pending→saved.** اول درجِ
-   pending را `NEVER` و flip به saved را `IMMEDIATELY` گذاشتم؛ یک undo تصویر را
-   **پاک نمی‌کرد**، فقط به pending برمی‌گرداند — چون `NEVER` (و آزموده شد: `EVENTUALLY`
-   هم) خطِ پایه‌ی تاریخچه را جلو می‌برند، پس `IMMEDIATELY` فقط تفاوت وضعیت را ثبت
-   می‌کرد. درست: درجِ pending=`IMMEDIATELY` (creation)، flip=`NEVER`. در
-   `canvas-core/CLAUDE.md` ثبت شد.
-2. **موتور خودش drop/paste تصویر را می‌گیرد.** بدون گرفتن رویداد در فاز capture و
-   `stopPropagation`، تصویر دوبار درج می‌شد (یک‌بار مسیر ما، یک‌بار مسیر موتور).
-   با الگوی capture+stopPropagation (مثل `sticky-tool`) مسیر موتور preempt شد —
-   تایید: drop/paste فقط یک عنصر با `fileId` خودمان (`f_local_…`) می‌سازد.
-
-- [ ] **تایید بصری با مالک:** پیکسلِ تصویر روی بوم (اسکرین‌شات در session ممکن نبود؛
-      مثل bidi و پالت). blob رمزگشایی می‌شود و فایل بدون خطا ثبت می‌شود.
-
-### گام ۳٫۷ — قلم آزاد با کانال ephemeral ✅ (۱۴۰۵/۰۵/۰۲)
-> پیش‌نیاز در مرورگر probe شد: عنصر freedraw با `points` نسبی + `pressures: []` +
-> `simulatePressure: true` را موتور می‌پذیرد و بدون خطا رندر می‌کند.
-
-- [x] `elements/draw.ts`: `simplifyStroke` (RDP، خالص) + `createDraw` (خالص؛ نقاط
-      مطلق → جعبه‌ی احاطه + نقاط نسبی). ساده‌سازی فقط روی **کلاینتِ کشنده** اجرا و
-      نتیجه ذخیره می‌شود، پس برخلاف کانکتور نیازی به تعیّن بین‌مرورگری ندارد (`hypot` مجاز).
-- [x] `tools/draw-tool.ts`: حین کشیدن فقط `emitEphemeral({ kind: "draw-stroke", … })`؛
-      در `pointerup` مسیر ساده و **یک** `emitElementChanges` + یک `updateScene(IMMEDIATELY)`
-      محلی (یک undo). رویداد در فاز capture گرفته می‌شود تا قلمِ خودِ موتور فعال نشود.
-- [x] رندر استروکِ محلیِ در حال کشیدن روی یک `<canvas>` overlay (لایه‌ی مجزا،
-      `pointer-events: none`). استروکِ **کاربران دیگر** از همین مسیر در M2/4.4
-      (از `applyPeers`) می‌آید.
-- [x] ۱۸ تست جدید (۱۳ عنصر/RDP + ۵ ابزار).
-- **معیار پذیرش:** ✅ تست «۳۰۰ نقطه = یک `emitElementChanges`» سبز، **و در مرورگر
-      تایید شد** — استروک ۲۰۱ نقطه‌ای: `emitElementChanges` دقیقاً **۱**، RDP نقاط را
-      ۲۰۱→۲۹ کرد، یک عنصر freedraw؛ **یک undo حذفش کرد و redo برگرداند**؛ بدون خطای کنسول.
-
-- [ ] **تایید بصری با مالک:** خودِ استروک روی بوم و overlay (اسکرین‌شات در session
-      ممکن نبود — پنل مرورگر نمایش داده نمی‌شد). مسیر داده و undo/redo تایید شدند.
+**تخمین کل: ۹ تا ۱۴ روزِ کاری.**
 
 ---
 
-## فاز ۴ — رابط کاربری RTL (تخمین: ۲ تا ۴ روز)
+## فاز ۰ — اسکلت و مرزها (تخمین: ۰٫۵ تا ۱ روز)
 
-### گام ۴٫۱ — زیرساخت RTL و i18n ✅ (۱۴۰۵/۰۵/۰۲)
-- [x] `packages/i18n`: `t(key, params)` (درجِ عددِ فارسیِ خودکار)، ارقام فارسی +
-      پول ریال/تومان (P5)، تاریخ جلالی با `Intl` (کلندر persian، تهران — [ADR-018](ARCHITECTURE_DECISIONS.md#adr-018)).
-      لایه‌ی پایه، بدون وابستگیِ هم‌بومی، فقط Intl بومی. ۲۴ تست.
-- [x] Stylelint ([stylelint.config.js](stylelint.config.js)): `property-disallowed-list`
-      + `declaration-property-value-disallowed-list` خطا روی `margin/padding/border-left|right`,
-      `left`, `right`, `text-align: left|right`, `float/clear` جهت‌دار ([ADR-016](ARCHITECTURE_DECISIONS.md#adr-016)).
-      بدون config پایه (یک gate، یک هدف). با fixtureِ نقض **هر دو جهت** آزموده شد.
-- [x] `dir="rtl" lang="fa"` روی ریشه‌ی دمو (از گام ۰٫۲).
-- [x] **استثنای بوم مستند:** `engine/coords.ts` کامنت صریح «مختصات بوم هرگز آینه
-      نمی‌شود» دارد؛ config استایل‌لینت هم `direction` را استثنا نمی‌گیرد (فقط جهت‌دارها).
-- **معیار پذیرش:** ✅ `pnpm lint:css` روی هر ۳ فایل CSS سبز، **بدون هیچ
-      `stylelint-disable`**. لایسنسِ stylelint (+۸۳ پکیج) با `pnpm license:check`
-      تایید شد — ۶۵۵ پکیج، همه مجاز (P1).
+### گام ۰٫۱ — ثبتِ تصمیم‌های مرزی به‌صورت ADR — **بدون کد**
 
-### گام ۴٫۲ — نوار ابزار ✅ (۱۴۰۵/۰۵/۰۲)
-> **یافته‌ی API موتور:** `UIOptions` **نوار را کامل خاموش نمی‌کند** (فقط ابزارها/
-> canvasActions را تک‌تک). مسیر درست: نوار خودمان + مخفی‌کردن `.App-toolbar` با CSS.
-> در مرورگر تایید شد که `.App-toolbar` سلکتورِ درست است (`display: none`).
->
-> **تصمیمِ موقعیت (تاییدِ مالک):** پایین، وسط، شناور — در PROGRESS ثبت شد.
+- [x] هر پنج تصمیمِ D-1 تا D-5 با مالک نهایی شد (جدول بالا، ۱۴۰۵/۰۵/۱۲).
+- [ ] سه **ADR جدید** نوشته شود (نه ویرایشِ ADR قدیمی — قاعده‌ی ۷ در `CLAUDE.md`):
+  - **ADR-029** — لایه‌بندیِ M2 و جای binder: چرا `ydoc-schema` خالص می‌ماند و
+    `canvas-sync` پکیجِ سوم می‌شود؛ و اینکه این یک **اصلاحِ ناسازگاریِ درونیِ PLAN** است،
+    نه یک انحرافِ سلیقه‌ای.
+  - **ADR-030** — ترابریِ WebSocket: `ws` به‌جای `uWebSockets.js`، با دلیلِ P1 (نصب خارج از
+    npm ⇒ دور زدنِ `license:check`) و ویندوز، و seamِ ترابری برای تعویضِ بعدی.
+  - **ADR-031** — پورت به‌جای وابستگی به M3: `BoardAuthority` و `SnapshotStore`.
+    **صریحاً بنویس که `rtToken` عمداً در `shared-types` نیست** و چرا این نقضِ ADR-021 نیست
+    (قرارداد وقتی سفت می‌شود که مصرف‌کننده‌ی دومش وجود داشته باشد؛ نقطه‌ی ادغامِ M2/M3
+    جای درستش است).
+- **معیار پذیرش:** هر سه ADR در `ARCHITECTURE_DECISIONS.md` هستند و هیچ گامِ بعدی به
+  «فرض می‌کنیم» تکیه نمی‌کند. `PROGRESS.md` این پنج تصمیم و تاریخِ تاییدشان را دارد.
 
-- [x] `ui/Toolbar.tsx` (ارائه‌ای) + `toolbar-tools.ts` (فراداده‌ی خالص) + آیکون‌های
-      درون‌خطی. نوارِ موتور با CSS مخفی شد.
-- [x] ۱۱ ابزار: انتخاب، دست، استیکی، متن، شکل، کانکتور، قلم، تصویر، فریم، کامنت، پاک‌کن.
-      موتوری‌ها با `setActiveTool`، سفارشی‌ها (استیکی/قلم) با activate، تصویر با
-      انتخابگرِ فایل، کامنت stub (محتوا کار M3).
-- [x] موقعیت: پایین-وسط-شناور با `margin-inline: auto` (نه `left` — گیتِ Stylelint).
-- [x] tooltip فارسی + میانبر برای هر ابزار، **از `@hamboom/i18n`** (`t()`, کلیدهای
-      `tool.*`). میانبرها از همان جدولِ نوار (`toolForShortcut`) — یک منبع.
-- [x] ۹ تست (فراداده + رندر). تستِ «هر labelKey در کاتالوگِ fa هست».
-- **معیار پذیرش:** ✅ در مرورگر تایید شد — نوارِ موتور مخفی، نوارِ ما پایین-وسط با
-      ۱۱ دکمه و tooltipِ فارسی؛ هر ابزار **با کلیک و با میانبر** کار می‌کند (شکل→مستطیل،
-      دست→hand، v→انتخاب، n→استیکی، p→قلم)، هایلایتِ فعال درست دنبال می‌کند، و ساختِ
-      استیکی از مسیرِ نوار سرتاسر کار کرد. بدون خطای کنسول.
+### گام ۰٫۲ — اسکلت سه پکیج + گیتِ مرزها
 
-- [ ] **تایید بصری با مالک:** ظاهرِ نوار (اسکرین‌شات در session ممکن نبود).
+- [ ] `packages/ydoc-schema/` — `@hamboom/ydoc-schema`، `type: module`، وابستگی‌ها فقط
+      `yjs` + `lib0` + `@hamboom/shared-types`. **بدون React، بدون canvas-core.**
+- [ ] `packages/canvas-sync/` — `@hamboom/canvas-sync`، مجاز به دیدنِ `ydoc-schema` +
+      `canvas-core` (فقط `import type` از `@hamboom/canvas-core/sync`) + `y-protocols`.
+- [ ] `apps/realtime/` — `@hamboom/realtime`، Node خالص. **بدون canvas-core، بدون React.**
+- [ ] هر سه: `tsconfig` و `eslint-config` مشترک، Vitest، و یک `CLAUDE.md` با خط قرمزها و
+      جدولِ ساختار (همان الگوی `canvas-core/CLAUDE.md`).
+- [ ] ★ **گیت‌های ESLint — هر کدام با `RuleTester` خودآزمون** (قیدِ صریحِ مالک در D-3:
+      «قاعده‌ای که خودش تست نشده، گیت نیست» — همان استانداردی که `require-capture-update`
+      در M1 داشت و بلافاصله یک باگِ نهفته گرفت):
+  - `ydoc-schema` → هیچ import از `@hamboom/canvas-core`، `@hamboom/sdk`، `react`، `@excalidraw/*`.
+  - `apps/realtime` → هیچ import از `@hamboom/canvas-core`، `react`، `@excalidraw/*`،
+    **`@aws-sdk/*`** (نگهبانِ P4 — D-3) و **`@hamboom/sdk`** (سرورِ realtime نباید از راهِ
+    کلاینتِ API با M3 حرف بزند؛ فقط از راهِ پورتِ `BoardAuthority` — ADR-012/ADR-031).
+  - `canvas-sync` → هیچ import از `apps/*`.
+- [ ] هر قاعده **علاوه بر** `RuleTester`، با یک فایلِ probeِ واقعیِ نقض در همان پکیج آزموده
+      شود (هر دو جهت: نقض → خطا، حذفِ نقض → سبز) — چون `RuleTester` فقط خودِ قاعده را
+      می‌آزماید، نه سیم‌کشی‌اش به `eslint.config.js`ِ پکیج. در M1 هر دو لایه لازم شد.
+- [ ] `pnpm license:check` بعد از نصبِ `yjs`/`lib0`/`y-protocols` (هر سه MIT) — سبز و ثبت در
+      `docs/dependencies.md`.
+- **معیار پذیرش:** یک فایلِ probe که عمداً هر قاعده را نقض می‌کند **خطا می‌گیرد** و بعد از حذفش
+  `pnpm lint` سبز است؛ `pnpm typecheck && pnpm test` روی هر سه پکیجِ خالی سبز است.
 
-### گام ۴٫۳ — پنل‌های جانبی ✅ (۱۴۰۵/۰۵/۰۲) — ۴ از ۵ بخش؛ mini-map موکول شد
-> **یافته‌ی API موتور:** منوی راست‌کلیکِ موتور یک `onContextMenu`ِ Reactـیِ delegate‌شده
-> است و در `.popover` رندر می‌شود. با `contextmenu` در فاز capture + `preventDefault` +
-> `stopImmediatePropagation` کامل preempt می‌شود — **هم‌کلاسِ drop/paste** (در مرورگر
-> هر دو جهت تایید شد). zoom با `updateScene(appState)` و برازش با `scrollToContent`؛
-> zoomِ پیش‌فرض و `.App-toolbar` با CSS مخفی می‌شوند.
+### گام ۰٫۳ — برشِ حداقلیِ زیرساخت (مشروط به D-1)
 
-- [x] **پنل استایل** — `StylePanel` (رنگ/ضخامت/نوع خط/شفافیت/اندازه متن از ۳٫۳) +
-      **قفل** (از `toggleLock`ِ مشترک). «لایه» coming-soon (منطقش ۵٫۱ است).
-- [x] **منوی راست‌کلیک RTL** — کپی/پیست/تکثیر/حذف/قفل/گروه/لایه/کپی‌به‌عنوان‌تصویر.
-      کاری: تکثیر، حذف، قفل (از `elements/*`). بقیه coming-soon (کلیپ‌بورد ۵٫۳، گروه/لایه ۵٫۱).
-- [x] **کنترل zoom** + «برازش با صفحه» + درصد با ارقام فارسی (zoom حول مرکز، `zoom.ts`).
-- [!] **mini-map** — **موکول به بعد از فاز ۴** (تصمیم مالک ۱۴۰۵/۰۵/۰۲): کم‌ضروری‌ترین
-      برای MVP. رویکرد وقتی ساخته شود: رندرِ سفارشیِ نقشه‌ی کوچک از مرزهای صحنه +
-      مستطیلِ نمای فعلی، کلیک = پرشِ نما. باقی‌مانده‌ی تنهای فاز ۴.
-- [x] **نوار وضعیت** — `ConnectionState`/`SaveState` با متن فارسی از `@hamboom/i18n`.
-- [x] **تک‌منبعیِ قفل/حذف** — `elements/operations.ts` (`toggleLock`/`deleteElements`/
-      `areAllLocked`)؛ منو و پنل هر دو همین را صدا می‌زنند (ADR-024).
-- **معیار پذیرش:** ✅ در مرورگر تایید شد — همه‌ی پنل‌ها RTL، بدون متن انگلیسی؛ منوی
-      موتور preempt، zoom زنجیر می‌شود، قفل از هر دو سطح یک نتیجه. (mini-map تنها بخشِ
-      موکول‌شده است و در معیار پذیرشِ RTL/فارسی نقشی ندارد.)
-
-- [ ] **تایید بصری با مالک:** ظاهرِ پنل‌ها/نوار وضعیت/zoom (اسکرین‌شات در session ممکن نبود).
-
-### گام ۴٫۴ — حضور و همکاری (نمایشی) ✅ (۱۴۰۵/۰۵/۰۲)
-- [x] `ui/PeerCursors.tsx` — مکان‌نمای همتاها با نام و رنگ (از `PeerState`، نگاشتِ
-      صحنه→پیکسل تزریق‌شده). موقعیت فیزیکی (استثنای بوم).
-- [x] `ui/PeerSelections.tsx` — هاله‌ی رنگیِ همتا دورِ عناصری که او انتخاب کرده.
-- [x] `ui/PeerAvatars.tsx` — فهرستِ آنلاین + کلیک = دنبال‌کردن (نما روی مکان‌نمای او وسط).
-- [x] **حالت فقط-خواندنی** — `viewModeEnabled` + guardِ ابزارهای ویرایش (select/hand مجاز).
-- [x] **ترابریِ نمایشیِ حضور** — `dev/usePresence.ts` با `BroadcastChannel` (جای آداپتورِ
-      M2)؛ همان شکلِ `PeerState`. ۹ تست جدید (۳ cursors + ۳ avatars + ۳ selections).
-- **معیار پذیرش:** ✅ در مرورگر تایید شد (بازِ دومِ تب با policy بسته بود؛ با کانالِ
-      دومِ `BroadcastChannel` — مکانیزم یکسان — تایید شد): مکان‌نمای همتا با نام/رنگ/
-      آواتار رندر شد و اپ مکان‌نمای خودش را پخش کرد؛ leave حذفش کرد؛ follow دقیقاً روی
-      مکان‌نمای همتا (۵۰۰،۳۰۰) وسط کرد؛ read-only استیکی را بست ولی select را نه؛ هاله‌ی
-      انتخاب دورِ عنصر با رنگِ همتا آمد و با لغوِ انتخاب رفت.
-- [x] **★ Q1 (re-project حضور هنگام pan/zoomِ محلی) — آزموده و فیکس شد (۱۴۰۵/۰۵/۰۷).**
-      باگِ دمو: روی **panِ خالص** مکان‌نما/هاله سرِ جای صفحه می‌ماند (getAppState یک فریم
-      کهنه + bailِ `setZoom(همان‌مقدار)`). فیکس: stateِ واحدِ `viewport` از `onScrollChange`
-      و پروجکشن از همان. در مرورگر با مقادیرِ دست‌محاسبه تایید شد (مکان‌نما+هاله روی pan،
-      مکان‌نما روی zoom). جزئیات در `PROGRESS.md`. **درسِ M2 ذیلِ G-1 (گام ۶٫۱).**
-
-- [ ] **تایید بصری با مالک:** مکان‌نماها/هاله/آواتارها روی بوم (اسکرین‌شات ممکن نبود).
+- [ ] `infra/docker/docker-compose.yml` — فقط `postgres:16-alpine` و `redis:7-alpine` با
+      healthcheck، دقیقاً با همان نام سرویس/متغیرهای PLAN بخش ۳ تا M5 بتواند ادامه‌اش بدهد.
+- [ ] `.env.example` — تنها منبعِ حقیقتِ نامِ متغیرها؛ `RT_*` از PLAN بخش ۴ + `DATABASE_URL` +
+      `REDIS_URL` + `RT_DEV_JWT_SECRET`.
+- [ ] `packages/config` — خواندنِ env با zod، **تنها نقطه‌ی `process.env` در کل ریپو**؛ خطای
+      صریح و فارسی روی متغیرِ گم‌شده (نه `undefined`ِ خاموش).
+- [ ] migrationِ ترتیبیِ SQL خام برای `board_updates` و `board_snapshots` طبق PLAN بخش ۶
+      (ADR-005 — بدون ORM). فقط همین دو جدول + یک `boards` حداقلی برای FK؛ بقیه کارِ M3 است.
+- **معیار پذیرش:** روی ویندوز، `docker compose -f infra/docker/docker-compose.yml up -d` بالا
+  می‌آید، اسکریپتِ migration بدون خطا اجرا می‌شود، و یک تستِ یکپارچه یک ردیف در `board_updates`
+  می‌نویسد و می‌خواند. `pnpm dev` بدون داکر هم **نباید crash کند** (پیام صریحِ «دیتابیس بالا نیست»).
 
 ---
 
-## فاز ۵ — تعامل و صیقل (تخمین: ۲ تا ۳ روز)
+## فاز ۱ — ★ دروازه‌ی ریسک: اول probe، بعد کد (تخمین: ۱ تا ۲ روز)
 
-### گام ۵٫۱ — انتخاب، گروه و چیدمان ✅ (۱۴۰۵/۰۵/۰۷)
+> این فاز **کد محصولی تولید نمی‌کند، شواهد تولید می‌کند** — دقیقاً مثل فاز ۱ در M1.
+> خروجیِ هر گام یک سند + یک ADR است. هر سه probe می‌توانند طراحی را عوض کنند.
 
-> **پروبِ توانمندیِ موتور (۱۴۰۵/۰۵/۰۷) — قبل از نوشتنِ منطق:** بیشترِ ۵٫۱ در موتور
-> بومی است. یافته‌ها (تا از نو پروب نشود):
-> - **کادرِ انتخاب + `Shift+Click`**: بومیِ ابزارِ selection.
-> - **گروه‌بندی**: بومی با فیلدِ `groupIds`؛ `Ctrl+G` از keydownِ دمو رد می‌شود (ctrl → دستِ موتور).
-> - **snap + راهنمای هم‌ترازی**: بومی ولی **خاموش** (`objectsSnapModeEnabled:false`,
->   `gridModeEnabled:false`, `gridSize:20`) — فقط باید در appState روشن شود، کدِ جدید نمی‌خواهد.
-> - **align/distribute**: API امپراتیوِ مستقیم **ندارد** (نه actionManager) → تابعِ خالصِ خودمان
->   روی x/y + رابطِ RTL. ⚠️ «چپ/راست» عملیاتِ **مختصاتِ بوم** است (آینه نمی‌شود، P6)؛ فقط برچسبِ UI فارسی.
-> - **z-order**: فیلدِ `index` **ایندکسِ کسریِ بومی** است (`a0..`)؛ با پاسِ آرایه‌ی مرتب‌شده به
->   `updateScene`، موتور خودش ایندکس را بازتولید می‌کند — بی‌نیاز از پیاده‌سازیِ الگوریتم (ADR-007+024).
+### گام ۱٫۱ — ★ probe الگوی StrictMode-safe ([ADR-028](ARCHITECTURE_DECISIONS.md#adr-028))
 
-- [x] انتخاب چندتایی با کادر و با `Shift+Click` — بومیِ موتور؛ **تاییدِ چشمیِ مالک ۱۴۰۵/۰۵/۰۷**.
-- [x] گروه‌بندی (`Ctrl+G` / `Ctrl+Shift+G`) — بومی (`groupIds`)؛ **تاییدِ چشمیِ مالک ۱۴۰۵/۰۵/۰۷**.
-- [x] راهنمای هم‌ترازی (alignment guides) هنگام درگ — ✅ روشن شد: `objectsSnapModeEnabled: true`
-      در initialDataِ [`HamboomCanvas`](packages/canvas-core/src/engine/HamboomCanvas.tsx). config در
-      مرورگر تایید شد؛ **دیدنِ خطوطِ راهنما هنگام درگ در چک‌لیستِ تاییدِ چشمیِ PROGRESS.**
-- [x] snap به عناصر دیگر و به شبکه — ✅ snap به عناصر پیش‌فرض روشن؛ snap به شبکه با toggleِ
-      «شبکه» در دمو (`gridModeEnabled`). config + toggle در مرورگر تایید شد؛ **رفتارِ snap
-      در چک‌لیستِ چشمی.**
-- [x] **ابزار هم‌ترازی: چپ/راست/وسط، توزیع یکنواخت** — ✅ (۱۴۰۵/۰۵/۰۷) `alignElements`/
-      `distributeElements` در [`elements/align.ts`](packages/canvas-core/src/elements/align.ts)
-      (خالص؛ مختصاتِ بوم، **بدونِ آینه** P6؛ متنِ مقید با ظرفش حرکت می‌کند؛ ۱۲ تستِ دست‌محاسبه).
-      در پنل استایل: هم‌ترازی با ۲+ انتخاب، توزیع با ۳+. یک ژست undo (commitGesture).
-      **گپِ تاییدِ بصری (به مالک موکول شد):** نمایشِ بخشِ هم‌ترازی هنگام انتخابِ چندتایی در
-      مرورگرِ این session تایید نشد — پنجره‌ی مرورگر **مخفی** است، فریم composite نمی‌شود، و
-      onChangeِ موتور برای تغییرِ **انتخاب** fire نمی‌شود؛ پس snapshot به‌روز نمی‌شد. رفتارِ
-      pureها و سیم‌کشیِ پنل با تستِ واحد سبزند. (حین این، یک باگِ نهفته‌ی دمو هم رفع شد — پایین.)
-- [x] **تغییر لایه: جلو/عقب/جلوترین/عقب‌ترین با fractional index** ([ADR-007](ARCHITECTURE_DECISIONS.md#adr-007)) —
-      ✅ (۱۴۰۵/۰۵/۰۷) `reorderElements` در `elements/operations.ts` (خالص، ۱۱ تست، فقط ترتیبِ
-      آرایه؛ موتور ایندکس را بازتولید می‌کند). **منبعِ واحد** (ADR-024): منوی راست‌کلیک
-      (جلوترین/عقب‌ترین = front/back) و پنل استایل (جلو/عقب = یک‌پله) هر دو از همین تابع، از راهِ
-      `applyReorder`ِ دمو. **تاییدِ مرورگر:** پنلِ «عقب» عنصر را یک لایه پایین برد و منوی «بردن به
-      عقب» به ته؛ **یک** Ctrl+Z هر دو را برگرداند (commitGesture IMMEDIATELY + bumpVersion، ADR-026).
+> **چرا اول این:** binder دقیقاً همان کاری را می‌کند که در M1 شکست: به `onChange` و
+> `onScrollChange` مشترک می‌شود تا تغییرات محلی را بگیرد. اگر آن اشتراک‌ها زیر StrictMode
+> مرده بمانند، **binder بی‌صدا هیچ تغییری را emit نمی‌کند** — بدترین نوعِ باگ. ADR-028 یک
+> راه‌حلِ **نامزدِ تاییدنشده** ثبت کرده؛ کارِ این گام تبدیلش به «تاییدشده» یا «رد شده» است.
 
-### گام ۵٫۲ — Undo/Redo ✅ (۱۴۰۵/۰۵/۰۷)
+- [ ] فرضیه‌ی ADR-028 را در مرورگرِ واقعی بیازما: `api`ِ گرفته‌شده از `onReady` در **state**،
+      و اشتراک‌ها در `useEffect([api])` **با cleanup** — نه مستقیم در `onReady`.
+- [ ] نگهبانِ موجود را دوباره استفاده کن، ننویس: تستِ `refreshCounts` در
+      [`e2e/selection.spec.ts`](packages/canvas-core/e2e/selection.spec.ts) همین کلاسِ باگ را
+      می‌گیرد. یک صفحه‌ی دموی **زیرِ `<StrictMode>`** بساز و همان ادعا را رویش بزن.
+- [!] ★ **اگر فرضیه رد شد: هیچ تغییری در `canvas-core` نده — متوقف شو.** قیدِ صریحِ مالک
+      (۱۴۰۵/۰۵/۱۲): **با گزینه‌ها و هزینه‌ی هرکدام برگرد، نه با یک راه‌حلِ آماده.** حداقل
+      این سه گزینه با هزینه‌شان سنجیده و ارائه شود:
+  - (الف) اشتراک‌ها را داخلِ `HamboomCanvas` ببریم و API رویدادیِ امن بدهیم — تغییر در M1،
+    اثر روی همه‌ی مصرف‌کننده‌ها، ولی یک‌بار برای همیشه.
+  - (ب) binder اشتراک‌ها را از راهِ دیگری بگیرد (مثلاً observerِ Y.Doc به‌جای `onChange`) —
+    بدونِ دست‌زدن به M1، ولی ممکن است بعضی رویدادهای محلی را از دست بدهد.
+  - (ج) `apps/web` در M3 بدون StrictMode اجرا شود — صفر کار حالا، ولی بدهیِ ثبت‌شده و
+    ازدست‌رفتنِ خطاگیریِ StrictMode در کلِ اپ.
+- [ ] نتیجه در **ADR-032** ثبت شود (نه ویرایشِ ADR-028): کدام الگو، با چه شواهدی، و اینکه
+      binder کدام را به کار می‌برد.
+- **معیار پذیرش:** یک تستِ E2E که **زیر `<StrictMode>`** ثابت می‌کند مسیرِ
+  `onChange → state` زنده است (پنل با انتخابِ موتوری به‌روز می‌شود). **اگر این تست سبز نشود،
+  فاز ۳ شروع نمی‌شود** — الگویش هنوز معلوم نیست.
 
-> **بیشترِ این گام قبلاً با [ADR-026](ARCHITECTURE_DECISIONS.md#adr-026) ساخته شده بود.**
-> مکانیزمِ «یک ژست = یک undo» همان `captureUpdate: "IMMEDIATELY"` است که همه‌ی نوشتن‌ها
-> از `commitGesture` می‌گیرند و قاعده‌ی ESLintِ `require-capture-update` اجباری‌اش می‌کند.
+### گام ۱٫۲ — probe کدکِ Y.Doc: وفاداری، اندازه، و ادغامِ per-property
 
-- [x] undo/redo کلِ یک ژست را یک واحد می‌بیند — ✅ مکانیزمِ ADR-026 (`commitGesture`
-      IMMEDIATELY). در M1 مرزِ ژست همان فراخوانیِ capture است؛ `gestureId` مکانیزمِ
-      گروه‌بندیِ M2 است (در `ElementChangeSet` قرارداد از قبل هست). **تاییدِ مرورگر:**
-      ساختِ فریم+فرزندان (۵ عنصر) → **یک** Ctrl+Z همه را برگرداند، redo همه را بازگرداند.
-- [x] در حالت متصل، undo کار دیگران را برنگرداند — **آماده‌سازیِ M2 مستند شد**: `applyRemoteChanges`
-      باید `captureUpdate: "NEVER"` بنویسد و روی تراکنش‌های Yjs `origin` بگذارد تا
-      `Y.UndoManager` با `trackedOrigins` کار دیگران را برنگرداند ([sync/README](packages/canvas-core/src/sync/README.md)
-      + ADR-026/ADR-012). M1 شبکه ندارد، پس اینجا فقط قرارداد است.
-- [x] تست «فریم با ۳ فرزند → یک Ctrl+Z همه برمی‌گردند» — ✅ در مرورگر تایید شد؛ **تستِ واحدِ
-      اتمیک‌بودنِ ژست** (`scene-commit.test.ts`: ژستِ چندعنصری = یک `updateScene`) اضافه شد.
-      تستِ تکرارپذیرِ خودِ undoِ موتور به harnessِ مرورگریِ گام ۶٫۱ موکول است (خانواده‌ی G-1؛
-      jsdom undo ندارد).
+- [ ] یک `HbElement` از **هر ۹ نوعِ رندر** (خروجیِ واقعیِ سازنده‌های `canvas-core`، نه نمونه‌ی
+      دستی) را به `Y.Map` بنویس و برگردان و با `hbElement.parse` اعتبارسنجی کن — به‌ویژه
+      `customData.hb` تودرتو، `points` آرایه‌ای، `boundElements`، و `null`ها.
+- [ ] **ادعای مرکزیِ ADR-007 را بیازما:** دو کلاینت همزمان، یکی `backgroundColor` و دیگری
+      `x`/`y` **یک عنصر** را عوض کنند → بعد از ادغام **هر دو تغییر بمانند**. (اگر عنصر را
+      به‌صورت یک آبجکتِ کامل بنویسیم، یکی دیگری را می‌خورد — این probe دقیقاً همان را نشان می‌دهد.)
+- [ ] **اندازه‌ی update را اندازه بگیر** (بایتِ واقعی): یک درگِ ۵۰ms-throttleـی، یک تغییر رنگ،
+      یک ساختِ استیکی، و یک استروکِ قلمِ ساده‌شده. نتیجه در `docs/ydoc-baseline.md`.
+- [ ] فیلدهای مشتق‌شده را مشخص کن: طبق [ADR-008](ARCHITECTURE_DECISIONS.md#adr-008) مسیرِ
+      کانکتور **حالت مشتق‌شده** است — `points` فقط توسط کلاینتِ دستکاری‌کننده و فقط در پایان
+      ژست نوشته می‌شود. اینجا ثبت کن کدام فیلدها هرگز از remote بازنویسی نمی‌شوند.
+- **معیار پذیرش:** `docs/ydoc-baseline.md` با (۱) جدولِ round-trip برای هر ۹ نوع، (۲) تستِ
+  ادغامِ همزمانِ دو-property که **سبز** است، (۳) اعدادِ واقعیِ اندازه‌ی update. اگر ادغامِ
+  per-property کار نکرد، ADR-007 قبل از فاز ۲ بازبینی می‌خواهد.
 
-### گام ۵٫۳ — کلیپ‌بورد ✅ (۱۴۰۵/۰۵/۰۷) — به‌جز copy-as-PNG
+### گام ۱٫۳ — probe متنِ همزمان: `Y.Text` در برابر رشته‌ی ساده
 
-> **پروب (اول):** preemptِ copy/cut/paste هم‌کلاسِ drop/paste است (تایید مرورگر)؛
-> پیستِ تصویر از قبل با image-tool (۳٫۶) گرفته می‌شود و ابزارِ کلیپ‌بورد آن را defer
-> می‌کند. **منبعِ واحد:** هسته‌ی کلونِ `duplicateElements` به `cloneElements` استخراج شد و
-> paste رویش سوار است؛ cut از `deleteElements`.
+> **تعارضِ واقعی:** `shared-types` می‌گوید `text: string`؛ PLAN بخش ۷٫۳ و دلیلِ ADR-004
+> می‌گویند `Y.Text`. قرارداد `ElementChangeSet` هم **عنصرِ کامل** رد و بدل می‌کند، نه delta.
 
-- [x] کپی/پیست داخل بوم (id جدید + آفست) — [`tools/clipboard-tool.ts`](packages/canvas-core/src/tools/clipboard-tool.ts)
-      + [`elements/clipboard.ts`](packages/canvas-core/src/elements/clipboard.ts) روی `cloneElements`.
-      کلیپ‌بوردِ درون‌حافظه‌ای + token برای تفکیکِ داخلی/خارجی؛ آفستِ آبشاری. منو (کپی/پیست)
-      و Ctrl+C/X/V. ۴ تستِ ابزار.
-- [x] پیست تصویر از کلیپ‌بورد سیستم — از گام ۳٫۶ (image-tool)؛ ابزارِ کلیپ‌بورد تصویر را **defer** می‌کند.
-- [x] پیست متن ساده → استیکی — `textToStickies` (روی `createSticky`).
-- [x] پیست چند خط → چند استیکیِ کنارِ هم — `textToStickies` چندخطی (روی `nextStickyPosition`، RTL). ۶ تست.
-- [!] **کپی به‌عنوان PNG** — موکول: به exportِ PNGِ موتور + `navigator.clipboard.write` با
-      دسترسیِ کلیپ‌بورد نیاز دارد؛ در این محیط قابلِ تایید نیست. مثلِ mini-map موکول شد.
+- [ ] سناریو را بساز: دو کلاینت همزمان در دو جای مختلفِ متنِ یک استیکی تایپ کنند.
+  - با **رشته‌ی ساده (LWW):** انتظار — یکی کاراکترهای دیگری را می‌خورد. اندازه‌اش بگیر.
+  - با **`Y.Text` + دیفِ پیشوند/پسوندِ مشترک** در binder (چون قرارداد delta نمی‌دهد):
+    انتظار — هر دو ویرایش می‌مانند.
+- [ ] هزینه‌ی دیف را بسنج (تایپِ ۱۰۰۰ کاراکتری با debounce ۱۵۰ms طبق PLAN ۷٫۴).
+- [ ] ★ **سه تله‌ی از پیش شناسایی‌شده را بسنج، فرض نکن** (نتیجه‌ی بحثِ مالک ۱۴۰۵/۰۵/۱۲) —
+      کیفیتِ ادغام به `Y.Text` محدود نیست، به **شکلِ قرارداد** محدود است:
+  - [ ] **پایه‌ی دیف باید زنده باشد:** دیف علیهِ `ytext.toString()`ِ **لحظه‌ی تراکنش** گرفته
+        شود، نه علیهِ عنصرِ کَش‌شده‌ی بوم. اگر علیه نسخه‌ی کهنه دیف بگیریم، تغییرِ تازه‌رسیده‌ی
+        همتا به‌صورت «حذف» تفسیر و کاراکترش پاک می‌شود — **هم‌کلاسِ باگِ `getAppState`ِ کهنه
+        در M1، یک لایه پایین‌تر**. تستِ صریح برایش بنویس.
+  - [ ] **پنجره‌ی کهنگی را اندازه بگیر:** اگر تغییرِ remote هنوز به textareaِ موتور نرسیده و
+        کاربر رویش تایپ کند، رشته‌ی emit‌شده کاراکترِ همتا را ندارد و دیف حذفش می‌کند. عرضِ
+        این پنجره تابعِ debounce ۱۵۰ms است — **عددش را در بیاور**، ننویس «ناچیز است».
+  - [ ] **مکان‌نما:** وقتی همتا قبل از caret درج کند، caretِ محلی جابه‌جا نمی‌شود (چون رشته‌ی
+        کامل داخل ریخته می‌شود). بسنج و به‌عنوان محدودیت ثبت کن.
+  - [ ] **`text` در برابر `originalText`:** فقط **یکی** منبعِ حقیقتِ CRDT باشد
+        (`originalText`) و دیگری مشتق — وگرنه دو `Y.Text` واگرا می‌شوند.
+- [ ] تصمیم را در **ADR-033** بنویس. اگر `Y.Text` انتخاب شد: در Y.Doc `Y.Text` است و در
+      `readElement` با `toString()` به `string` تبدیل می‌شود — **`shared-types` دست‌نخورده
+      می‌ماند**. اگر رشته انتخاب شد: «از دست رفتنِ کاراکتر در تایپِ همزمان» یک **محدودیتِ
+      شناخته‌شده‌ی ثبت‌شده** است، نه باگی که بعداً کشف شود.
+- [!] ★ **مسیرِ ممنوع:** اگر probe نشان داد دیف کافی نیست، راهِ‌حل **پهن‌کردنِ قرارداد**
+      نیست (مثلاً افزودنِ `textDelta` به `ElementChangeSet`) — آن یعنی تغییرِ `shared-types`
+      که طبق D-2 بسته است. خروجیِ مجاز: (۱) ثبتِ محدودیت، یا (۲) **توقف و برگشت پیش مالک**.
+- **معیار پذیرش:** ADR-033 با شواهدِ عددیِ هر دو گزینه **و** عددِ پنجره‌ی کهنگی؛ و تست‌های
+  خودکاری که رفتارِ انتخاب‌شده را قفل می‌کنند — شاملِ تستِ «دیف علیه پایه‌ی زنده» که اگر کسی
+  بعداً به کَش برگردد، قرمز شود. `hbElement.parse` روی خروجیِ `readElement` سبز بماند
+  (اثباتِ اینکه `Y.Text` از مرز بیرون نمی‌زند).
 
-> **تاییدِ چشمی (به مالک):** رفتارِ Ctrl+C/V (کپی/پیستِ عناصر، متن→استیکی، defer تصویر) و
-> منوی کپی/پیست به کلیپ‌بوردِ واقعی نیاز دارد → در چک‌لیستِ چشمیِ PROGRESS. منطق و
-> imperative-ها تستِ واحدِ سبز دارند.
+### گام ۱٫۴ — probe انزوای undo: `Y.UndoManager` + `trackedOrigins`
 
-### گام ۵٫۴ — دسترس‌پذیری و کارایی ✅ (۱۴۰۵/۰۵/۰۷)
-- [x] پیمایش با کیبورد بین عناصر، `Escape`/`Enter`/جهت‌ها — `cycleSelection` در
-      `operations.ts` (خالص، ترتیبِ خواندنِ RTL، wrap؛ ۵ تست) + `Tab`/`Shift+Tab` در دمو
-      (**تاییدِ مرورگر: چرخش بین ۳ عنصر + wrap**). `Escape`/`Enter`/nudgeِ جهت‌دار بومیِ موتورند
-      (دمو دستشان نمی‌زند).
-- [x] `aria-label` فارسی روی همه‌ی دکمه‌ها — ممیزیِ [`ui/a11y.test.tsx`](packages/canvas-core/src/ui/a11y.test.tsx):
-      هر دکمه‌ی Toolbar/StylePanel/ZoomControl/ContextMenu/PeerAvatars نامِ در دسترس دارد
-      (aria-label یا متن). همه سبز — از قبل کامل بود، حالا نگهبان دارد.
-- [x] **بنچمارک ۲۰۰۰ عنصر / ۳۰fps** — صفحه‌ی [`dev/Bench.tsx`](packages/canvas-core/dev/Bench.tsx)
-      (مسیر `#bench`). **استفاده‌ی واقعی (zoom ۱): ۱۴۴fps، صفر فریمِ کند** — معیار با حاشیه‌ی
-      بزرگ پاس. («۴۵fps»ِ اولیه artifactِ sweepِ تهاجمیِ zoom-out بود، نه محصول.)
-- [x] **cullingِ خارج از viewport — رد شد.** آزمایشِ قطعی: در zoom ۱، ۱۰۰۰ و ۲۰۰۰ عنصر هر
-      دو ۱۴۳–۱۴۴fps → دوبرابرشدنِ **کل** هیچ اثری نداشت → هزینه **O(visible)** است، موتور
-      خودش off-screen را cull می‌کند. پس virtualization **زائد** است و ساخته نشد. دلیلِ کامل
-      در [`docs/perf-baseline.md`](docs/perf-baseline.md) (تا دوباره سراغش نروند).
-- **معیار پذیرش:** ✅ `docs/perf-baseline.md` با هر دو مجموعه‌ی اعدادِ واقعیِ مالک نوشته شد.
+- [ ] فقط با Yjs (بدون بوم، بدون شبکه): سه تراکنش با `origin`های `local-user` / `remote` /
+      `undo` بساز و ثابت کن `UndoManager` با `trackedOrigins` **فقط** محلی را برمی‌گرداند.
+- [ ] رفتارِ مرزی: undo بعد از رسیدنِ یک تغییرِ remote روی **همان عنصر**؛ و undo وقتی عنصری
+      که کاربر ساخته توسطِ دیگری حذف شده.
+- [ ] **رابطه با `captureUpdate: "NEVER"` را صریح بنویس:** این‌ها دو سدِ **مستقل**‌اند —
+      `trackedOrigins` تاریخچه‌ی Yjs را محافظت می‌کند، `captureUpdate: "NEVER"` تاریخچه‌ی
+      **موتورِ رندر** را. هر دو لازم‌اند؛ نبودِ هرکدام یک مسیرِ نشت باز می‌گذارد.
+- **معیار پذیرش:** ۶ تستِ واحدِ سبز روی Yjs خالص + یک بندِ صریح در `PROGRESS.md` که می‌گوید
+  چرا هر دو مکانیزم لازم‌اند (این جمله در گام ۳٫۴ به تست تبدیل می‌شود).
 
 ---
 
-## فاز ۶ — تحویل (تخمین: ۱ روز)
+## فاز ۲ — `packages/ydoc-schema` (تخمین: ۱٫۵ تا ۲ روز)
 
-### گام ۶٫۱ — تست و مستندسازی
+> پایین‌ترین لایه. هم binder و هم سرور مصرفش می‌کنند، پس **هیچ‌چیزِ مخصوصِ کلاینت** اینجا نیست.
 
-> **دو کار که از گام‌های قبلی به اینجا موکول شدند.** هر دو در
-> [`src/sync/README.md`](packages/canvas-core/src/sync/README.md) هم به‌عنوان
-> گپ M2 ثبت شده‌اند تا از دو جا قابل پیدا شدن باشند.
+### گام ۲٫۱ — ساختار سند + codec عنصر
 
-- [x] **G-2 (از گام ۱٫۴): ✅ (۱۴۰۵/۰۵/۰۷) — با Playwright، پس از تاییدِ مالک.**
-      probeِ عملی‌بودن سبز شد (Chromium از CDN نصب شد، composite و اسکرین‌شاتِ واقعیِ دمو
-      کار کرد)، پس مالک افزودنِ Playwright را تایید کرد. نگهبانِ رگرسیونِ ADR-025 در
-      [`e2e/text-direction.spec.ts`](packages/canvas-core/e2e/text-direction.spec.ts):
-      **شمارنده‌ی فراخوانیِ wrapperِ `fillText` هنگام رندرِ واقعیِ بوم باید > ۰ باشد** —
-      همان ملاکی که خودِ ADR-025 گذاشته؛ اگر موتور مسیرِ رندر را عوض کند و از fillText
-      رد نشود، صفر می‌ماند و تست می‌افتد. **یافته‌های ثبت‌شده (چرا «هش پیکسلی» نه):**
-      `getImageData` روی canvasِ GPUـیِ موتور سفیدِ خالی می‌دهد؛ اثرِ خودِ `ctx.direction`
-      در این Chromium پیکسلی سنجش‌پذیر نیست؛ golden از canvas به‌خاطرِ seedِ تازه‌ی rough.js
-      ناپایدار است — جزئیات در سرِ فایلِ spec.
-- [x] **harnessِ E2E (رگرسیونِ بصری/تعاملی) — ✅ افزوده و کامل شد.** Playwright + `webServer`ِ
-      دمو ([`playwright.config.ts`](packages/canvas-core/playwright.config.ts))؛ `pnpm --filter
-      @hamboom/canvas-core test:e2e`. **۱۵ تستِ سبز و پایدار** در مرورگرِ واقعی — کلِ صفِ
-      موارد که تا حالا «فقط تاییدِ چشمیِ مالک» بودند:
-  - **بصری/رابط:** پالت (golden)، نوار ابزار (۱۱ + aria)، نوار وضعیت/zoomِ فارسی،
-        **نگهبانِ همپوشانیِ ADR-027**، صفر خطای کنسول.
-  - **★ نگهبانِ refreshCounts:** multi-select → بخشِ هم‌ترازی/توزیع (کدِ هرگز خودکار
-        اجرانشده) — **و یک باگِ StrictMode را گرفت** (رفع در `dev/main.tsx`).
-  - **تعاملِ trusted:** box-select، Shift+Click، گروه‌بندی (Ctrl+G/Ctrl+Shift+G)، snap
-        (مختصاتِ دقیقِ چسبیدن)، ساختِ گروهی + **undo/redoِ کیبوردیِ موتور** (harnessِ undo)،
-        میانبرِ N، و **کپی/پیستِ کلیپ‌بورد** (Ctrl+C/V، آبشاری).
-- [x] **cut/paste (Ctrl+X→Ctrl+V): ✅ باگ رفع شد و تست اضافه شد.** ریشه: موتور Ctrl+X را
-      روی canvas می‌گرفت و انتخاب را **قبل از** رویدادِ `cut`ِ ما حذف می‌کرد، پس `grab()` خالی
-      می‌ماند و کلیپ‌بورد فرمتِ خودِ Excalidraw را داشت → paste متن را «خارجی» می‌پنداشت و یک
-      استیکی (۲ عنصر) می‌ساخت. **رفع (۲ بخش):** (۱) انتخاب را در **keydownِ capture روی
-      document** می‌گیریم — قبل از حذفِ موتور، چون موتور روی canvas گوش می‌دهد و capture زودتر
-      است؛ (۲) paste فرمتِ کلیپ‌بوردِ خودِ Excalidraw را هم «داخلی» می‌شناسد. حالا cut(N)→paste(N)
-      عنصرِ واقعی. نگهبان: تستِ cut در `e2e/clipboard.spec.ts`. ۴ تستِ واحدِ ابزار هم سبز ماند.
-- [!] **G-1 (از گام ۲٫۲ + حضورِ ۴٫۴): بلوکه — پیش‌نیازش binderِ M2 است.**
-      تست دو-نمونه‌ای با بوم **واقعی** (دو `<HamboomCanvas>` با یک آداپتور). **خارج از
-      دامنه‌ی M1:** شبکه/Yjs/binder کارِ M2 است، پس این تست در M1 اصلاً قابلِ نوشتن نیست
-      (نمی‌توان binderِ واقعی را اینجا ساخت). گپ در [`sync/README.md`](packages/canvas-core/src/sync/README.md)
-      برای M2 مستند است. باید **رندرِ حضور** را هم بپوشاند:
-  - [ ] مکان‌نما/هاله/آواتارِ همتا از `applyPeers` در نمونه‌ی دیگر رندر شود (Q2 — تاییدِ
-        فعلی با کانالِ دومِ `BroadcastChannel` بود، نه دو موتورِ واقعی).
-  - [ ] **re-projectِ حضور با هر تغییرِ viewport** — pan **خالص** و zoom (Q1). از تابعِ
-        مشترکِ `sceneToOverlayPixel` استفاده کن (منبعِ واحد)؛ viewport را از `onScrollChange`
-        بده، نه `getAppState()`ِ کهنه؛ و با هر جابه‌جاییِ نما re-render بده.
-  - [ ] follow کردنِ همتا: viewportِ مستقلِ دو موتور و پرشِ درست به مکان‌نمای طرف.
-- [x] **پوشش تست واحد ≥ ۶۰٪ روی `elements/`, `text/`, `sync/`** — ✅ (۱۴۰۵/۰۵/۰۷)
-      اندازه‌گیری با `@vitest/coverage-v8` (dev، MIT، `pnpm license:check` سبز): `text/` ۱۰۰٪،
-      `sync/` ۸۰٪، `elements/` ۹۹٫۸٪ (کلی: خطوط ۹۷٪، توابع ۹۲٪). **گیتِ دائمی، نه عددِ
-      ادعایی:** thresholds در [`vitest.config.ts`](packages/canvas-core/vitest.config.ts)
-      اجرا را زیرِ ۶۰٪ می‌شکنند؛ با `pnpm --filter @hamboom/canvas-core test:coverage`.
-      فایلِ کاملاً آزموده‌نشده‌ی `text/measure.ts` با `measure.test.ts` پوشش داده شد.
-- [x] **تست یکپارچه** — ✅ (۱۴۰۵/۰۵/۰۷) [`test/integration.test.ts`](packages/canvas-core/test/integration.test.ts):
-      «بوم خالی → ۵ استیکی + ۲ کانکتور با سازنده‌های **واقعی** → یک ژست منتشر و پایدار →
-      کلاینتِ تازه‌وارد کلِ سند را بازمی‌خواند» + اعتبارِ schemaـیِ هر ۱۲ عنصر (قراردادِ M2).
-      **undo/redo در سطحِ قرارداد** (origin=undo، حذفِ نرم و بازگردانی) آزموده شد؛ **history
-      stackِ خودِ موتور** به jsdom نمی‌آید — قبلاً در مرورگر تایید شده (۳٫۵/۳٫۶/۵٫۲) و به
-      harnessِ مرورگریِ G-1 موکول است. ۷ تست.
-- [x] **`packages/canvas-core/README.md`** — ✅ (۱۴۰۵/۰۵/۰۷) بازنویسیِ کاملِ تحویل: مصرفِ
-      پکیج، پیش‌نیازِ مسیرِ دارایی‌ها (P2)، مثالِ حداقلیِ کامل، جدولِ props، اتصال به sync،
-      قواعدِ مصرف (getKind/commitGesture/bumpVersion)، دستورها، وضعیت.
-- [x] **`sync/README.md` نهایی با نمودار جریان داده** — ✅ نمودار + چرخه‌ی عمر + دو سناریو +
-      نگهبانِ echo + جدولِ throttle + «آنچه M2 باید پیاده کند» + گپ‌های G-1/G-2 + مرجعِ
-      پیاده‌سازی. کامل بود؛ در این گام مرور و تایید شد.
-- [x] **`docs/dependencies.md` کامل با لایسنس هر پکیج** — ✅ (۱۴۰۵/۰۵/۰۷) فهرستِ کاملِ
-      لایسنسِ درختِ وابستگی (snapshotِ `pnpm license:list`، هر ۶۷۸ پکیج بر حسبِ لایسنس) +
-      توضیحِ لایسنس‌های بیرونِ هسته‌ی پنج‌گانه (OFL برای فونت، dualها، public-domainها).
+- [ ] `src/doc.ts` — ساختِ `Y.Doc` با پنج ریشه‌ی PLAN ۷٫۱: `meta`، `elements`، `assets`،
+      `appState`، `commentPins`. یک تابعِ سازنده، نه پنج جای پراکنده (ADR-024).
+- [ ] `src/element-codec.ts` — `writeElement(doc, el)` / `readElement(map)` **per-property**
+      طبق نتیجه‌ی گام ۱٫۲: فقط propertyهای **تغییرکرده** نوشته شوند تا ادغامِ ADR-007 کار کند.
+      propertyهای آرایه‌ای (`points`، `groupIds`) عمداً LWW.
+- [ ] `readDocument(doc): CanvasDocument` — materialize کاملِ سند برای `replaceDocument`.
+- **معیار پذیرش:** round-trip روی هر ۹ نوعِ عنصر با `hbElement.parse` سبز؛ تستِ ادغامِ همزمانِ
+  دو-property (از گام ۱٫۲) اینجا به تستِ دائمی تبدیل شده و سبز است؛ نوشتنِ عنصرِ **بدون تغییر**
+  هیچ updateای تولید نمی‌کند (نگهبانِ ترافیک).
 
-### گام ۶٫۲ — آماده‌سازی برای M2 ✅ (۱۴۰۵/۰۵/۰۷)
-- [x] **canvas-core هیچ import شبکه/Yjs/sdk ندارد** — با grep تایید شد (yjs، y-*، @hamboom/sdk،
-      @hamboom/storage، @hamboom/auth-core، axios، ws، socket + fetch/WebSocket/XHR/EventSource:
-      صفر مورد در `src/`). و **گیتِ دائمی**: `canvasCoreBoundaries()` در
-      [`eslint.config.js`](packages/canvas-core/eslint.config.js) این import‌ها را خطا می‌کند.
-- [x] **local-adapter مرجعِ کامنت‌گذاری‌شده** — [`sync/local-adapter.ts`](packages/canvas-core/src/sync/local-adapter.ts)
-      از گام ۲٫۲ با JSDocِ کامل «مرجعِ پیاده‌سازی برای M2» + نگهبانِ echo + تگ‌گذاریِ origin
-      + وضعیتِ اتصال/ذخیره. مرور شد؛ کافی است.
-- [x] **فهرستِ «M2 باید پیاده کند»** — در [`sync/README.md`](packages/canvas-core/src/sync/README.md)
-      (۱۰ مورد + گپ‌های G-1/G-2). در این گام به‌روز شد: G-2 ✅ (۶٫۱)، و اینکه زیرساختِ E2E
-      برای نیمه‌ی رندرِ حضورِ G-1 آماده است.
-- [x] **PROGRESS.md نهایی** — خلاصه‌ی تحویلِ M1 (چه ساخته شد / محدودیت‌ها / پله‌ی ADR-003 = A).
+### گام ۲٫۲ — دارایی‌ها، appState و پینِ کامنت
+
+- [ ] `assets`: فقط متادیتای `HbAsset` — **باینری هرگز داخل Y.Doc نمی‌رود** (نگهبانِ صریح:
+      تستی که هر مقدارِ `Uint8Array`/`Blob` در سند را خطا می‌دهد).
+- [ ] `appState`: زیرمجموعه‌ی **مشترکِ بورد** (`gridEnabled`، `viewBackgroundColor`،
+      `snapToObjects`، `frameRendering`) — نه viewportِ شخصی، نه انتخابِ شخصی.
+- [ ] `commentPins`: فقط مختصات و `resolved` (متنِ کامنت در Postgres است — کارِ M3).
+- **معیار پذیرش:** تستِ «هیچ باینری در سند» سبز؛ تستی که ثابت می‌کند `scrollX`/`zoom`/
+  `selectedElementIds` **در سند نیستند** (اگر باشند، viewportِ یک نفر به همه تحمیل می‌شود).
+
+### گام ۲٫۳ — نسخه‌بندی schema و اسکلت migration
+
+- [ ] `meta.schemaVersion` روی هر سند + `SCHEMA_VERSION` صادرشده.
+- [ ] `src/migrations/` با امضای `migrateV1toV2(doc)` و یک رجیستریِ ترتیبی. طبق PLAN ۷٫۵
+      migration **در سرور هنگام بارگذاری اتاق** اجرا می‌شود، نه در کلاینت.
+- [ ] مسیرِ خطا: کلاینتِ قدیمی‌تر از سرور → `HB_ERROR { code: "CLIENT_TOO_OLD" }`.
+- **معیار پذیرش:** یک migrationِ ساختگیِ V1→V2 نوشته و آزموده شود (یک فیلدِ جدید با
+  پیش‌فرض) تا **مسیرِ migration خودش آزموده باشد**، نه فقط وجود داشته باشد. تستِ
+  «سندِ نسخه‌ی بالاتر → خطای صریح» سبز.
+
+### گام ۲٫۴ — کدهای پیامِ پروتکل
+
+- [ ] `src/protocol.ts` — هر هفت کدِ PLAN بخش ۵٫۳: `0x00 SYNC`، `0x01 AWARENESS`،
+      `0x10 HB_AUTH_REFRESH`، `0x11 HB_PERMISSION`، `0x12 HB_ROOM_INFO`، `0x13 HB_EPHEMERAL`،
+      `0x14 HB_ERROR` — با encode/decode روی `lib0` و تایپِ کامل.
+- [ ] کدهای خطا به‌صورت enum (نه رشته‌ی جادویی): `CLIENT_TOO_OLD`، `FORBIDDEN`،
+      `TOKEN_EXPIRED`، `DOC_TOO_LARGE`، `ROOM_CLOSED`.
+- **معیار پذیرش:** round-trip encode/decode برای هر ۷ نوع پیام سبز؛ پیامِ ناشناخته **بی‌صدا
+  نادیده گرفته می‌شود** (سازگاری رو به جلو) و تستش هست؛ هیچ رشته‌ی خطای hardcode در سرور.
+
+---
+
+## فاز ۳ — `packages/canvas-sync`: binder کلاینت (تخمین: ۲٫۵ تا ۳٫۵ روز)
+
+> ★ **قلبِ M2.** پیاده‌سازیِ `CanvasSyncAdapter` — همان interfaceی که M1 تعریف کرد.
+> مرجعِ رفتاری: [`sync/local-adapter.ts`](packages/canvas-core/src/sync/local-adapter.ts).
+> **تا پایان این فاز هیچ کدِ شبکه‌ای نوشته نمی‌شود** — دو `Y.Doc` مستقیم به هم وصل می‌شوند.
+
+### گام ۳٫۱ — اسکلت آداپتور + چرخه‌ی عمر + نگهبانِ echo
+
+- [ ] `YjsSyncAdapter implements CanvasSyncAdapter` با `connect(inbound)`/`disconnect()`
+      دقیقاً طبق چرخه‌ی عمرِ ۹مرحله‌ایِ [`sync/README.md`](packages/canvas-core/src/sync/README.md).
+- [ ] ★ **`assertEmittable(changes)` در اولین خطِ `emitElementChanges`** — غیرقابلِ حذف.
+      این همان نگهبانی است که M1 با تستِ «بوم بدرفتار» ساخت.
+- [ ] اشتراک‌های موتور **دقیقاً با الگویی که گام ۱٫۱ تایید کرد** بسته شوند (ADR-032).
+- **معیار پذیرش:** تستِ «بوم بدرفتار» (کپیِ رفتاریِ `contract.test.ts` از M1) روی آداپتورِ
+  واقعی سبز است: تغییری با `origin: "remote"` که دوباره emit شود، `EchoLoopError` می‌دهد.
+
+### گام ۳٫۲ — ★ `applyRemoteChanges` با `captureUpdate: "NEVER"` + گیتِ خودکار
+
+> **ارثیه‌ی M1 (ADR-026):** بدون این، تغییری که از کاربرِ دیگر می‌رسد در undo stackِ **محلی**
+> می‌نشیند و `Ctrl+Z` این کاربر کارِ آن یکی را برمی‌گرداند — همان چیزی که ADR-012 منع کرده.
+
+- [ ] `applyRemoteChanges` صحنه را با `captureUpdate: "NEVER"` بنویسد — از راهِ
+      `commitSystemUpdate` در [`engine/scene-commit.ts`](packages/canvas-core/src/engine/scene-commit.ts)،
+      **نه `updateScene`ِ خام** (خط قرمزِ ۷ در `canvas-core/CLAUDE.md`).
+- [ ] **گیتِ خودکار:** قاعده‌ی `require-capture-update` که M1 در
+      [`eslint-config/boundaries.js`](packages/eslint-config/boundaries.js) ساخت روی
+      `canvas-sync` هم فعال شود + یک قاعده‌ی **باریک‌ترِ** جدید: در مسیرِ remote فقط `"NEVER"`
+      مجاز است. با `RuleTester` خودآزمون شود (قاعده‌ی ۱۰).
+- [ ] **ترتیبِ capture در جریانِ چندمرحله‌ای** رعایت شود (درسِ گام ۳٫۶ در M1): اگر یک تغییرِ
+      remote چندمرحله‌ای بود، `NEVER` خطِ پایه‌ی تاریخچه را جلو می‌برد.
+- **معیار پذیرش:** یک تستِ **مرورگری** (نه jsdom — undo در jsdom نیست): کلاینت A یک استیکی
+  می‌سازد → در کلاینت B ظاهر می‌شود → کلاینت B سه بار `Ctrl+Z` می‌زند → **استیکیِ A دست‌نخورده
+  می‌ماند** و فقط کارِ خودِ B برمی‌گردد. به‌علاوه: قاعده‌ی ESLint روی یک نمونه‌ی عمداً غلط
+  (`IMMEDIATELY` در مسیرِ remote) خطا می‌دهد.
+
+### گام ۳٫۳ — مسیرِ محلی: `emitElementChanges` → `doc.transact` + throttle
+
+- [ ] هر ژست در **یک `doc.transact(fn, origin)`** با `origin` معنادار — تا `UndoManager` کلِ
+      ژست را یک واحد ببیند و binder محلی/remote را تشخیص دهد (PLAN ۷٫۴).
+- [ ] `gestureId` قرارداد به `origin`ِ تراکنش نگاشته شود (قرارداد از قبل این فیلد را دارد).
+- [ ] **جدولِ throttle دقیقاً طبق [`sync/README.md`](packages/canvas-core/src/sync/README.md)**:
+      pointer ۴۰ms، viewport ۱۰۰ms، درگ ۵۰ms + commit نهایی، تایپ debounce ۱۵۰ms،
+      استروکِ قلم **فقط یک commit در `pointerup`**، ساخت/حذف/استایل فوری.
+- [ ] عناصرِ حذف‌شده: **حذفِ نرم** (`isDeleted = true`)، نه حذفِ کلید (تا undo و CRDT درست بمانند).
+- **معیار پذیرش:** تستِ «یک درگِ ۲ثانیه‌ای → حداکثر ۴۰ update، و آخرین update دقیقاً مختصاتِ
+  نهایی است»؛ تستِ «استروکِ ۳۰۰ نقطه‌ای → دقیقاً **یک** update در Y.Doc» (معادلِ همان تستی که
+  در M1 روی `emitElementChanges` سبز شد، حالا یک لایه پایین‌تر).
+
+### گام ۳٫۴ — انزوای undo: `Y.UndoManager` + `trackedOrigins`
+
+- [ ] `UndoManager` با `trackedOrigins` فقط روی originهای محلی.
+- [ ] تعاملِ با undoِ خودِ موتور روشن و مستند شود: کدام لایه صاحبِ undo است و دیگری چه نقشی
+      دارد. (اگر هر دو فعال بمانند، یک `Ctrl+Z` دو کار می‌کند — این را با تست ببند.)
+- **معیار پذیرش:** ★ تستِ دو-کلاینته: A و B هرکدام دو ژست می‌زنند؛ `Ctrl+Z`ِ A فقط ژست‌های
+  A را به ترتیبِ معکوس برمی‌گرداند و **هیچ‌وقت** به کارِ B نمی‌رسد — حتی وقتی ژست‌ها روی
+  **یک عنصر** باشند. این تستِ ترکیبیِ گام ۱٫۴ + گام ۳٫۲ است (هر دو سد با هم).
+
+### گام ۳٫۵ — awareness → `PeerState` + کانالِ ephemeral
+
+- [ ] awarenessِ `y-protocols` به `PeerState[]` نگاشته شود: `user`، `pointer`، `selectedIds`،
+      `viewport`، `activeTool`، `ephemeral`.
+- [ ] ★ **`EphemeralPayload` هرگز داخل `Y.Doc` نرود** ([ADR-022](ARCHITECTURE_DECISIONS.md#adr-022)) —
+      نگهبانِ صریح: تستی که بعد از پخشِ یک استروکِ در حال کشیدن، اندازه‌ی سند را **بدون تغییر**
+      می‌بیند.
+- [ ] خروجِ همتا (`disconnect`/timeout) مکان‌نما و هاله‌اش را پاک کند.
+- **معیار پذیرش:** تستی که یک استروکِ ۲۰۰نقطه‌ایِ در حال کشیدن را از A به B می‌رساند در حالی
+  که `Y.encodeStateAsUpdate(doc).byteLength` **صفر تغییر** می‌کند؛ و تستِ خروجِ همتا.
+
+### گام ۳٫۶ — دارایی‌ها پشتِ پورت
+
+- [ ] `requestAssetUpload(file)` و `resolveAssetUrl(fileId)` پشتِ یک پورتِ `AssetTransport`
+      با پیاده‌سازیِ dev (همان `URL.createObjectURL`ِ `local-adapter`). مسیرِ presigned URL
+      کارِ M3 است و اینجا فقط یک پیاده‌سازیِ دوم می‌شود.
+- [ ] جریانِ `pending → saved` سمتِ سند دست‌نخورده بماند (M1 ترتیبِ `captureUpdate`ش را
+      تثبیت کرده — گام ۳٫۶ در M1).
+- **معیار پذیرش:** درجِ تصویر در کلاینت A در کلاینت B با همان `fileId` ظاهر می‌شود و متادیتای
+  دارایی در سند است ولی **باینری نیست**؛ تستِ گام ۲٫۲ همچنان سبز.
+
+### گام ۳٫۷ — ★★ G-1الف: تست دو-نمونه‌ای با بومِ واقعی (بدونِ سرور)
+
+> **این همان گپِ G-1 است که در M1 «اصلاً قابل نوشتن نبود».** حالا binder وجود دارد، پس
+> نیمه‌ی اولش همین‌جا بسته می‌شود — بدون یک خط کدِ شبکه، با دو `Y.Doc` که updateهایشان را
+> مستقیم به هم می‌دهند.
+
+- [ ] `packages/canvas-sync/dev/` — یک صفحه‌ی دمو که **دو `<HamboomCanvas>`** را کنار هم
+      mount می‌کند، هرکدام با یک `YjsSyncAdapter` روی Y.Docِ خودش، و دو Doc به هم وصل.
+- [ ] Playwright با همان الگوهای اثبات‌شده‌ی M1 (در
+      [`canvas-core/CLAUDE.md`](packages/canvas-core/CLAUDE.md) جدولِ «تله‌های تستِ E2E»):
+      focusِ صریحِ `.excalidraw-container` برای کیبورد، `#a5d8ff` برای کلیک‌پذیریِ شکل،
+      اسکرین‌شات به‌جای `getImageData`، و **الگوی StrictMode طبق ADR-032**.
+- [ ] پوششِ **هر چهار زیرموردِ ثبت‌شده‌ی G-1**:
+  - [ ] **sync:** ساختِ استیکی در نمونه‌ی A → ظاهر شدن در B؛ و ★ **B آن را دوباره emit نکند**
+        (نگهبانِ echo با binderِ واقعی، نه بومِ ساختگی — همان چیزی که M1 نمی‌توانست اثبات کند).
+  - [ ] **رندرِ حضور:** مکان‌نما/هاله/آواتارِ همتا از `applyPeers` در نمونه‌ی مقابل رندر شود
+        (Q2 — در M1 فقط با کانالِ دومِ `BroadcastChannel` تایید شده بود، نه دو موتورِ واقعی).
+  - [ ] ★ **re-projectِ حضور با هر تغییرِ viewport — شاملِ panِ خالص و zoom** (Q1). از تابعِ
+        مشترکِ [`sceneToOverlayPixel`](packages/canvas-core/src/ui/presence-projection.ts)
+        استفاده شود، **از نو نوشته نشود** (ADR-024)؛ مقدارِ viewport از **`onScrollChange`**
+        بیاید، نه از `api.getAppState()` که درست بعد از جابه‌جاییِ نما **یک فریمْ کهنه** است.
+  - [ ] **follow:** با viewportِ مستقلِ دو موتور، پرش دقیقاً روی مکان‌نمای طرف بنشیند.
+- **معیار پذیرش:** هر چهار زیرمورد **سبز و پایدار** (سه اجرای متوالی بدون flake). مقادیرِ
+  re-project با **پروجکشنِ دست‌محاسبه** مقایسه شوند، نه با خروجیِ خودِ کد — همان روشی که در M1
+  باگِ panِ خالص را بیرون کشید. سپس بندِ G-1 در
+  [`sync/README.md`](packages/canvas-core/src/sync/README.md) به «نیمه‌ی اول ✅» به‌روز شود.
+
+---
+
+## فاز ۴ — `apps/realtime`: سرور (تخمین: ۲٫۵ تا ۳٫۵ روز)
+
+### گام ۴٫۱ — سرورِ ws + دست‌دادن + پورتِ احراز هویت
+
+- [ ] سرور روی `ws` (D-4) با مسیرِ `ws://<host>/rt?board=<boardId>&token=<rtToken>`.
+- [ ] پورتِ `BoardAuthority` + `DevBoardAuthority` (D-2): اعتبارسنجیِ توکن، استخراجِ
+      `{ sub, boardId, role, exp }`. ★ تایپِ این claimها **داخلِ همین پورت** تعریف شود، نه در
+      `shared-types` (قیدِ صریحِ D-2). اگر لازم شد بیرون برود → **متوقف شو و بپرس**.
+- [ ] ردِ اتصالِ نامعتبر با `HB_ERROR` **قبل از** join شدن به اتاق.
+- [ ] ★ **P7:** هیچ PII در لاگ — `sub` ماسک‌شده، توکن هرگز لاگ نشود (نگهبان: تستی که خروجیِ
+      لاگ را برای الگوی توکن/شماره اسکن می‌کند).
+- **معیار پذیرش:** توکنِ معتبر وصل می‌شود؛ منقضی/دست‌کاری‌شده/بدونِ توکن با کدِ خطای **درست**
+  رد می‌شوند (سه تستِ جدا)؛ لاگ‌ها از اسکنِ PII پاک بیرون می‌آیند.
+
+### گام ۴٫۲ — چرخه‌ی عمر اتاق
+
+- [ ] `room.ts`: بارگذاری (snapshot + updateهای بعدش) → `Y.Doc` در حافظه → تخلیه بعد از
+      `RT_ROOM_IDLE_TIMEOUT_MS`.
+- [ ] اجرای migration هنگام بارگذاری (گام ۲٫۳) — در سرور، نه کلاینت.
+- [ ] `RT_MAX_ROOMS_PER_NODE` و `RT_MAX_DOC_BYTES` با خطای صریح (نه crash).
+- **معیار پذیرش:** تستِ «۳ کلاینت وصل → آخری قطع می‌شود → بعد از idle timeout اتاق از حافظه
+  می‌رود → کلاینتِ جدید همان سند را کامل می‌گیرد»؛ و تستِ سقفِ حجم با یک سندِ ساختگیِ بزرگ.
+
+### گام ۴٫۳ — پایداری: لاگِ update در Postgres ([ADR-009](ARCHITECTURE_DECISIONS.md#adr-009))
+
+- [ ] append در `board_updates` با `seq` ترتیبیِ درونِ بورد (ایندکسِ یکتای PLAN بخش ۶).
+- [ ] ★ **دوام قبل از ack:** update **قبل از** تاییدِ به کلاینت نوشته شود (یا حداکثر batchِ
+      ۱ثانیه‌ای). تاخیرِ واقعی اندازه‌گیری و **ADR-009 با عددِ واقعی به‌روز شود** (خودِ ADR
+      این را به M2 موکول کرده).
+- [ ] `SaveState` که **حقیقت** را بگوید نه خوش‌بینی: `saving` تا نوشتنِ واقعی، `saved` با
+      timestampِ واقعیِ دیتابیس.
+- **معیار پذیرش:** ★ تستِ **کشتنِ سرور**: کلاینت یک ژست می‌زند و `saved` می‌بیند → پروسه با
+  `SIGKILL` کشته می‌شود → سرور بالا می‌آید → **آن ژست هنوز هست**. اگر `saved` دیده شده باشد و
+  داده نباشد، این گام قبول نیست.
+
+### گام ۴٫۴ — snapshot و فشرده‌سازی
+
+- [ ] پورتِ `SnapshotStore` + `FsSnapshotStore` (D-3). **بدون هیچ import از `@aws-sdk/*`**
+      (گیتِ ESLint از گام ۰٫۲).
+- [ ] فشرده‌سازی هر `RT_SNAPSHOT_EVERY_UPDATES` یا `RT_SNAPSHOT_EVERY_MS` (هرکدام زودتر) →
+      نوشتنِ رکورد در `board_snapshots` با `state_vector` → **حذفِ updateهای قدیمی‌تر**.
+- **معیار پذیرش:** بعد از ۵۰۰ update، snapshot ساخته می‌شود، updateهای قدیمی حذف می‌شوند، و
+  یک کلاینتِ تازه **دقیقاً همان سند** را می‌گیرد (مقایسه‌ی state vector). تستِ «حذفِ زودهنگام»:
+  اگر snapshot ننشسته باشد، updateها حذف **نشوند**.
+
+### گام ۴٫۵ — اعمالِ مجوز روی هر update ([ADR-012](ARCHITECTURE_DECISIONS.md#adr-012))
+
+- [ ] ★ نقش **در هر update** بررسی شود، نه فقط هنگام اتصال (صریحِ ADR-012 — چون نقش می‌تواند
+      وسطِ session عوض شود).
+- [ ] `viewer` می‌تواند awareness بفرستد ولی **هیچ updateِ سندی** نه — رد + `HB_ERROR{FORBIDDEN}`.
+- [ ] تغییرِ نقش در لحظه → `HB_PERMISSION` به کلاینت → `setPermissions` روی بوم.
+- **معیار پذیرش:** ★ تستِ **مهاجم**: یک کلاینت با نقشِ `viewer` مستقیماً یک updateِ باینریِ
+  معتبرِ Yjs می‌فرستد (دور زدنِ UI) → **سرور ردش می‌کند و سند تغییر نمی‌کند**. این رایج‌ترین
+  حفره‌ی امنیتی در محصولات مشابه است و ADR-012 صریحاً نامش را برده.
+
+### گام ۴٫۶ — awareness و ephemeral سمتِ سرور
+
+- [ ] پخشِ `0x01 AWARENESS` و `0x13 HB_EPHEMERAL` **بدون هیچ پایداری**.
+- [ ] پاک‌سازیِ awarenessِ کلاینتِ قطع‌شده (timeout).
+- [ ] `0x12 HB_ROOM_INFO`: تعداد کاربران، وضعیت ذخیره، `seq` جاری.
+- **معیار پذیرش:** تستی که بعد از هزار پیامِ ephemeral، `board_updates` **صفر ردیفِ جدید**
+  دارد؛ و قطعِ ناگهانیِ کلاینت مکان‌نمایش را از بقیه پاک می‌کند.
+
+### گام ۴٫۷ — Redis pub/sub (فاز ۲ در [ADR-006](ARCHITECTURE_DECISIONS.md#adr-006))
+
+- [ ] fanout روی `hb:board:<boardId>` و `hb:aware:<boardId>`.
+- [ ] ★ **ضدِ حلقه:** هر پیام با `nodeId` مبدأ برچسب بخورد و نودِ مبدأ نادیده‌اش بگیرد.
+- [ ] قفلِ صاحب برای پایداری: `SET hb:owner:<boardId> <nodeId> NX EX 30` با تمدید — تا دو نود
+      همزمان روی `board_updates` ننویسند.
+- **معیار پذیرش:** **دو پروسه‌ی سرورِ واقعی** روی یک Redis: کلاینت A به نود ۱ و B به نود ۲؛
+  تغییرِ A در B دیده می‌شود؛ `board_updates` **هیچ ردیفِ تکراری** ندارد (اثباتِ قفلِ صاحب)؛ و
+  یک تستِ صریح که ثابت می‌کند پیامِ خودی دوباره پردازش نمی‌شود.
+
+### گام ۴٫۸ — heartbeat، خاموشیِ مودبانه، سقف‌ها
+
+- [ ] heartbeat هر `RT_HEARTBEAT_INTERVAL_MS` (۲۵ثانیه — کوتاه‌تر از timeoutِ لودبالانسر).
+- [ ] `SIGTERM` → snapshot گرفتن → بستن با `1001 Going Away` → کلاینت‌ها فوراً به نودِ دیگر.
+- [ ] `/healthz` و `/readyz` بدونِ auth.
+- **معیار پذیرش:** تستِ خاموشی: `SIGTERM` → سند snapshot می‌شود، کلاینت‌ها کدِ ۱۰۰۱ می‌گیرند،
+  و **هیچ updateای گم نمی‌شود**.
+
+---
+
+## فاز ۵ — شبکه‌ی ایران: تاب‌آوری و آفلاین (تخمین: ۱ تا ۲ روز)
+
+> ریسکِ «پایداری WebSocket روی شبکه‌ی ایران» در PLAN بخش ۱۰ **بالا** ارزیابی شده. این فاز
+> جواب همان است و اختیاری نیست.
+
+### گام ۵٫۱ — اتصال مجدد با backoff + jitter
+
+- [ ] بازاتصالِ خودکار با exponential backoff + jitter و سقف؛ `HB_AUTH_REFRESH` قبل از انقضای
+      توکن (۶۰ثانیه‌ای است).
+- [ ] `ConnectionState` صادق: `connecting`/`connected`/`reconnecting{attempt,nextRetryMs}`/
+      `offline{pendingChanges}`/`error` — نوارِ وضعیتِ M1 از قبل هر پنج حالت را رندر می‌کند.
+- **معیار پذیرش:** با قطعِ سرور، کلاینت `reconnecting` نشان می‌دهد، تلاش‌ها **زمان‌بندیِ
+  backoff** دارند (اندازه‌گیری‌شده، نه ادعاشده)، و با برگشتِ سرور بدونِ رفرش دوباره sync می‌شود.
+
+### گام ۵٫۲ — صفِ آفلاین با `y-indexeddb`
+
+- [ ] پایداریِ محلی با `y-indexeddb` (MIT — `license:check`).
+- [ ] کارِ آفلاین: ویرایش در حالتِ قطع → با برگشتِ اتصال ادغام می‌شود.
+- [ ] `SaveState` در حالتِ آفلاین **دروغ نگوید**: `unsaved{pendingChanges}`.
+- **معیار پذیرش:** ★ کلاینت آفلاین می‌شود، سه استیکی می‌سازد، تب **بسته و باز** می‌شود
+  (اثباتِ IndexedDB)، آنلاین می‌شود → هر سه استیکی روی سرور و در کلاینت دیگر ظاهر می‌شوند و
+  هیچ‌کدام تکراری نیست.
+
+### گام ۵٫۳ — تغییرِ نقش وسطِ session و نسخه‌ی ناسازگار
+
+- [ ] `HB_PERMISSION` وسطِ کار → بوم به حالتِ فقط-خواندنی می‌رود (M1 `viewModeEnabled` را دارد).
+- [ ] `CLIENT_TOO_OLD` → پیامِ فارسیِ صریح + درخواستِ رفرش.
+- **معیار پذیرش:** تغییرِ نقش از `editor` به `viewer` **بدون رفرش** ابزارهای ویرایش را می‌بندد
+  و updateهای بعدی رد می‌شوند؛ کلاینتِ با schemaِ قدیمی پیامِ فارسی می‌گیرد نه crash.
+
+---
+
+## فاز ۶ — تحویل (تخمین: ۱ تا ۲ روز)
+
+### گام ۶٫۱ — ★★ G-1ب: دو نمونه روی سرورِ واقعی
+
+- [ ] همان harnessِ گام ۳٫۷، این‌بار روی **سرورِ realtimeِ واقعی** (Postgres + Redis بالا).
+- [ ] به‌علاوه: قطعِ شبکه وسطِ ژست، بازاتصال، و ادغام؛ و دو نمونه روی **دو نودِ سرور** (گام ۴٫۷).
+- **معیار پذیرش:** کلِ سناریوی G-1 (sync + حضور + re-project + follow) روی مسیرِ واقعی سبز
+  است؛ و بعد از یک قطعیِ ۱۰ثانیه‌ای وسطِ کار، هر دو کلاینت به **یک حالتِ یکسان** می‌رسند
+  (مقایسه‌ی state vector، نه چشمی). سپس G-1 در `sync/README.md` **بسته** می‌شود.
+
+### گام ۶٫۲ — تست‌های همزمانی و تعارض
+
+- [ ] سناریوهای تعارضِ واقعی: حرکتِ همزمانِ یک عنصر؛ حذف در یکی و ویرایش در دیگری؛ رنگ در
+      یکی و موقعیت در دیگری (ادعای ADR-007)؛ تایپِ همزمان روی یک استیکی (نتیجه‌ی ADR-033).
+- [ ] تستِ همگراییِ property-based: N عملیاتِ تصادفی روی K کلاینت با ترتیب‌های مختلفِ رسیدن →
+      **همه به یک حالت می‌رسند** (خاصیتِ CRDT).
+- [ ] پوششِ تستِ واحد ≥۶۰٪ روی `ydoc-schema/src` و `canvas-sync/src` با **threshold در
+      `vitest.config.ts`** (گیتِ دائمی، نه عددِ ادعایی — همان الگوی M1).
+- **معیار پذیرش:** همه سبز؛ `pnpm test:coverage` زیرِ ۶۰٪ **می‌شکند** (با یک اجرای عمداً
+  شکست‌خورده تایید شود).
+
+### گام ۶٫۳ — بنچمارک و سقف‌ها
+
+- [ ] بورد ۵۰۰۰ عنصری: زمانِ بارگذاریِ اتاق، حجمِ سند، حافظه‌ی هر اتاق.
+- [ ] ۵۰ کلاینتِ همزمان روی یک بورد: تاخیرِ p50/p95 از ژست تا دیده‌شدن در کلاینتِ دیگر.
+- [ ] نتایج در `docs/realtime-baseline.md` — با **اعدادِ واقعی**، مثل `docs/perf-baseline.md`
+      در M1 (که یک بهینه‌سازیِ زائد را با شواهد رد کرد).
+- **معیار پذیرش:** سند نوشته شده و اگر عددی از سقف‌های PLAN رد شد (`RT_MAX_DOC_BYTES`،
+  ریسکِ «بورد >۵۰۰۰ عنصر») **صریحاً** به‌عنوان محدودیت ثبت شود، نه پنهان.
+
+### گام ۶٫۴ — مستندات و آماده‌سازیِ M3
+
+- [ ] `packages/ydoc-schema/README.md`، `packages/canvas-sync/README.md`،
+      `apps/realtime/README.md` + `CLAUDE.md` برای هر سه (شاملِ **جدولِ تله‌های کشف‌شده** —
+      همان چیزی که در M1 ارزشمندترین سند شد).
+- [ ] **به‌روزرسانیِ [`packages/canvas-core/src/sync/README.md`](packages/canvas-core/src/sync/README.md)** —
+      تنها تغییرِ مجاز در دامنه‌ی M1: بستنِ G-1 و تیک‌زدنِ فهرستِ ۱۰موردیِ «آنچه M2 باید
+      پیاده کند».
+- [ ] فهرستِ صریحِ **«آنچه M3 باید پیاده کند»**: پیاده‌سازیِ واقعیِ `BoardAuthority` روی
+      `packages/auth-core`، `SnapshotStore` روی `packages/storage`، endpointِ `rt-token`،
+      و اتصالِ `apps/web` (با هشدارِ ADR-028/ADR-032 در صدرِ فهرست).
+- [ ] `PROGRESS.md` نهایی + به‌روزرسانیِ «وضعیت فعلی» در `CLAUDE.md` ریشه.
+- **معیار پذیرش:** یک نفر (یا یک session جدید) بتواند فقط با خواندنِ این اسناد M3 را شروع کند،
+  بدون خواندنِ کدِ M2.
 
 ---
 
 ## چیزهایی که در این ماژول **انجام نمی‌شوند**
 
-تا وسوسه نشوی — این‌ها عمداً بیرون‌اند:
-
-- ❌ اتصال به هر سروری، WebSocket، یا Yjs (کار M2)
-- ❌ احراز هویت، کاربر واقعی، مجوز واقعی (کار M3) — در دمو کاربر ساختگی است
-- ❌ ذخیره در دیتابیس یا Object Storage (کار M3)
-- ❌ متن کامنت‌ها (فقط سنجاق روی بوم؛ محتوا کار M3 است)
-- ❌ گالری قالب‌ها (کار M3 + web)
-- ❌ Export سمت سرور (کار M3/worker) — فقط export کلاینتی ساده
-- ❌ صفحه‌ی داشبورد، لیست بورد، تنظیمات تیم (کار `apps/web`)
+- ❌ احراز هویتِ واقعی، OTP، JWTِ محصولی، `packages/auth-core` (کارِ M3 — اینجا فقط پورت + stub)
+- ❌ `packages/storage` و هر تماسی با S3/آروان (کارِ M3 — P4)
+- ❌ CRUDِ بورد/تیم/کاربر، موتورِ مجوزِ کامل (کارِ M3)
+- ❌ `apps/web` (کارِ M3) — دموی این ماژول حداقلی است و منتشر نمی‌شود
+- ❌ متنِ کامنت‌ها (فقط پینِ مختصات در سند)، نسخه‌های نام‌گذاری‌شده، exportِ سمت سرور
+- ❌ هر تغییری در `packages/canvas-core/src/` (به‌جز `sync/README.md` در گام ۶٫۴)
+- ❌ فاز ۳ در ADR-006 (room affinity با hashing) — تا وقتی حافظه واقعاً مسئله نشده
 
 ---
 
 ## قالب `PROGRESS.md`
 
 ```markdown
-# PROGRESS — canvas-core
+# PROGRESS — realtime-sync
 تاریخ آخرین به‌روزرسانی: <YYYY-MM-DD>
 گام فعلی: <شماره گام>
 
@@ -844,7 +624,4 @@ versionNonce++ = increment درست). یک `bumpVersion()` مشترک در `fact
 
 ## قدم بعدی
 - ...
-
-## پله‌ی فعلی ADR-003
-A (بسته npm) / B (patch) / C (فورک) — و چرا
 ```
