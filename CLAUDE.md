@@ -44,13 +44,23 @@ pnpm test
 pnpm license:check    # گیت اصل P1 — شامل self-test ارزیاب SPDX
 pnpm license:list     # فهرست کامل لایسنس‌های درخت وابستگی
 pnpm format
+
+# زیرساخت لوکال (M2)
+pnpm db:up            # postgres + redis
+pnpm db:migrate       # migrationهای infra/sql/migrations — با گیت checksum
+pnpm db:smoke         # نوشتن/خواندن واقعی: bytea، ایندکس یکتا، snapshot
+pnpm db:down
 ```
+
+> **پورت دیتابیس روی این ماشین ۵۴۳۳ است، نه ۵۴۳۲** — یک PostgreSQL 18 بومی
+> (سرویس ویندوز) ۵۴۳۲ را گرفته. در `.env` محلی تنظیم شده؛ `.env.example` و compose
+> روی پیش‌فرض PLAN (۵۴۳۲) ماندند تا روی ماشین تمیز همان PLAN کار کند.
 
 ## وضعیت فعلی
 
 - **ماژول فعال:** M2 — `realtime-sync` (تازه شروع شده)
-- **گام بعدی:** ۰٫۲ — اسکلتِ `ydoc-schema` / `canvas-sync` / `apps/realtime` + گیتِ مرزها.
-  گام ۰٫۱ (ADR-029/030/031 برای تصمیم‌های D-1 تا D-5) تمام شد.
+- **گام بعدی:** ۱٫۱ — probeِ StrictMode. **کلِ فاز ۰ تمام شد** (۰٫۱ ADRها، ۰٫۲ اسکلت و
+  گیتِ مرزها، ۰٫۳ زیرساختِ لوکال با تاییدِ زنده‌ی دیتابیس).
 - **دروازه‌ی فاز ۱:** تا probeِ StrictMode (گام ۱٫۱) سبز نشود، **هیچ خطی از binder نوشته
   نمی‌شود** ([ADR-028](ARCHITECTURE_DECISIONS.md#adr-028)).
 - **قیدِ فعال:** M2 باید **بدون هیچ تغییری در `shared-types`** تمام شود — شکلِ claimهای
@@ -59,11 +69,13 @@ pnpm format
   با بومِ واقعی + رندرِ حضور) که در M2 گام‌های ۳٫۷ و ۶٫۱ بسته می‌شود.
 - **پله‌ی ADR-003:** **A** (بسته‌ی npm) — هیچ patch و فورکی وجود ندارد و
   spike فارسی ثابت کرد لازم هم نیست ([ADR-025](ARCHITECTURE_DECISIONS.md#adr-025))
-- **پکیج‌ها:** `canvas-core`، `shared-types`، `i18n`، `tsconfig`، `eslint-config`
-- **هنوز ساخته نشده:** `apps/`، `infra/`، `packages/config`، `packages/auth-core`،
-  `packages/storage`، `packages/ydoc-schema`. یعنی M2 وابستگی‌هایی به M3/M5 دارد که وجود
-  ندارند — مرزش در تصمیم‌های D-1 تا D-5 مشخص می‌شود.
-- **زیرساخت:** فقط لوکال. هیچ حساب آروان/زرین‌پال واقعی خریداری نشده.
+- **پکیج‌ها:** `canvas-core`، `shared-types`، `i18n`، `config`، `ydoc-schema`،
+  `canvas-sync`، `tsconfig`، `eslint-config` · **اپ‌ها:** `apps/realtime`
+- **هنوز ساخته نشده:** `packages/auth-core`، `packages/storage`، `packages/sdk`،
+  `apps/api`، `apps/web` (همه کارِ M3). M2 به‌جای انتظار، پشتِ **پورت** با آن‌ها حرف
+  می‌زند ([ADR-031](ARCHITECTURE_DECISIONS.md#adr-031)).
+- **زیرساخت:** فقط لوکال — `infra/docker/docker-compose.yml` با postgres+redis
+  (برشِ حداقلیِ M2؛ M5 کاملش می‌کند). هیچ حساب آروان/زرین‌پال واقعی خریداری نشده.
 
 ## نکات محیط
 
