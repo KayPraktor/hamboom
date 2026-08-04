@@ -1,5 +1,5 @@
 import base, { nodeGlobals } from "@hamboom/eslint-config/base";
-import { realtimeBoundaries } from "@hamboom/eslint-config/boundaries";
+import { processEnvDiscipline, realtimeBoundaries } from "@hamboom/eslint-config/boundaries";
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
@@ -12,4 +12,8 @@ export default [
   // ⚠️ `@hamboom/storage` و `@hamboom/auth-core` عمداً مجازند: خودِ P4 و ADR-012
   // همان‌ها را مسیرِ درست می‌دانند. ممنوعیت روی `@aws-sdk/*`ِ خام است.
   { ...realtimeBoundaries(), files: ["src/**/*.ts"] },
+  // PLAN بخش ۴ — فقط `packages/config` حق خواندنِ `process.env` را دارد.
+  // ★ برای سرور مهم‌تر از بقیه: متغیرِ گم‌شده باید در بوت داد بزند، نه وسطِ یک
+  //   session زنده که کاربران وصل‌اند.
+  { ...processEnvDiscipline(), files: ["src/**/*.ts"] },
 ];

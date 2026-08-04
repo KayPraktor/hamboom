@@ -217,6 +217,40 @@ export function canvasCoreBoundaries() {
   });
 }
 
+/**
+ * انضباط PLAN بخش ۴ — فقط `packages/config` حق خواندنِ `process.env` را دارد.
+ *
+ * ── چرا این هم یک گیت لازم دارد ───────────────────────────────────────
+ *
+ * وقتی `process.env.FOO` در ده جا پخش باشد، سه چیز **بی‌صدا** خراب می‌شود:
+ * هر مصرف‌کننده پیش‌فرضِ خودش را می‌گذارد (و پیش‌فرض‌ها با هم فرق می‌کنند)؛
+ * `undefined` در رشته‌سازی به `"undefined"` تبدیل می‌شود به‌جای اینکه خطا بدهد؛
+ * و متغیرِ گم‌شده به‌جای اینکه در **بوت** داد بزند، وسطِ کار خودش را نشان می‌دهد.
+ * fail-fastِ متمرکز فقط وقتی معنا دارد که راهِ فرار بسته باشد.
+ *
+ * `process.env.NODE_ENV` هم استثنا **نمی‌شود**: همان هم باید از config بیاید،
+ * وگرنه اولین استثنا در عمل کلِ قاعده را باز می‌کند.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function processEnvDiscipline() {
+  return {
+    name: "hamboom/process-env-discipline",
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: 'MemberExpression[object.name="process"][property.name="env"]',
+          message:
+            "PLAN بخش ۴: فقط packages/config حق خواندنِ process.env را دارد. " +
+            "یک schema در @hamboom/config تعریف کن و با loadEnv بخوان — تا متغیرِ " +
+            "گم‌شده در بوت داد بزند، نه وسطِ کار.",
+        },
+      ],
+    },
+  };
+}
+
 /* ═══ مرزهای ماژول M2 — ADR-029 / ADR-031 ═══════════════════════════════
  *
  * سه واحدِ M2 سه مرزِ متفاوت دارند و اینجا در **یک منبع** تعریف می‌شوند

@@ -5,7 +5,12 @@ import { fileURLToPath } from "node:url";
 import { ESLint, Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
-import { canvasSyncBoundaries, realtimeBoundaries, ydocSchemaBoundaries } from "../boundaries.js";
+import {
+  canvasSyncBoundaries,
+  processEnvDiscipline,
+  realtimeBoundaries,
+  ydocSchemaBoundaries,
+} from "../boundaries.js";
 
 /**
  * خودآزمونِ گیت‌های مرزیِ ماژول M2 — «قاعده‌ای که خودش تست نشده، گیت نیست».
@@ -222,5 +227,70 @@ describe("لایه‌ی ۳ — وابستگی‌های اعلام‌شده در 
     expect(deps.filter((d) => d.startsWith("@aws-sdk/"))).toEqual([]);
     expect(deps).not.toContain("@hamboom/canvas-core");
     expect(deps).not.toContain("react");
+  });
+});
+
+/**
+ * ── انضباطِ `process.env` (PLAN بخش ۴) ─────────────────────────────────
+ *
+ * همان دو لایه‌ی بالا، برای گیتِ «فقط `packages/config` حق خواندنِ محیط را دارد».
+ * لایه‌ی ۲ اینجا **مهم‌تر** از همیشه است، چون نکته‌ی ظریفش این است که این قاعده
+ * باید در سه پکیج روشن باشد و در `packages/config` روشن **نباشد** — و یک اشتباه
+ * در هر جهت بی‌صدا است: یا گیت وجود ندارد، یا خودِ config نمی‌تواند کارش را بکند.
+ */
+describe("انضباطِ process.env", () => {
+  const config = processEnvDiscipline();
+
+  it.each([
+    "const x = process.env.DATABASE_URL;",
+    'const x = process.env["DATABASE_URL"];',
+    "const { DATABASE_URL } = process.env;",
+    "if (process.env.NODE_ENV === 'production') { }",
+  ])("می‌گیرد: %s", (code) => {
+    const messages = linter.verify(code, {
+      languageOptions: { ecmaVersion: 2023, sourceType: "module" },
+      rules: config.rules,
+    });
+    expect(messages.length).toBeGreaterThan(0);
+  });
+
+  it.each(["const x = process.argv[2];", "const x = someObject.env.FOO;", "process.exit(1);"])(
+    "مزاحمِ %s نمی‌شود",
+    (code) => {
+      const messages = linter.verify(code, {
+        languageOptions: { ecmaVersion: 2023, sourceType: "module" },
+        rules: config.rules,
+      });
+      expect(messages).toEqual([]);
+    },
+  );
+
+  describe("سیم‌کشی", () => {
+    async function lintInPackage(packageDir, code) {
+      const cwd = join(repoRoot, packageDir);
+      const eslint = new ESLint({ cwd, overrideConfigFile: join(cwd, "eslint.config.js") });
+      const [result] = await eslint.lintText(code, {
+        filePath: join(cwd, "src", "__env_probe__.ts"),
+      });
+      return result.messages;
+    }
+
+    it.each(["packages/ydoc-schema", "packages/canvas-sync", "apps/realtime"])(
+      "%s خواندنِ مستقیمِ process.env را خطا می‌کند",
+      async (packageDir) => {
+        const messages = await lintInPackage(packageDir, "export const x = process.env.RT_PORT;");
+        expect(messages.some((m) => m.ruleId === "no-restricted-syntax")).toBe(true);
+      },
+    );
+
+    // ★ جهتِ دوم: خودِ `packages/config` **باید** بتواند بخواند، وگرنه تنها نقطه‌ی
+    //   مجازِ خواندنِ محیط هم بسته می‌شود و قاعده از یک گیت به یک بن‌بست تبدیل می‌شود.
+    it("packages/config خودش مجاز است بخواند", async () => {
+      const messages = await lintInPackage(
+        "packages/config",
+        "export const x = process.env.RT_PORT;",
+      );
+      expect(messages.filter((m) => m.ruleId === "no-restricted-syntax")).toEqual([]);
+    });
   });
 });

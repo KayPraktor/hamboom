@@ -1,5 +1,5 @@
 import base from "@hamboom/eslint-config/base";
-import { ydocSchemaBoundaries } from "@hamboom/eslint-config/boundaries";
+import { processEnvDiscipline, ydocSchemaBoundaries } from "@hamboom/eslint-config/boundaries";
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
@@ -9,4 +9,6 @@ export default [
   // و نه وابستگیِ سرور. فقط روی `src/` اعمال می‌شود؛ فایل‌های پیکربندیِ خودِ
   // پکیج طبیعتاً به `@hamboom/eslint-config` نیاز دارند.
   { ...ydocSchemaBoundaries(), files: ["src/**/*.ts"] },
+  // PLAN بخش ۴ — فقط `packages/config` حق خواندنِ `process.env` را دارد.
+  { ...processEnvDiscipline(), files: ["src/**/*.ts"] },
 ];

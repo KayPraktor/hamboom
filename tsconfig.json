@@ -3,7 +3,11 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "types": ["node"],
-    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.root.tsbuildinfo"
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.root.tsbuildinfo",
+    // اسکریپت‌های ریشه مستقیماً با Node اجرا می‌شوند (`node scripts/migrate.ts`) و
+    // `@hamboom/config` را مصرف می‌کنند — که چون خودش هم Node-اجراست، importهای
+    // نسبی‌اش پسوندِ `.ts` دارند. بدونِ این فلگ، همان فایل‌ها اینجا خطا می‌دهند.
+    "allowImportingTsExtensions": true
   },
   "include": ["scripts/**/*.ts"]
 }

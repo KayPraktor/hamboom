@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertEmittable, EchoLoopError, SUPPORTED_SCHEMA_VERSION } from "./index";
+import { assertEmittable, EchoLoopError, SUPPORTED_SCHEMA_VERSION } from "./index.ts";
 
 /**
  * تستِ دودِ اسکلت (گام ۰٫۲).

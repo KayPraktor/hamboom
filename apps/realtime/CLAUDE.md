@@ -33,6 +33,12 @@ ADR-005، **ADR-006**، **ADR-009**، **ADR-012**، ADR-022، ADR-029، **ADR-03
 8. **ترابری پشتِ seam بماند** ([ADR-030](../../ARCHITECTURE_DECISIONS.md#adr-030)) —
    منطقِ اتاق نباید مستقیم به `ws` گره بخورد.
 
+## ★ تله: پسوندِ `.ts` روی importهای نسبی
+
+این اپ مستقیماً با Node اجرا می‌شود و برخلاف Vite پسوند حدس زده نمی‌شود — همه‌ی
+importهای نسبی باید `.ts` صریح داشته باشند (`allowImportingTsExtensions` روشن است).
+جزئیات در [`packages/config/CLAUDE.md`](../../packages/config/CLAUDE.md).
+
 ## ساختار (فازهای ۴ و ۵ پرش می‌کنند)
 
 | فایل | مسئولیت | گام TODO |

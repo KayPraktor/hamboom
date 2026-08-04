@@ -2,7 +2,7 @@ import { hbElement } from "@hamboom/shared-types";
 import * as Y from "yjs";
 import { describe, expect, it } from "vitest";
 
-import { DOC_ROOTS, SCHEMA_VERSION } from "./index";
+import { DOC_ROOTS, SCHEMA_VERSION } from "./index.ts";
 
 /**
  * تستِ دودِ اسکلت (گام ۰٫۲).

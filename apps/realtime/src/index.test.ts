@@ -1,7 +1,7 @@
 import * as Y from "yjs";
 import { describe, expect, it } from "vitest";
 
-import { SERVED_SCHEMA_VERSION } from "./index";
+import { SERVED_SCHEMA_VERSION } from "./index.ts";
 
 /**
  * تستِ دودِ اسکلت (گام ۰٫۲).

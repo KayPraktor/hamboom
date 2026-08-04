@@ -186,19 +186,42 @@ PLAN فرض می‌کرد آماده‌اند (`rt-token`، `packages/auth-core`
 > بعداً همین را لازم دارند). لایه‌ی ۱ به‌تنهایی این را **نمی‌گرفت** — دقیقاً به همین دلیل
 > هر دو لایه لازم است.
 
-### گام ۰٫۳ — برشِ حداقلیِ زیرساخت (مشروط به D-1)
+### گام ۰٫۳ — برشِ حداقلیِ زیرساخت (D-1) ⏳ ساخته شد، تاییدِ زنده بلوکه است
 
-- [ ] `infra/docker/docker-compose.yml` — فقط `postgres:16-alpine` و `redis:7-alpine` با
-      healthcheck، دقیقاً با همان نام سرویس/متغیرهای PLAN بخش ۳ تا M5 بتواند ادامه‌اش بدهد.
-- [ ] `.env.example` — تنها منبعِ حقیقتِ نامِ متغیرها؛ `RT_*` از PLAN بخش ۴ + `DATABASE_URL` +
-      `REDIS_URL` + `RT_DEV_JWT_SECRET`.
-- [ ] `packages/config` — خواندنِ env با zod، **تنها نقطه‌ی `process.env` در کل ریپو**؛ خطای
-      صریح و فارسی روی متغیرِ گم‌شده (نه `undefined`ِ خاموش).
-- [ ] migrationِ ترتیبیِ SQL خام برای `board_updates` و `board_snapshots` طبق PLAN بخش ۶
-      (ADR-005 — بدون ORM). فقط همین دو جدول + یک `boards` حداقلی برای FK؛ بقیه کارِ M3 است.
-- **معیار پذیرش:** روی ویندوز، `docker compose -f infra/docker/docker-compose.yml up -d` بالا
-  می‌آید، اسکریپتِ migration بدون خطا اجرا می‌شود، و یک تستِ یکپارچه یک ردیف در `board_updates`
-  می‌نویسد و می‌خواند. `pnpm dev` بدون داکر هم **نباید crash کند** (پیام صریحِ «دیتابیس بالا نیست»).
+- [x] `infra/docker/docker-compose.yml` — فقط `postgres:16-alpine` و `redis:7-alpine` با
+      healthcheck، دقیقاً با همان نام سرویس/متغیرهای PLAN بخش ۳. با
+      `docker compose config` اعتبارسنجی شد (بدونِ نیاز به daemon).
+- [x] `infra/sql/init/01-extensions.sql` — فقط افزونه‌ها (initdb یک‌بار اجرا می‌شود).
+- [x] `.env.example` — تنها منبعِ حقیقتِ نامِ متغیرها. عمداً فقط بخش‌هایی که **الان
+      مصرف‌کننده دارند**؛ یک `.env.example` پر از متغیرِ SMTP و زرین‌پال برای اپ‌هایی که
+      وجود ندارند، اولین چیزی است که از واقعیت واگرا می‌شود. ارجاع به PLAN بخش ۴ برای بقیه.
+- [x] `packages/config` — zod، ترکیب‌پذیر (`appEnvSchema`/`databaseEnvSchema`/`redisEnvSchema`/
+      `realtimeEnvSchema`/`devAuthEnvSchema`)، fail-fast با پیامی که **نامِ متغیر** را می‌گوید
+      و به `.env.example` ارجاع می‌دهد. ۱۱ تست.
+- [x] ★ **گیتِ `process.env`** — `processEnvDiscipline` در `boundaries.js`: فقط
+      `packages/config` حق خواندن دارد. **خودآزمون در هر دو جهت** (سه پکیج خطا می‌دهند،
+      خودِ config نمی‌دهد) — جهتِ دوم مهم است، وگرنه قاعده از یک گیت به یک بن‌بست تبدیل می‌شود.
+- [x] migrationِ ترتیبیِ SQL خام (`infra/sql/migrations/0001_realtime_documents.sql`) برای
+      `board_updates` و `board_snapshots` طبق PLAN بخش ۶ (ADR-005).
+      ⚠️ **انحراف از PLAN با دلیل:** `boards` **ساخته نشد** و دو FK هم گذاشته نشد. اگر M2
+      خودش `CREATE TABLE boards` بزند، `0001_init.sql`ِ خودِ M3 بعداً می‌شکند. M3 دو FK را با
+      `ALTER TABLE` اضافه می‌کند — در فهرستِ گام ۶٫۴ ثبت شد.
+- [x] اجراکننده‌ی migration (`scripts/migrate.ts`) با **checksum**: ویرایشِ یک migrationِ
+      اجراشده خطا می‌دهد. بدونِ این، دیتابیسِ توسعه و production بی‌صدا واگرا می‌شوند —
+      همان چیزی که ADR-005 می‌خواست جلویش را بگیرد.
+- [x] **پیامِ بدونِ داکر** — `pnpm db:migrate` روی `ECONNREFUSED` پیامِ فارسیِ صریح با
+      دستورِ `docker compose` می‌دهد، نه stack trace. **در عمل تایید شد.**
+- [x] `scripts/db-smoke.ts` (`pnpm db:smoke`) — نوشتن/خواندنِ واقعی. **عمداً اسکریپت است نه
+      تستِ vitest:** اگر تست بود، یا `pnpm test` روی ماشینِ بدونِ داکر قرمز می‌شد یا خودش را
+      skip می‌کرد — که بدتر است، چون یک سبزِ دروغین می‌سازد.
+- [!] **معیار پذیرشِ زنده — بلوکه، دو دلیلِ محیطی (نه کدی):**
+  - **daemonِ داکر بالا نیست** (CLI هست، `docker compose config` سبز، ولی
+    `dockerDesktopLinuxEngine` در دسترس نیست).
+  - ★ **پورت ۵۴۳۲ اشغال است** — یک **PostgreSQL 18 بومی** به‌عنوان سرویسِ ویندوز
+    (`postgresql-x64-18`) روی همان پورت گوش می‌دهد. یعنی `docker compose up -d` با
+    پیش‌فرضِ PLAN تعارضِ پورت می‌دهد. `POSTGRES_PORT` و `DATABASE_URL` از قبل
+    پارامتری‌اند، پس رفعش فقط یک تغییر در `.env`ِ محلی است (نه در `.env.example`).
+  - **باقی‌مانده برای تایید:** `pnpm db:up && pnpm db:migrate && pnpm db:smoke`.
 
 ---
 

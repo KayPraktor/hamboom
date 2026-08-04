@@ -3,7 +3,8 @@
   "extends": "@hamboom/tsconfig/base.json",
   "compilerOptions": {
     "types": ["node"],
-    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo",
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "vitest.config.ts"]
 }

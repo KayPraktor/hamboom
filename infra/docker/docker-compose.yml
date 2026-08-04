@@ -1,0 +1,73 @@
+# استکِ توسعه‌ی لوکالِ هم‌بوم — **برشِ حداقلی برای ماژول M2**.
+#
+# ⚠️ این فایل عمداً ناقص است. طبق تصمیمِ D-1 (تاییدِ مالک ۱۴۰۵/۰۵/۱۲) ماژول M2 فقط
+# چیزی را می‌سازد که خودش لازم دارد: Postgres (لاگِ update — ADR-009) و Redis
+# (pub/sub بینِ نودها — ADR-006). **M5 این فایل را کامل می‌کند** با minio، minio-init،
+# و سرویس‌های api/web/worker. نسخه‌ی کاملِ مرجع در PLAN.md بخش ۳ است.
+#
+# نام سرویس‌ها، متغیرها و پورت‌ها عمداً **دقیقاً** مثلِ PLAN بخش ۳ اند تا M5 فقط
+# اضافه کند، نه اینکه چیزی را عوض کند.
+#
+# اجرا:
+#   docker compose -f infra/docker/docker-compose.yml --env-file .env up -d
+#
+# هیچ‌کدام از این سرویس‌ها در production استفاده نمی‌شوند — در آروان معادلِ Managed
+# آن‌ها می‌آید (P3: همه‌چیز لوکال اجرا می‌شود، بدون هیچ حسابِ ابری).
+name: hamboom
+
+services:
+  postgres:
+    image: postgres:16-alpine # آروان Managed PostgreSQL هم 16 دارد
+    container_name: hamboom-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hamboom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hamboom_dev_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-hamboom}
+      # ترتیبِ مرتب‌سازیِ فارسیِ درست + timezone صریحِ UTC (ADR-018)
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      TZ: UTC
+      PGTZ: UTC
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # فقط EXTENSION ها. migrationِ واقعی با `pnpm db:migrate` اجرا می‌شود —
+      # چون initdb فقط **یک‌بار** روی دیتابیسِ خالی اجرا می‌شود و برای تغییرِ
+      # schema بی‌فایده است (ADR-005: migrationِ SQL خامِ ترتیبی).
+      - ../sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hamboom} -d ${POSTGRES_DB:-hamboom}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine # آروان Managed Redis
+    container_name: hamboom-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+      --requirepass ${REDIS_PASSWORD:-hamboom_dev_pw}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-hamboom_dev_pw} ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:
+  redisdata:

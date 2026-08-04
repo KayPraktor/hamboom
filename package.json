@@ -23,12 +23,19 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "license:check": "node scripts/license-check.ts --self-test && node scripts/license-check.ts",
-    "license:list": "node scripts/license-check.ts --verbose"
+    "license:list": "node scripts/license-check.ts --verbose",
+    "db:up": "docker compose -f infra/docker/docker-compose.yml --env-file .env up -d",
+    "db:down": "docker compose -f infra/docker/docker-compose.yml --env-file .env down",
+    "db:migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
+    "db:smoke": "node --env-file-if-exists=.env scripts/db-smoke.ts"
   },
   "devDependencies": {
+    "@hamboom/config": "workspace:*",
     "@hamboom/eslint-config": "workspace:*",
     "@hamboom/tsconfig": "workspace:*",
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.1",
     "eslint": "^9.17.0",
     "prettier": "^3.4.0",
     "stylelint": "^17.14.1",

@@ -27,6 +27,13 @@ ADR-004، ADR-007، ADR-008، ADR-009، ADR-022، ADR-029 — و
 6. **`packages/shared-types` را بدون تایید مالک تغییر نده** (ADR-021).
    ★ قیدِ فعالِ M2: این ماژول باید **بدون هیچ تغییری در `shared-types`** تمام شود.
 
+## ★ تله: پسوندِ `.ts` روی importهای نسبی
+
+این پکیج در **سرور** هم اجرا می‌شود، یعنی مستقیماً با Node. برخلاف Vite، Node پسوند
+را حدس نمی‌زند و `import { x } from "./doc"` با `ERR_MODULE_NOT_FOUND` می‌افتد.
+همه‌ی importهای نسبی باید `.ts` صریح داشته باشند (`allowImportingTsExtensions` در
+`tsconfig.json` روشن است). جزئیات در [`packages/config/CLAUDE.md`](../config/CLAUDE.md).
+
 ## ساختار (فاز ۲ پرش می‌کند)
 
 | فایل | مسئولیت | گام TODO |
