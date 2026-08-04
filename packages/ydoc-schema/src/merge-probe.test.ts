@@ -167,3 +167,97 @@ describe("★ ادعای مرکزی ADR-007 — ادغامِ per-property", () =
     expect(eb.get("x")).toBe(99);
   });
 });
+
+/**
+ * ★★ قیدِ چهارمِ گام ۱٫۲ — **`customData` هم باید per-property باشد؟**
+ *
+ * probeِ کدک نشان داد `customData` الان در **یک** property می‌نشیند، پس کلش LWW
+ * می‌شود. سوال این بود که آیا این محدودیتِ قابلِ‌پذیرش است یا باید `Y.Map` شود.
+ *
+ * ── چرا این «یک فیلدِ جانبی» نیست ─────────────────────────────────────
+ *
+ * `customData.hb` **قلبِ مدلِ داده‌ی خودمان** است: `kind` (که کلِ ADR-010 رویش
+ * سوار است)، پالتِ استیکی، جهتِ متن، و برچسب‌ها. اگر اینجا داده گم شود، دقیقاً
+ * همان باگی است که ADR-007 برای سطحِ عنصر حذفش کرد — فقط یک لایه پایین‌تر و
+ * نامرئی‌تر.
+ *
+ * سناریوی واقعی: یکی استیکی را رنگ می‌کند (`hb.sticky.palette`)، دیگری در همان
+ * لحظه برچسب می‌زند (`hb.tags`).
+ *
+ * ⚠️ **نکته‌ی تسکین‌دهنده که سنجیده شد:** `lastEditedBy` فقط هنگامِ **ساخت**
+ * نوشته می‌شود، نه در هر جهش. پس این‌طور نیست که *هر* ویرایشِ همزمان به تعارض
+ * بخورد — فقط ویرایش‌هایی که واقعاً `customData` را لمس می‌کنند.
+ */
+describe("★ قیدِ چهارم — customData به‌صورت آبجکتِ ساده در برابر Y.Map", () => {
+  it("آبجکتِ ساده: تغییرِ همزمانِ پالت و برچسب → یکی خورده می‌شود", () => {
+    const { a, b, sync } = twoClients();
+
+    const element = new Y.Map<unknown>();
+    element.set("customData", { hb: { kind: "sticky", sticky: { palette: "yellow" }, tags: [] } });
+    a.getMap("elements").set("stk_1", element);
+    sync();
+
+    // A رنگ را عوض می‌کند (کلِ customData را بازنویسی می‌کند، چون یک مقدار است)
+    const ca = structuredClone(
+      (a.getMap("elements").get("stk_1") as Y.Map<unknown>).get("customData"),
+    ) as { hb: { sticky: { palette: string }; tags: string[] } };
+    ca.hb.sticky.palette = "violet";
+    (a.getMap("elements").get("stk_1") as Y.Map<unknown>).set("customData", ca);
+
+    // B همزمان برچسب می‌زند
+    const cb = structuredClone(
+      (b.getMap("elements").get("stk_1") as Y.Map<unknown>).get("customData"),
+    ) as { hb: { sticky: { palette: string }; tags: string[] } };
+    cb.hb.tags = ["مهم"];
+    (b.getMap("elements").get("stk_1") as Y.Map<unknown>).set("customData", cb);
+
+    sync();
+
+    const merged = (a.getMap("elements").get("stk_1") as Y.Map<unknown>).get("customData") as {
+      hb: { sticky: { palette: string }; tags: string[] };
+    };
+    const bothSurvived = merged.hb.sticky.palette === "violet" && merged.hb.tags.length === 1;
+    // همان الگوی سطحِ عنصر، یک لایه پایین‌تر: داده گم می‌شود.
+    expect(bothSurvived, "با آبجکتِ ساده نباید هر دو تغییر بمانند").toBe(false);
+  });
+
+  it("★ Y.Map تودرتو: هر دو تغییر می‌مانند", () => {
+    const { a, b, sync } = twoClients();
+
+    // `customData` → Y.Map، `hb` → Y.Map، و زیرشاخه‌ی `sticky` هم Y.Map.
+    const element = new Y.Map<unknown>();
+    const customData = new Y.Map<unknown>();
+    const hb = new Y.Map<unknown>();
+    const sticky = new Y.Map<unknown>();
+    sticky.set("palette", "yellow");
+    hb.set("kind", "sticky");
+    hb.set("sticky", sticky);
+    hb.set("tags", []);
+    customData.set("hb", hb);
+    element.set("customData", customData);
+    a.getMap("elements").set("stk_1", element);
+    sync();
+
+    const hbOf = (doc: Y.Doc) =>
+      (
+        (doc.getMap("elements").get("stk_1") as Y.Map<unknown>).get("customData") as Y.Map<unknown>
+      ).get("hb") as Y.Map<unknown>;
+
+    (hbOf(a).get("sticky") as Y.Map<unknown>).set("palette", "violet");
+    hbOf(b).set("tags", ["مهم"]);
+    sync();
+
+    for (const [name, doc] of [
+      ["A", a],
+      ["B", b],
+    ] as const) {
+      const hbMerged = hbOf(doc);
+      expect((hbMerged.get("sticky") as Y.Map<unknown>).get("palette"), `${name}: پالت`).toBe(
+        "violet",
+      );
+      expect(hbMerged.get("tags"), `${name}: برچسب`).toEqual(["مهم"]);
+      // `kind` هم باید دست‌نخورده مانده باشد — ADR-010 رویش سوار است.
+      expect(hbMerged.get("kind"), `${name}: kind`).toBe("sticky");
+    }
+  });
+});

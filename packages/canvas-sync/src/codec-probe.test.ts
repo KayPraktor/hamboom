@@ -275,11 +275,74 @@ describe("اندازه‌ی واقعیِ update — ورودیِ docs/ydoc-basel
     // اگر این نسبت برقرار نباشد، یعنی per-property کار نمی‌کند و هر تیکِ درگ
     // دارد کلِ عنصر را می‌فرستد — همان چیزی که ADR-007 و جدولِ throttle
     // (PLAN ۷٫۴) برای اجتنابش طراحی شده‌اند.
-    // eslint-disable-next-line no-console
     console.log("\n  اندازه‌ی update (بایت):", JSON.stringify(sizes, null, 2), "\n");
     expect(sizes["یک تیکِ درگ (x,y)"]).toBeLessThan(sizes["ساخت استیکی (۲ عنصر)"]! / 4);
     // و صرفه‌جوییِ per-property در برابر نوشتنِ کلِ عنصر باید **مرتبه‌ای** باشد،
     // نه چند درصد — وگرنه پیچیدگیِ دیف‌گرفتن ارزشش را ندارد.
     expect(sizes["یک تیکِ درگ (x,y)"]! * 5).toBeLessThan(sizes["یک تیکِ درگ — نوشتنِ کلِ عنصر"]!);
+  });
+});
+
+/**
+ * ★★ تاییدِ قیدِ چهارم — `customData` به‌صورت `Y.Map` تودرتو.
+ *
+ * probeِ ادغام (`ydoc-schema/src/merge-probe.test.ts`) ثابت کرد آبجکتِ ساده داده
+ * گم می‌کند و `Y.Map` نمی‌کند. ولی آن آزمون فقط **ادغام** را دید. سوالِ باقی‌مانده:
+ * آیا با تودرتو کردن، **قرارداد** هم سالم می‌مانَد؟ چون `hbElement` یک آبجکتِ
+ * سادهٔ JSON می‌خواهد، نه `Y.Map`. اگر اینجا بشکند، تصمیم عملی نیست.
+ */
+describe("customData به‌صورت Y.Map تودرتو — قرارداد سالم می‌مانَد؟", () => {
+  /** هر آبجکتِ ساده → `Y.Map`. آرایه‌ها عمداً دست‌نخورده (LWW، طبق ADR-007). */
+  function toYValue(value: unknown): unknown {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+    const map = new Y.Map<unknown>();
+    for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+      if (inner === undefined) continue;
+      map.set(key, toYValue(inner));
+    }
+    return map;
+  }
+
+  function writeNested(target: Y.Map<unknown>, element: HbElement): void {
+    for (const [key, value] of Object.entries(element)) {
+      if (value === undefined) continue;
+      target.set(key, toYValue(value));
+    }
+  }
+
+  for (const { label, element } of realElements()) {
+    it(`«${label}» با customDataِ تودرتو هم قراردادی می‌مانَد`, () => {
+      const doc = new Y.Doc();
+      const map = new Y.Map<unknown>();
+      doc.getMap("elements").set(element.id, map);
+      writeNested(map, element);
+
+      // ★ `toJSON()` بازگشتی است و کلِ درختِ Y.Map را به آبجکتِ ساده برمی‌گرداند.
+      const back = map.toJSON();
+      expect(() => hbElement.parse(back)).not.toThrow();
+      expect(back).toEqual(JSON.parse(JSON.stringify(element)));
+    });
+  }
+
+  it("هزینه‌ی تودرتو کردن اندازه‌گیری شد، نه فرض", () => {
+    const sticky = createSticky({ ...seed, x: 0, y: 0, authorId: AUTHOR, text: "یادداشت" });
+
+    const flat = new Y.Doc();
+    const flatMap = new Y.Map<unknown>();
+    flat.getMap("elements").set("s", flatMap);
+    writeElement(flatMap, sticky.container);
+
+    const nested = new Y.Doc();
+    const nestedMap = new Y.Map<unknown>();
+    nested.getMap("elements").set("s", nestedMap);
+    writeNested(nestedMap, sticky.container);
+
+    const flatBytes = Y.encodeStateAsUpdate(flat).byteLength;
+    const nestedBytes = Y.encodeStateAsUpdate(nested).byteLength;
+    console.log(`\n  ساختِ عنصر — customData ساده: ${flatBytes}B · تودرتو: ${nestedBytes}B\n`);
+
+    // ADR-007 سربارِ Y.Mapِ تودرتو را «هزینه‌ی پذیرفته‌شده» می‌داند. اینجا فقط
+    // مطمئن می‌شویم که «سربار» است نه «انفجار» — سقفِ دو برابر.
+    expect(nestedBytes).toBeLessThan(flatBytes * 2);
   });
 });
