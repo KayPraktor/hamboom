@@ -14,6 +14,14 @@
 |---|---|---|---|
 | `@excalidraw/excalidraw` | **0.18.1** (pin‌شده) | MIT | موتور رندر بوم — [ADR-003](../ARCHITECTURE_DECISIONS.md#adr-003) |
 | `react` / `react-dom` | ^19 | MIT | — |
+| `yjs` | 13.6.32 | MIT | CRDTِ سند — [ADR-004](../ARCHITECTURE_DECISIONS.md#adr-004). مصرف‌کننده‌ها: `ydoc-schema`، `canvas-sync`، `apps/realtime` |
+| `lib0` | 0.2.117 | MIT | وابستگیِ خودِ Yjs؛ مستقیم هم برای encode/decodeِ پیام‌های پروتکل (گام ۲٫۴) به کار می‌رود |
+| `y-protocols` | 1.0.7 | MIT | پروتکلِ sync و awareness — [PLAN بخش ۵٫۳](../PLAN.md). فقط در `canvas-sync` و `apps/realtime` |
+
+**ماژول M2 (گام ۰٫۲):** سه پکیجِ بالا افزوده شدند و `pnpm license:check` سبز ماند
+(۶۸۵ پکیج). **`uWebSockets.js` عمداً افزوده نشد** — از تارِبالِ گیت‌هاب نصب می‌شود و
+از زیرِ همین گیت رد می‌شود؛ ترابری `ws` است
+([ADR-030](../ARCHITECTURE_DECISIONS.md#adr-030)، نصب در گام ۴٫۱).
 
 **چرا نسخه pin شده (`0.18.1` نه `^0.18.1`):** طبق [ADR-003](../ARCHITECTURE_DECISIONS.md#adr-003)
 ممکن است لازم شود با `pnpm patch` اصلاحات جراحی روی این پکیج بزنیم. patch ها به

@@ -1,0 +1,29 @@
+{
+  "name": "@hamboom/ydoc-schema",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "ساختار Y.Doc، codec عنصر، migration نسخه، کدهای پروتکل — مشترک بین کلاینت و سرور. بدون UI، بدون شبکه.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@hamboom/eslint-config": "workspace:*",
+    "@hamboom/tsconfig": "workspace:*",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@hamboom/shared-types": "workspace:*",
+    "yjs": "^13.6.20"
+  }
+}

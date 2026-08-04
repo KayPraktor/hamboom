@@ -142,30 +142,49 @@ PLAN فرض می‌کرد آماده‌اند (`rt-token`، `packages/auth-core`
 - **معیار پذیرش:** ✅ هر سه ADR در `ARCHITECTURE_DECISIONS.md` هستند، در فهرست ثبت‌اند، و
   لنگرهایشان کار می‌کنند؛ `PROGRESS.md` پنج تصمیم و تاریخِ تاییدشان را دارد.
 
-### گام ۰٫۲ — اسکلت سه پکیج + گیتِ مرزها
+### گام ۰٫۲ — اسکلت سه پکیج + گیتِ مرزها ✅ (۱۴۰۵/۰۵/۱۲)
 
-- [ ] `packages/ydoc-schema/` — `@hamboom/ydoc-schema`، `type: module`، وابستگی‌ها فقط
-      `yjs` + `lib0` + `@hamboom/shared-types`. **بدون React، بدون canvas-core.**
-- [ ] `packages/canvas-sync/` — `@hamboom/canvas-sync`، مجاز به دیدنِ `ydoc-schema` +
-      `canvas-core` (فقط `import type` از `@hamboom/canvas-core/sync`) + `y-protocols`.
-- [ ] `apps/realtime/` — `@hamboom/realtime`، Node خالص. **بدون canvas-core، بدون React.**
-- [ ] هر سه: `tsconfig` و `eslint-config` مشترک، Vitest، و یک `CLAUDE.md` با خط قرمزها و
+- [x] `packages/ydoc-schema/` — `@hamboom/ydoc-schema`، `type: module`، وابستگی‌ها فقط
+      `yjs` + `@hamboom/shared-types` (`lib0` از راهِ yjs). **بدون React، بدون canvas-core.**
+- [x] `packages/canvas-sync/` — `@hamboom/canvas-sync`، مجاز به دیدنِ `ydoc-schema` +
+      `canvas-core` + `y-protocols`.
+      ⚠️ **تصحیحِ متنِ اولیه‌ی این گام:** اینجا نوشته بود «فقط `import type` از
+      `@hamboom/canvas-core/sync`». **غلط بود.** گام ۳٫۱ باید `assertEmittable` را
+      **به‌صورت مقدار** از M1 صدا بزند، نه اینکه نگهبانِ echo را از نو بنویسد
+      (ADR-024). ADR-029 هم محدودیتِ type-only ندارد. الان صادراتِ مقداری است و یک
+      تستِ صریح در `canvasSyncBoundaries` این را قفل می‌کند.
+- [x] `apps/realtime/` — `@hamboom/realtime`، Node خالص. **بدون canvas-core، بدون React.**
+- [x] هر سه: `tsconfig` و `eslint-config` مشترک، Vitest، و یک `CLAUDE.md` با خط قرمزها و
       جدولِ ساختار (همان الگوی `canvas-core/CLAUDE.md`).
-- [ ] ★ **گیت‌های ESLint — هر کدام با `RuleTester` خودآزمون** (قیدِ صریحِ مالک در D-3:
-      «قاعده‌ای که خودش تست نشده، گیت نیست» — همان استانداردی که `require-capture-update`
-      در M1 داشت و بلافاصله یک باگِ نهفته گرفت):
-  - `ydoc-schema` → هیچ import از `@hamboom/canvas-core`، `@hamboom/sdk`، `react`، `@excalidraw/*`.
-  - `apps/realtime` → هیچ import از `@hamboom/canvas-core`، `react`، `@excalidraw/*`،
-    **`@aws-sdk/*`** (نگهبانِ P4 — D-3) و **`@hamboom/sdk`** (سرورِ realtime نباید از راهِ
-    کلاینتِ API با M3 حرف بزند؛ فقط از راهِ پورتِ `BoardAuthority` — ADR-012/ADR-031).
-  - `canvas-sync` → هیچ import از `apps/*`.
-- [ ] هر قاعده **علاوه بر** `RuleTester`، با یک فایلِ probeِ واقعیِ نقض در همان پکیج آزموده
-      شود (هر دو جهت: نقض → خطا، حذفِ نقض → سبز) — چون `RuleTester` فقط خودِ قاعده را
-      می‌آزماید، نه سیم‌کشی‌اش به `eslint.config.js`ِ پکیج. در M1 هر دو لایه لازم شد.
-- [ ] `pnpm license:check` بعد از نصبِ `yjs`/`lib0`/`y-protocols` (هر سه MIT) — سبز و ثبت در
-      `docs/dependencies.md`.
-- **معیار پذیرش:** یک فایلِ probe که عمداً هر قاعده را نقض می‌کند **خطا می‌گیرد** و بعد از حذفش
-  `pnpm lint` سبز است؛ `pnpm typecheck && pnpm test` روی هر سه پکیجِ خالی سبز است.
+- [x] ★ **گیت‌های ESLint در منبعِ واحد** (`eslint-config/boundaries.js`):
+      `ydocSchemaBoundaries` · `canvasSyncBoundaries` · `realtimeBoundaries`.
+      ⚠️ **یک تصحیحِ مهم نسبت به متنِ اولیه:** `@hamboom/storage` و `@hamboom/auth-core`
+      برای `apps/realtime` **بسته نشدند**. ممنوعیت روی `@aws-sdk/*`ِ **خام** است؛ خودِ P4
+      مسیرِ `packages/storage` را تجویز می‌کند و ADR-012 صریحاً می‌خواهد realtime و API از
+      **یک** `effectiveBoardRole` مشترک در `auth-core` استفاده کنند. بستنشان یعنی بستنِ
+      همان مسیری که ADR تجویز کرده — یک تستِ `allowed` نگهبانش است.
+- [x] ★ **خودآزمونِ سه‌لایه** ([`eslint-config/test/boundaries.test.js`](packages/eslint-config/test/boundaries.test.js)، ۵۰ تست):
+      (۱) الگوها روی خروجیِ واقعیِ factoryها — با موارد `allowed` به‌اندازه‌ی `forbidden`
+      (قاعده‌ی مثبتِ کاذب دور زده می‌شود — درسِ ۳٫۳ در M1)؛ (۲) **سیم‌کشی** با lintِ واقعی
+      روی `eslint.config.js`ِ خودِ پکیج؛ (۳) بازرسیِ `package.json` — چون گیتِ import فقط
+      `src/` را می‌بیند و یک وابستگیِ ممنوعِ اعلام‌شده از چشمش می‌افتد.
+      **چرا `Linter`/`ESLint` و نه `RuleTester`:** قاعده مالِ خودِ ESLint است
+      (`no-restricted-imports`)؛ چیزی که می‌تواند غلط باشد فهرستِ ما و سیم‌کشی است. با
+      `RuleTester` مجبور بودیم optionها را دستی کپی کنیم — یعنی نسخه‌ی دومی که از config
+      واگرا می‌شود. (`RuleTester` جای خودش را دارد: `require-capture-update` که قاعده‌ی
+      نوشته‌ی خودمان است، و قاعده‌ی گام ۳٫۲.)
+- [x] `pnpm license:check` بعد از نصبِ `yjs` ۱۳٫۶٫۳۲ / `lib0` ۰٫۲٫۱۱۷ / `y-protocols` ۱٫۰٫۷
+      (هر سه MIT) — سبز، ۶۸۵ پکیج، ثبت در `docs/dependencies.md`.
+- **معیار پذیرش:** ✅ لایه‌ی ۲ نقضِ واقعی را در هر سه پکیج خطا می‌کند و importِ مجاز را
+  خطا نمی‌کند (تستِ خودکار، نه probeِ دستیِ یک‌بارمصرف)؛ `pnpm typecheck` (۶/۶) ·
+  `pnpm lint` · `pnpm test` (۷/۷ task) سبز.
+
+> **★ گیتِ سیم‌کشی همان اول یک باگِ واقعی گرفت:** `apps/realtime/eslint.config.js` مستقیم
+> `globals` را import می‌کرد، ولی `globals` وابستگیِ `@hamboom/eslint-config` است نه اپ —
+> زیر pnpm (که node_modules تخت نیست) resolve نمی‌شد و **`pnpm lint` آن اپ می‌شکست**.
+> رفع: `nodeGlobals` از `eslint-config/base` صادر می‌شود (منبعِ واحد؛ api و worker هم
+> بعداً همین را لازم دارند). لایه‌ی ۱ به‌تنهایی این را **نمی‌گرفت** — دقیقاً به همین دلیل
+> هر دو لایه لازم است.
 
 ### گام ۰٫۳ — برشِ حداقلیِ زیرساخت (مشروط به D-1)
 

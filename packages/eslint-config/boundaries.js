@@ -10,6 +10,22 @@
  * این فایل فقط سازنده‌ی قاعده است؛ هر پکیج خودش تصمیم می‌گیرد کدام را اعمال کند.
  */
 
+/**
+ * ── نکته‌ی تطبیقِ الگو (probe شده در گام ۰٫۲ M2، نه حدس) ──────────────
+ *
+ * شهودِ رایج می‌گوید در گلاب، `*` از `/` عبور نمی‌کند. **در
+ * `no-restricted-imports` این‌طور نیست.** با probeِ واقعی روی ESLint ۹:
+ *
+ *   "@aws-sdk/*"    → @aws-sdk/client-s3  **و**  @aws-sdk/client-s3/dist/index.js ✓
+ *   "@hamboom/sdk"  → @hamboom/sdk        **و**  @hamboom/sdk/client             ✓
+ *   "y-*"           → y-protocols         **و**  y-protocols/awareness           ✓
+ *   "y-*"           → ولی `yjs` را **نمی‌گیرد** (باید جدا نوشته شود)
+ *
+ * یعنی الگوها باید **ساده** بمانند؛ افزودنِ `/**` زائد است. این را اینجا
+ * می‌نویسیم تا کسی بعداً «اصلاحش» نکند یا فرض نکند زیرمسیر از گیت رد می‌شود.
+ * تستِ `test/boundaries.test.js` همین را pin می‌کند.
+ */
+
 /** پکیج‌هایی که هیچ پکیجی داخل `packages/` حق import شان را ندارد. */
 const APPS_PATTERN = {
   group: ["@hamboom/api", "@hamboom/web", "@hamboom/realtime", "@hamboom/worker", "@hamboom/admin"],
@@ -198,5 +214,101 @@ export function canvasCoreBoundaries() {
     reason:
       "canvas-core نباید هیچ وابستگی به شبکه، Yjs یا احراز هویت داشته باشد. " +
       "ارتباط با بیرون فقط از طریق CanvasSyncAdapter در sync/contract.ts.",
+  });
+}
+
+/* ═══ مرزهای ماژول M2 — ADR-029 / ADR-031 ═══════════════════════════════
+ *
+ * سه واحدِ M2 سه مرزِ متفاوت دارند و اینجا در **یک منبع** تعریف می‌شوند
+ * (ADR-024). هر سه در `test/boundaries.test.js` خودآزمون‌اند — هم فهرستِ
+ * الگوها، هم سیم‌کشی‌شان به `eslint.config.js`ِ خودِ پکیج.
+ */
+
+/**
+ * `packages/ydoc-schema` — پایین‌ترین لایه‌ی M2 ([ADR-029](../../ARCHITECTURE_DECISIONS.md#adr-029)).
+ *
+ * تنها چیزی که **هم کلاینت و هم سرور** مصرفش می‌کنند. پس نه UI می‌بیند و نه
+ * وابستگیِ سرور: اگر canvas-core را ببیند، سرورِ Node برای typecheck کلِ گرافِ
+ * تایپِ Excalidraw و React را می‌کِشد؛ اگر `pg`/`ws` را ببیند، دیگر در مرورگر
+ * قابلِ استفاده نیست. هر دو جهت باید بسته بماند.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function ydocSchemaBoundaries() {
+  return packageBoundaries({
+    forbid: [
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/sdk",
+      "@hamboom/storage",
+      "@hamboom/auth-core",
+      "react",
+      "react-dom",
+      "@excalidraw/*",
+      "@aws-sdk/*",
+      "ws",
+      "pg",
+      "ioredis",
+    ],
+    reason:
+      "ydoc-schema پایین‌ترین لایه است و هم کلاینت و هم سرور مصرفش می‌کنند (ADR-029). " +
+      "نه UI (react/excalidraw/canvas-core) و نه وابستگیِ سرور (ws/pg/ioredis/aws-sdk). " +
+      "اگر به قراردادِ بوم نیاز داری، جایش packages/canvas-sync است نه اینجا.",
+  });
+}
+
+/**
+ * `packages/canvas-sync` — binder سمتِ کلاینت ([ADR-029](../../ARCHITECTURE_DECISIONS.md#adr-029)).
+ *
+ * تنها جایی در M2 که مجاز است `canvas-core` را ببیند — و **به‌صورت مقدار**، نه
+ * فقط تایپ: باید `assertEmittable` را از همان‌جا صدا بزند نه اینکه نگهبانِ echo
+ * را از نو بنویسد (ADR-024). ولی کدِ سرور اینجا راه ندارد.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function canvasSyncBoundaries() {
+  return packageBoundaries({
+    forbid: [
+      "@hamboom/sdk",
+      "@hamboom/storage",
+      "@hamboom/auth-core",
+      "@aws-sdk/*",
+      "ws",
+      "pg",
+      "ioredis",
+    ],
+    reason:
+      "canvas-sync کدِ کلاینت است؛ وابستگیِ سرور (ws/pg/ioredis) و دسترسیِ مستقیم به " +
+      "storage/auth/sdk اینجا جا ندارد — از راهِ پورت‌ها می‌آید (ADR-031).",
+  });
+}
+
+/**
+ * `apps/realtime` — سرور ([ADR-029](../../ARCHITECTURE_DECISIONS.md#adr-029) /
+ * [ADR-031](../../ARCHITECTURE_DECISIONS.md#adr-031)).
+ *
+ * ⚠️ **`@hamboom/storage` و `@hamboom/auth-core` عمداً مجازند.** ممنوعیت روی
+ * `@aws-sdk/*`ِ **خام** است، نه روی abstraction: خودِ P4 می‌گوید مسیرِ درست
+ * `packages/storage` است، و [ADR-012](../../ARCHITECTURE_DECISIONS.md#adr-012)
+ * صریحاً می‌خواهد سرورِ realtime و API از **یک** `effectiveBoardRole` مشترک در
+ * `auth-core` استفاده کنند. بستنِ آن‌ها یعنی بستنِ همان مسیری که ADR تجویز کرده.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function realtimeBoundaries() {
+  return packageBoundaries({
+    forbid: [
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/sdk",
+      "react",
+      "react-dom",
+      "@excalidraw/*",
+      "@aws-sdk/*",
+    ],
+    reason:
+      "سرورِ realtime نباید موتورِ رندر یا React را ببیند (ADR-029)، و نباید مستقیم به " +
+      "Object Storage وصل شود — فقط از راهِ packages/storage (P4). با API هم از راهِ کدِ " +
+      "مشترکِ auth-core حرف می‌زند، نه از راهِ @hamboom/sdk (ADR-012).",
   });
 }

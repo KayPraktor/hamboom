@@ -4,6 +4,20 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 /**
+ * globalهای Node برای اپ‌های سمتِ سرور (`apps/realtime`، بعداً api و worker).
+ *
+ * از اینجا صادر می‌شود و نه از خودِ اپ، چون `globals` وابستگیِ **همین پکیج** است؛
+ * اگر اپ مستقیم importش کند، زیر pnpm (که node_modules تخت نیست) resolve نمی‌شود
+ * و `pnpm lint` آن اپ می‌شکند. این را تستِ سیم‌کشیِ گام ۰٫۲ گرفت.
+ *
+ * @type {import("eslint").Linter.Config}
+ */
+export const nodeGlobals = {
+  name: "hamboom/node-globals",
+  languageOptions: { globals: { ...globals.node } },
+};
+
+/**
  * پیکربندی پایه‌ی ESLint برای همه‌ی پکیج‌های هم‌بوم.
  *
  * توجه: عمداً از `recommended` (بدون type-checking) استفاده می‌شود نه
