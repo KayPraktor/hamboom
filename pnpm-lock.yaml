@@ -188,6 +188,9 @@ importers:
       eslint:
         specifier: ^9.17.0
         version: 9.39.5
+      jsdom:
+        specifier: ^25.0.1
+        version: 25.0.1
       react:
         specifier: ^19.0.0
         version: 19.2.8
