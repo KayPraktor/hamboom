@@ -1,10 +1,15 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "@hamboom/tsconfig/base.json",
+  "extends": "@hamboom/tsconfig/react-lib.json",
   "compilerOptions": {
     "types": ["node"],
-    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo",
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@hamboom/canvas-core": ["../canvas-core/src/index.ts"],
+      "@hamboom/canvas-core/sync": ["../canvas-core/src/sync/index.ts"]
+    },
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo"
   },
-  "include": ["src", "vitest.config.ts"]
+  "include": ["src", "dev", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
 }

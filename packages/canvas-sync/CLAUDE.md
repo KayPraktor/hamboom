@@ -18,10 +18,22 @@ ADR-012، ADR-022، ADR-024، ADR-026، **ADR-028**، ADR-029.
    [ADR-012](../../ARCHITECTURE_DECISIONS.md#adr-012) منع کرده.
 2. ★ **`assertEmittable` در اولین خطِ `emitElementChanges`** — از `canvas-core` قرض
    گرفته می‌شود، از نو نوشته نمی‌شود ([ADR-024](../../ARCHITECTURE_DECISIONS.md#adr-024)).
-3. ★ **اشتراک‌های موتور باید StrictMode-safe باشند**
-   ([ADR-028](../../ARCHITECTURE_DECISIONS.md#adr-028)). این پکیج دقیقاً همان کاری را
-   می‌کند که در M1 زیر StrictMode **مرده مانْد**: اشتراک به `onChange`/`onScrollChange`.
-   الگویی که گام ۱٫۱ تایید کرده را به کار ببر؛ الگوی `onReady` را نه.
+3. ★ **اشتراک‌های موتور باید StrictMode-safe باشند** — الگو **تاییدِ تجربی شده**
+   ([ADR-032](../../ARCHITECTURE_DECISIONS.md#adr-032)، گام ۱٫۱):
+
+   ```tsx
+   const [api, setApi] = useState<CanvasApi | null>(null);
+   useEffect(() => {
+     if (!api) return;
+     return api.onChange(handler); // ← cleanup برمی‌گرداند
+   }, [api]);
+   return <HamboomCanvas onReady={setApi} />;
+   ```
+
+   **اشتراک را داخلِ callbackِ `onReady` نبند** — طبیعی‌ترین کار در نگاه اول است و
+   در مرورگر ثابت شد که زیر StrictMode **مرده می‌مانَد**: موتور عنصر می‌سازد ولی
+   ری‌اکت هیچ‌وقت خبردار نمی‌شود. برای binder یعنی **بی‌صدا هیچ تغییری emit نمی‌شود**.
+   نگهبان: [`e2e/strictmode.spec.ts`](e2e/strictmode.spec.ts).
 4. **viewport را از `onScrollChange` بگیر، نه از `getAppState()`** — که درست بعد از
    جابه‌جاییِ نما **یک فریمْ کهنه** است. همین باگ در M1 مکان‌نمای همتا را روی panِ
    خالص جا می‌گذاشت. برای پروجکشن از تابعِ مشترکِ
@@ -46,7 +58,20 @@ ADR-012، ADR-022، ADR-024، ADR-026، **ADR-028**، ADR-029.
 | `src/undo.ts` | `Y.UndoManager` با `trackedOrigins` | ۳٫۴ |
 | `src/awareness.ts` | awareness ↔ `PeerState` + ephemeral | ۳٫۵ |
 | `src/assets.ts` | پورتِ `AssetTransport` | ۳٫۶ |
+| `dev/StrictModeProbe.tsx` | probeِ StrictMode (ADR-032) | ۱٫۱ ✅ |
 | `dev/` | دموی دو-نمونه‌ای برای G-1الف | ۳٫۷ |
+
+## دستورِ E2E
+
+```bash
+pnpm --filter @hamboom/canvas-sync test:e2e   # نیاز: playwright install chromium
+```
+
+⚠️ **تله‌ی محیطیِ ویندوز:** محدوده‌هایی از پورت برای Hyper-V/WSL **رزرو** می‌شوند و
+`bind` رویشان `EACCES` می‌دهد — این محدوده‌ها با هر بوت عوض می‌شوند. اگر سرورِ dev
+بالا نیامد: `netsh interface ipv4 show excludedportrange protocol=tcp`. (روی ماشینِ
+توسعه محدوده‌ی ۵۱۴۸–۵۲۴۷ رزرو بود که **پورتِ ۵۱۸۰ دموی `canvas-core` را هم می‌گیرد**؛
+این پکیج روی ۵۲۸۰ نشست.)
 
 ## دستورات
 

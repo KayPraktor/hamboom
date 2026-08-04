@@ -12,14 +12,26 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "assets": "pnpm --filter @hamboom/canvas-core run assets",
+    "predev": "pnpm run assets",
+    "dev": "vite",
+    "pretest:e2e": "pnpm run assets",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@hamboom/eslint-config": "workspace:*",
     "@hamboom/tsconfig": "workspace:*",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.17.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "typescript": "^5.7.0",
+    "vite": "^6.0.0",
     "vitest": "^3.0.0"
   },
   "dependencies": {

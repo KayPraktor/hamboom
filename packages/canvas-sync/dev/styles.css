@@ -1,0 +1,16 @@
+/* استایلِ کمینه‌ی صفحه‌ی probe — گام ۱٫۱. عمداً هیچ چیزِ محصولی اینجا نیست. */
+html,
+body,
+#root {
+  block-size: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+}
+
+/* بوم کلِ صفحه را می‌گیرد. */
+#root > :last-child {
+  block-size: 100%;
+}
