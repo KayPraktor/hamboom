@@ -25,7 +25,7 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:5180",
+    baseURL: "http://127.0.0.1:15180",
     colorScheme: "light",
     viewport: { width: 1280, height: 800 },
     // deviceScaleFactor ثابت تا اسنپ‌شات‌ها بین اجراها یکسان بمانند.
@@ -36,7 +36,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { browserName: "chromium" } }],
   webServer: {
     command: "pnpm run dev",
-    url: "http://127.0.0.1:5180",
+    url: "http://127.0.0.1:15180",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

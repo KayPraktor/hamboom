@@ -11,7 +11,7 @@
   },
   "scripts": {
     "assets": "node scripts/copy-excalidraw-fonts.mjs",
-    "predev": "pnpm run assets",
+    "predev": "pnpm run assets && node ../../scripts/check-dev-port.mjs 15180",
     "dev": "vite",
     "prebuild:demo": "pnpm run assets",
     "build:demo": "vite build",

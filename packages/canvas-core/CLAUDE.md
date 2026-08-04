@@ -47,7 +47,7 @@ ADR-003، ADR-007، ADR-008، ADR-010، ADR-016، ADR-017، ADR-022.
 ## دستورات
 
 ```bash
-pnpm --filter @hamboom/canvas-core dev           # دموی لوکال روی 127.0.0.1:5180
+pnpm --filter @hamboom/canvas-core dev           # دموی لوکال روی 127.0.0.1:15180
 pnpm --filter @hamboom/canvas-core test          # vitest یک‌بار
 pnpm --filter @hamboom/canvas-core test:watch
 pnpm --filter @hamboom/canvas-core test:coverage # پوشش + گیتِ ۶۰٪ (elements/text/sync)

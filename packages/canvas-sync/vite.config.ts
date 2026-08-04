@@ -31,7 +31,8 @@ export default defineConfig({
     // ۵۱۴۸–۵۲۴۷ رزرو بود که هم ۵۱۸۱ و هم ۵۱۸۰ را می‌گیرد. این محدوده‌ها با هر بوت
     // عوض می‌شوند؛ اگر روزی اینجا هم `EACCES` دیدی:
     //   netsh interface ipv4 show excludedportrange protocol=tcp
-    port: 5280,
+    port: 15280,
+    strictPort: true,
     host: "127.0.0.1",
   },
 });

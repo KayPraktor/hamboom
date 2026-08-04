@@ -5,8 +5,8 @@
       "name": "canvas-core-demo",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@hamboom/canvas-core", "dev"],
-      "port": 5180,
-      "url": "http://127.0.0.1:5180"
+      "port": 15180,
+      "url": "http://127.0.0.1:15180"
     }
   ]
 }
