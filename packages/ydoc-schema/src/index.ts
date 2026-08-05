@@ -6,29 +6,22 @@
  * (ws/pg/ioredis) — [ADR-029](../../../ARCHITECTURE_DECISIONS.md#adr-029).
  * قاعده‌ی ESLintِ `ydocSchemaBoundaries` این را اعمال می‌کند.
  *
- * محتوای واقعی در فاز ۲ ساخته می‌شود (گام‌های ۲٫۱ تا ۲٫۴):
- * ساختارِ سند، codecِ per-property عنصر، migration، و کدهای پروتکل.
+ * migration (گام ۲٫۳) و کدهای پروتکل (گام ۲٫۴) هنوز اضافه نشده‌اند.
  */
 
-/**
- * نسخه‌ی ساختارِ سند — در `meta.schemaVersion` هر بورد ذخیره می‌شود.
- *
- * migration در **سرور هنگام بارگذاری اتاق** اجرا می‌شود، نه در کلاینت، تا همه‌ی
- * کلاینت‌ها یک نسخه ببینند ([PLAN بخش ۷٫۵](../../../PLAN.md)). کلاینتی که نسخه‌اش
- * از سرور جلوتر باشد، `HB_ERROR{ code: "CLIENT_TOO_OLD" }` می‌گیرد.
- *
- * ⚠️ این با `customData.hb.schema` (نسخه‌ی ساختارِ customDataِ یک عنصر، در
- * `shared-types`) **یکی نیست** و مستقل از آن بالا می‌رود.
- */
-export const SCHEMA_VERSION = 1;
+export {
+  boardRoots,
+  createBoardDoc,
+  DEFAULT_APP_STATE,
+  DOC_INIT_ORIGIN,
+  DOC_ROOTS,
+  getSchemaVersion,
+  META_KEYS,
+  readDocument,
+  SCHEMA_VERSION,
+  type BoardDocument,
+  type BoardRoots,
+  type DocRootName,
+} from "./doc.ts";
 
-/** نام‌های ریشه‌ی سند — [PLAN بخش ۷٫۱](../../../PLAN.md). */
-export const DOC_ROOTS = {
-  meta: "meta",
-  elements: "elements",
-  assets: "assets",
-  appState: "appState",
-  commentPins: "commentPins",
-} as const;
-
-export type DocRootName = (typeof DOC_ROOTS)[keyof typeof DOC_ROOTS];
+export { readElement, writeElement } from "./element-codec.ts";

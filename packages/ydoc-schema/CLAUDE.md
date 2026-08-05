@@ -26,6 +26,11 @@ ADR-004، ADR-007، ADR-008، ADR-009، ADR-022، ADR-029 — و
    کامل این خاصیت را بی‌صدا از بین می‌برد.
 6. **`packages/shared-types` را بدون تایید مالک تغییر نده** (ADR-021).
    ★ قیدِ فعالِ M2: این ماژول باید **بدون هیچ تغییری در `shared-types`** تمام شود.
+7. ★ **codec خودش `transact` نمی‌کند — صداکننده موظف است.** `writeElement` باید
+   داخلِ یک `doc.transact(fn, origin)` با originِ **نام‌دار** صدا زده شود. بدونش
+   Yjs هر `set` را جداگانه و با originِ `null` می‌فرستد: هم ترافیکِ چندبرابر، و
+   هم — چون پیش‌فرضِ `Y.UndoManager` دقیقاً `null` را ردیابی می‌کند (سنجیده‌شده در
+   گام ۱٫۴) — نشتِ تغییرِ remote به undo stackِ محلی. مقصدِ این قید: گام ۳٫۳.
 
 ## ★ تله: پسوندِ `.ts` روی importهای نسبی
 
@@ -38,12 +43,25 @@ ADR-004، ADR-007، ADR-008، ADR-009، ADR-022، ADR-029 — و
 
 | فایل | مسئولیت | گام TODO |
 |---|---|---|
-| `src/index.ts` | نسخه‌ی schema، نام ریشه‌ها | ۰٫۲ |
-| `src/doc.ts` | سازنده‌ی `Y.Doc` با پنج ریشه | ۲٫۱ |
-| `src/element-codec.ts` | `writeElement`/`readElement` — **per-property** | ۲٫۱ |
+| `src/index.ts` | فقط barrel — صادراتِ عمومی | ۰٫۲ |
+| `src/doc.ts` | پنج ریشه، `SCHEMA_VERSION`، `readDocument` | ۲٫۱ ✅ |
+| `src/element-codec.ts` | `writeElement`/`readElement` — **per-property** | ۲٫۱ ✅ |
+| `src/test-fixtures.ts` | نمونه‌ی دستیِ هر ۹ نوع — **صادر نمی‌شود** | ۲٫۱ ✅ |
 | `src/assets.ts` · `src/app-state.ts` | متادیتای دارایی، وضعیتِ مشترکِ بورد | ۲٫۲ |
 | `src/migrations/` | `migrateV1toV2` و رجیستریِ ترتیبی | ۲٫۳ |
 | `src/protocol.ts` | کدهای پیامِ PLAN بخش ۵٫۳ | ۲٫۴ |
+
+## ★ تقسیمِ کارِ تست‌های codec
+
+وفاداری در **دو جا** آزموده می‌شود و هیچ‌کدام جایگزینِ دیگری نیست:
+
+| کجا | با چه نمونه‌ای | چه چیزی را فقط همان‌جا می‌شود گرفت |
+|---|---|---|
+| [`src/element-codec.test.ts`](src/element-codec.test.ts) | دستی | **`line`** — کانکتورِ محصولی همیشه `arrow` است، پس `line` هیچ سازنده‌ای ندارد |
+| [`canvas-sync/src/element-codec.test.ts`](../canvas-sync/src/element-codec.test.ts) | خروجیِ سازنده‌های **واقعیِ** M1 | فیلدهایی که نمونه‌ی دستی ممکن است نداشته باشد + سازگاریِ تایپیِ `readDocument` با `CanvasDocument` |
+
+نمونه‌ی دستی می‌تواند بی‌صدا از schema واگرا شود، پس `element-codec.test.ts` قبل از
+هر ادعای دیگری همه‌شان را با `hbElement.parse` اعتبارسنجی می‌کند.
 
 ## دستورات
 
