@@ -313,6 +313,9 @@ importers:
       '@hamboom/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      lib0:
+        specifier: 0.2.117
+        version: 0.2.117
       yjs:
         specifier: ^13.6.20
         version: 13.6.32

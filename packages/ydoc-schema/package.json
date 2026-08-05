@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@hamboom/shared-types": "workspace:*",
+    "lib0": "0.2.117",
     "yjs": "^13.6.20"
   }
 }

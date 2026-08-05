@@ -6,7 +6,7 @@
  * (ws/pg/ioredis) — [ADR-029](../../../ARCHITECTURE_DECISIONS.md#adr-029).
  * قاعده‌ی ESLintِ `ydocSchemaBoundaries` این را اعمال می‌کند.
  *
- * کدهای پیامِ پروتکل (گام ۲٫۴) هنوز اضافه نشده‌اند.
+ * فاز ۲ کامل است: ساختارِ سند، codecِ هر پنج ریشه، migration، و پروتکل.
  */
 
 export {
@@ -50,6 +50,20 @@ export {
 } from "./binary-guard.ts";
 
 export { HB_ERROR_CODES, type HbErrorCode } from "./error-codes.ts";
+
+export {
+  BOARD_ROLES,
+  decodeMessage,
+  encodeMessage,
+  isKnownErrorCode,
+  MSG_TYPES,
+  ProtocolError,
+  SAVE_STATUSES,
+  type BoardRole,
+  type HbMessage,
+  type MsgType,
+  type SaveStatus,
+} from "./protocol.ts";
 
 export {
   checkClientVersion,
