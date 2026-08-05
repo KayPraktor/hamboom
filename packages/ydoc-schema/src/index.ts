@@ -6,7 +6,7 @@
  * (ws/pg/ioredis) — [ADR-029](../../../ARCHITECTURE_DECISIONS.md#adr-029).
  * قاعده‌ی ESLintِ `ydocSchemaBoundaries` این را اعمال می‌کند.
  *
- * migration (گام ۲٫۳) و کدهای پروتکل (گام ۲٫۴) هنوز اضافه نشده‌اند.
+ * کدهای پیامِ پروتکل (گام ۲٫۴) هنوز اضافه نشده‌اند.
  */
 
 export {
@@ -48,3 +48,19 @@ export {
   findBinaryIn,
   findBinaryValues,
 } from "./binary-guard.ts";
+
+export { HB_ERROR_CODES, type HbErrorCode } from "./error-codes.ts";
+
+export {
+  checkClientVersion,
+  DOC_MIGRATION_ORIGIN,
+  DocumentTooNewError,
+  EARLIEST_SCHEMA_VERSION,
+  migrateDocument,
+  MIGRATIONS,
+  MigrationPathError,
+  type ClientVersionCheck,
+  type MigrateOptions,
+  type Migration,
+  type MigrationResult,
+} from "./migrations/index.ts";

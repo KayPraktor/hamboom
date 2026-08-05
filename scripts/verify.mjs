@@ -24,6 +24,22 @@
  * داده شده، ممکن است از همان مسیر آمده باشد. یک گیت که می‌تواند دروغ بگوید، بدتر
  * از نداشتنِ گیت است — چون به آن اعتماد می‌شود.
  *
+ * ── ★ چرا `--concurrency=1` (گام ۲٫۳) ─────────────────────────────────
+ *
+ * turbo پیش‌فرض تا ۱۰ task را **موازی** اجرا می‌کند. هر task یک vitest است و هر
+ * vitest چند workerِ Node — یعنی ده‌ها فرایند که هرکدام heapِ V8 خودش را commit
+ * می‌کند. روی ویندوز سقفِ commit (RAM + page file) است، نه RAM؛ در گام ۲٫۳ با
+ * ۷GB **رمِ آزاد** ولی commit پرِ ۳۴٫۵ از ۴۰٫۶ گیگ، **هر ۸ پکیج** با
+ * `FATAL ERROR: ... out of memory` افتادند. سریالی همان لحظه سبز شد.
+ *
+ * ⚠️ این یک شکستِ **محیطی** بود که شبیهِ شکستِ کد به نظر می‌رسید — همان کلاسی که
+ * پورت‌های رزروشده‌ی ویندوز در گام ۱٫۱ ساختند. درسِ آنجا: عددی انتخاب نکن که
+ * شیر یا خط است؛ از رژیمِ شکست **خارج شو**. پس `--concurrency=2` هم انتخاب نشد —
+ * روی یک ماشینِ شلوغ‌تر باز همان قمار بود.
+ *
+ * هزینه‌اش ~۱۰ ثانیه (۹s → ۱۹s). گیت **ضعیف نمی‌شود**: همان taskها، همان
+ * `--force`، و تصمیم همچنان فقط با کدِ خروج.
+ *
  * اجرا: `pnpm verify` — قبل از تیک‌زدنِ هر گام و قبل از هر کامیت.
  */
 import { spawnSync } from "node:child_process";
@@ -38,9 +54,11 @@ import { spawnSync } from "node:child_process";
 const GATES = [
   // ریشه جدا از turbo است: `scripts/**` را هیچ پکیجی پوشش نمی‌دهد.
   { name: "typecheck (ریشه)", run: "npx tsc -p tsconfig.json" },
-  { name: "typecheck (پکیج‌ها)", run: "npx turbo run typecheck --force" },
-  { name: "lint", run: "npx turbo run lint --force" },
-  { name: "test", run: "npx turbo run test --force" },
+  // ★ `--concurrency=1` — دلیلش در صدرِ فایل. سریالی، تا سبز/قرمزِ گیت به
+  //    فشارِ حافظه‌ی لحظه‌ی اجرا وابسته نباشد.
+  { name: "typecheck (پکیج‌ها)", run: "npx turbo run typecheck --force --concurrency=1" },
+  { name: "lint", run: "npx turbo run lint --force --concurrency=1" },
+  { name: "test", run: "npx turbo run test --force --concurrency=1" },
   // گیتِ اصل P1 — شاملِ self-testِ ارزیابِ SPDX.
   { name: "license", run: "node scripts/license-check.ts --self-test" },
   { name: "license (درخت)", run: "node scripts/license-check.ts" },
