@@ -19,6 +19,7 @@
     "typecheck": "tsc -p tsconfig.json && turbo run typecheck",
     "typecheck:root": "tsc -p tsconfig.json",
     "test": "turbo run test",
+    "verify": "node scripts/verify.mjs",
     "clean": "turbo run clean",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
