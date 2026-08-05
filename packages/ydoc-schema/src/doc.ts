@@ -1,6 +1,8 @@
 import type { HbAppState, HbAsset, HbElement } from "@hamboom/shared-types";
 import * as Y from "yjs";
 
+import { readAppState } from "./app-state.ts";
+import { readAssets } from "./assets.ts";
 import { readElement } from "./element-codec.ts";
 
 /**
@@ -60,21 +62,6 @@ export interface BoardRoots {
   appState: Y.Map<unknown>;
   commentPins: Y.Map<unknown>;
 }
-
-/**
- * وضعیتِ مشترکِ پیش‌فرضِ بورد.
- *
- * عمداً برابرِ `DEFAULT_APP_STATE`ِ [`local-adapter`](../../canvas-core/src/sync/local-adapter.ts)ِ
- * M1 است تا بومِ متصل و بومِ آفلاین یک‌جور شروع شوند. اگر واگرا شوند، «بازکردنِ
- * بورد» و «کار بدونِ سرور» دو ظاهرِ متفاوت پیدا می‌کنند.
- */
-export const DEFAULT_APP_STATE: HbAppState = {
-  viewBackgroundColor: "#ffffff",
-  gridSize: 20,
-  gridEnabled: false,
-  snapToObjects: true,
-  frameRendering: { enabled: true, name: true, outline: true, clip: true },
-};
 
 /** ریشه‌های یک سندِ موجود. ریشه‌ی ناموجود همین‌جا ساخته می‌شود (رفتارِ خودِ Yjs). */
 export function boardRoots(doc: Y.Doc): BoardRoots {
@@ -144,7 +131,10 @@ export interface BoardDocument {
  * برگرداندن ندارد. همان کاری که `LocalSyncHub.snapshot()`ِ M1 می‌کند.
  *
  * اعتبارسنجی اینجا انجام **نمی‌شود** — نه سکوت است و نه فراموشی: مرزِ اعتماد
- * جایی است که سند از دیتابیس بارگذاری می‌شود (فاز ۴)، نه هر بار خواندن.
+ * جایی است که سند از دیتابیس بارگذاری می‌شود (گام ۴٫۲)، نه هر بار خواندن.
+ *
+ * ⚠️ `commentPins` عمداً اینجا نیست: قراردادِ `CanvasDocument`ِ M1 آن را ندارد
+ * (کامنت کارِ M3 است). با `readCommentPins` جدا خوانده می‌شود.
  */
 export function readDocument(doc: Y.Doc): BoardDocument {
   const roots = boardRoots(doc);
@@ -158,15 +148,9 @@ export function readDocument(doc: Y.Doc): BoardDocument {
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
-  const assets: HbAsset[] = [];
-  for (const value of roots.assets.values()) {
-    assets.push((value instanceof Y.Map ? value.toJSON() : value) as HbAsset);
-  }
-
   return {
     elements,
-    assets,
-    // ریشه‌ی خالی یعنی «هنوز کسی چیزی عوض نکرده»، نه «بورد بدونِ appState».
-    appState: { ...DEFAULT_APP_STATE, ...(roots.appState.toJSON() as Partial<HbAppState>) },
+    assets: readAssets(roots.assets),
+    appState: readAppState(roots.appState),
   };
 }

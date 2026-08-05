@@ -1,4 +1,7 @@
 import type { HbElement, HbShapeElement, HbTextElement } from "@hamboom/shared-types";
+import * as Y from "yjs";
+
+import { boardRoots, createBoardDoc } from "./doc.ts";
 
 /**
  * نمونه‌های عنصر برای تست‌های این پکیج — **کدِ محصولی نیست** و از `index.ts`
@@ -197,4 +200,27 @@ export function stickyFixture(): HbShapeElement {
 /** نمونه‌ی متن — تنها نوعی که `originalText` دارد (ADR-034). */
 export function textFixture(): HbTextElement {
   return structuredClone(ELEMENT_FIXTURES[3]!.element) as HbTextElement;
+}
+
+/**
+ * دو سندِ جدا که مثلِ دو کلاینتِ واقعی update رد و بدل می‌کنند.
+ *
+ * ادعای «هر دو تغییر می‌مانَد» فقط با **دو سند** معنا دارد؛ روی یک سند هر
+ * نوشتنی طبیعتاً برنده است و تست هیچ‌چیز اثبات نمی‌کند.
+ */
+export function twoClients() {
+  const a = createBoardDoc();
+  const b = createBoardDoc();
+  return {
+    a,
+    b,
+    rootsOf: (doc: Y.Doc) => boardRoots(doc),
+    /** همگام‌سازیِ دوطرفه — همان کاری که سرور در فاز ۴ می‌کند. */
+    sync() {
+      const updateA = Y.encodeStateAsUpdate(a, Y.encodeStateVector(b));
+      const updateB = Y.encodeStateAsUpdate(b, Y.encodeStateVector(a));
+      Y.applyUpdate(b, updateA);
+      Y.applyUpdate(a, updateB);
+    },
+  };
 }

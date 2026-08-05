@@ -340,9 +340,7 @@ describe("★ متن: `originalText` یک `Y.Text` است و `text` نیست", (
     sync();
 
     expect(readTextElement(a, "txt_1").originalText).toBe("★سلام دنیا!");
-    expect(readTextElement(b, "txt_1").originalText).toBe(
-      readTextElement(a, "txt_1").originalText,
-    );
+    expect(readTextElement(b, "txt_1").originalText).toBe(readTextElement(a, "txt_1").originalText);
   });
 
   it("★★ پایه‌ی دیف زنده است — درجِ همتا با یک جایگزینیِ محلی مخدوش نمی‌شود", () => {

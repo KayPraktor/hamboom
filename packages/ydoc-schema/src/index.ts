@@ -12,7 +12,6 @@
 export {
   boardRoots,
   createBoardDoc,
-  DEFAULT_APP_STATE,
   DOC_INIT_ORIGIN,
   DOC_ROOTS,
   getSchemaVersion,
@@ -25,3 +24,27 @@ export {
 } from "./doc.ts";
 
 export { readElement, writeElement } from "./element-codec.ts";
+
+export { readAssets, removeAsset, writeAsset } from "./assets.ts";
+
+export {
+  DEFAULT_APP_STATE,
+  readAppState,
+  SHARED_APP_STATE_KEYS,
+  writeAppState,
+} from "./app-state.ts";
+
+export {
+  readCommentPins,
+  removeCommentPin,
+  writeCommentPin,
+  type CommentPin,
+  type CommentPinEntry,
+} from "./comment-pins.ts";
+
+export {
+  assertNoBinary,
+  BinaryInDocumentError,
+  findBinaryIn,
+  findBinaryValues,
+} from "./binary-guard.ts";

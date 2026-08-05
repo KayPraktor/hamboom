@@ -2,10 +2,11 @@ import { hbAppState } from "@hamboom/shared-types";
 import * as Y from "yjs";
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_APP_STATE } from "./app-state.ts";
+import { writeAsset } from "./assets.ts";
 import {
   boardRoots,
   createBoardDoc,
-  DEFAULT_APP_STATE,
   DOC_INIT_ORIGIN,
   DOC_ROOTS,
   getSchemaVersion,
@@ -138,9 +139,9 @@ describe("readDocument", () => {
     expect(() => hbAppState.parse(appState)).not.toThrow();
   });
 
-  it("متادیتای دارایی از سند بیرون می‌آید (codecِ کاملش کارِ گام ۲٫۲ است)", () => {
+  it("متادیتای دارایی از سند بیرون می‌آید", () => {
     const doc = createBoardDoc();
-    boardRoots(doc).assets.set("f_1", {
+    writeAsset(boardRoots(doc).assets, {
       fileId: "f_1",
       bucket: "hamboom",
       key: "t/b/f_1.png",
