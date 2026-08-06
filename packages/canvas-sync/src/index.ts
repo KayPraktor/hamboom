@@ -36,11 +36,20 @@ export const SUPPORTED_SCHEMA_VERSION = SCHEMA_VERSION;
 export { assertEmittable, EchoLoopError, isEmittableOrigin } from "@hamboom/canvas-core/sync";
 
 export {
-  LOCAL_ORIGIN,
+  ConnectionCancelledError,
   REMOTE_ORIGIN,
   YjsSyncAdapter,
   type YjsSyncAdapterOptions,
 } from "./adapter.ts";
+
+export {
+  createEmitScheduler,
+  HB_THROTTLE,
+  LocalOrigin,
+  type EmitScheduler,
+  type EmitSchedulerOptions,
+  type EmitSink,
+} from "./emit-local.ts";
 
 export { LocalTransport, LocalTransportHub, type SyncTransport } from "./transport.ts";
 

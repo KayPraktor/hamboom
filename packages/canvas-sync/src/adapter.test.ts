@@ -9,7 +9,8 @@ import { boardRoots, readDocument } from "@hamboom/ydoc-schema";
 import * as Y from "yjs";
 import { describe, expect, it, vi } from "vitest";
 
-import { ConnectionCancelledError, LOCAL_ORIGIN, YjsSyncAdapter } from "./adapter.ts";
+import { ConnectionCancelledError, YjsSyncAdapter } from "./adapter.ts";
+import { LocalOrigin } from "./emit-local.ts";
 import { LocalTransport, LocalTransportHub } from "./transport.ts";
 
 /**
@@ -437,7 +438,8 @@ describe("رفت‌وبرگشتِ عنصر بینِ دو کلاینت", () => {
       origin: "local-user",
     });
 
-    expect(origins).toEqual([LOCAL_ORIGIN]);
+    expect(origins).toHaveLength(1);
+    expect(origins[0]).toBeInstanceOf(LocalOrigin);
   });
 
   it("بدونِ ترابری هم سند کار می‌کند (حالتِ آفلاین)", async () => {

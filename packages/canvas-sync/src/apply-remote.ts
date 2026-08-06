@@ -1,5 +1,13 @@
-import { commitSystemUpdate, toExcalidraw, type HamboomCanvasProps } from "@hamboom/canvas-core";
+import {
+  commitSystemUpdate,
+  createFontString,
+  measureLineWidth,
+  toExcalidraw,
+  wrapTextGreedy,
+  type HamboomCanvasProps,
+} from "@hamboom/canvas-core";
 import type { CanvasDocument, ElementChangeSet } from "@hamboom/canvas-core/sync";
+import type { HbElement } from "@hamboom/shared-types";
 
 /**
  * نوشتنِ تغییرِ **remote** روی صحنه — ★ همیشه با `captureUpdate: "NEVER"`.
@@ -45,6 +53,38 @@ function byIndex(a: SceneElement, b: SceneElement): number {
 }
 
 /**
+ * ★★ بازمحاسبه‌ی `text` از `originalText` — نیمه‌ی دومِ
+ * [ADR-034](../../../ARCHITECTURE_DECISIONS.md#adr-034).
+ *
+ * فقط `originalText` در سند CRDT است؛ `text` نسخه‌ی **wrap‌شده**ی مشتق از آن.
+ * گام ۱٫۳ سنجید که `text`ِ emit‌شده‌ی **هر دو** کلاینت بعد از ادغام غلط است، پس
+ * ADR گفت باید بازمحاسبه شود — و این تنها جایی است که می‌شود: بعد از ادغام،
+ * روی کلاینتی که قرار است نشانش بدهد.
+ *
+ * ⚠️ در گام ۳٫۳ معلوم شد بدونِ این، **تغییرِ متنِ همتا اصلاً روی بوم دیده
+ * نمی‌شود**: سند درست ادغام می‌شد ولی صحنه همان `text`ِ قدیمی را نگه می‌داشت.
+ * تستِ [`e2e/text-latency.spec.ts`](../e2e/text-latency.spec.ts) دقیقاً همین را
+ * گرفت.
+ *
+ * از `wrapTextGreedy` و `measureLineWidth`ِ **خودِ M1** استفاده می‌کند، نه یک
+ * الگوریتمِ دوم (ADR-024).
+ */
+function withRecomputedText(element: HbElement): HbElement {
+  if (element.type !== "text") return element;
+  const { originalText, fontSize, fontFamily, width } = element;
+  if (typeof originalText !== "string" || width <= 0) return element;
+
+  const fontString = createFontString(fontSize, String(fontFamily));
+  const measure = (line: string, size: number): number =>
+    measureLineWidth(line, createFontString(size, String(fontFamily)));
+  // اگر canvas در دسترس نباشد `NaN` برمی‌گردد (عمدیِ M1) — آن‌وقت wrap بی‌معنی
+  // است و بهتر است `text` دست‌نخورده بماند تا اینکه با عرضِ غلط شکسته شود.
+  if (Number.isNaN(measureLineWidth("م", fontString))) return element;
+
+  return { ...element, text: wrapTextGreedy(originalText, width, fontSize, measure).join("\n") };
+}
+
+/**
  * ادغامِ یک `ElementChangeSet`ِ remote در صحنه‌ی فعلی.
  *
  * ⚠️ **از عناصرِ شاملِ حذف‌شده شروع می‌کند.** `getSceneElements()` حذف‌شده‌ها را
@@ -56,7 +96,7 @@ export function applyRemoteChangesToScene(api: CanvasApi, changes: ElementChange
   for (const element of api.getSceneElementsIncludingDeleted()) merged.set(element.id, element);
 
   for (const element of changes.upserted) {
-    merged.set(element.id, toExcalidraw(element) as unknown as SceneElement);
+    merged.set(element.id, toExcalidraw(withRecomputedText(element)) as unknown as SceneElement);
   }
   for (const id of changes.deleted) {
     const existing = merged.get(id);
@@ -78,7 +118,7 @@ export function applyRemoteChangesToScene(api: CanvasApi, changes: ElementChange
  */
 export function replaceSceneDocument(api: CanvasApi, document: CanvasDocument): void {
   const elements = document.elements.map(
-    (element) => toExcalidraw(element) as unknown as SceneElement,
+    (element) => toExcalidraw(withRecomputedText(element)) as unknown as SceneElement,
   );
   commitSystemUpdate(api, [...elements].sort(byIndex));
 }

@@ -24,6 +24,12 @@ import * as encoding from "lib0/encoding";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
+import {
+  createEmitScheduler,
+  LocalOrigin,
+  type EmitScheduler,
+  type EmitSchedulerOptions,
+} from "./emit-local.ts";
 import type { SyncTransport } from "./transport.ts";
 
 /**
@@ -41,23 +47,10 @@ import type { SyncTransport } from "./transport.ts";
  * | چه چیزی | گام |
  * |---|---|
  * | `captureUpdate: "NEVER"` هنگام نوشتنِ remote روی صحنه + گیتِ ESLint | ۳٫۲ |
- * | جدولِ throttle و گروه‌بندیِ ژست با `gestureId` | ۳٫۳ |
  * | `Y.UndoManager` با `trackedOrigins` | ۳٫۴ |
  * | awareness → `PeerState[]` (مکان‌نما، انتخاب، نما، ابزار، ephemeral) | ۳٫۵ |
  * | آپلود و URLِ دارایی | ۳٫۶ |
  */
-
-/**
- * originِ تراکنش‌های **این کاربر**.
- *
- * ★ نام‌دار و نه `null`، به دو دلیلِ سنجیده‌شده:
- *
- * ۱. مسیرِ remote با همین از مسیرِ محلی تشخیص داده می‌شود (پایین، `observeDeep`).
- * ۲. پیش‌فرضِ `Y.UndoManager` دقیقاً originِ `null` را ردیابی می‌کند (گام ۱٫۴).
- *    گام ۳٫۴ باید `trackedOrigins: new Set([LOCAL_ORIGIN])` بدهد، وگرنه **undo
- *    بی‌صدا هیچ کاری نمی‌کند** — نه خطا، نه هشدار.
- */
-export const LOCAL_ORIGIN = "hamboom:local";
 
 /** originِ updateهایی که از ترابری رسیده‌اند. */
 export const REMOTE_ORIGIN = "hamboom:remote";
@@ -73,6 +66,8 @@ export interface YjsSyncAdapterOptions {
    * ([ADR-012](../../../ARCHITECTURE_DECISIONS.md#adr-012)، گام ۴٫۵).
    */
   permissions?: CanvasPermissions;
+  /** بازنویسیِ اعدادِ جدولِ throttle — **فقط برای تست**. */
+  throttle?: EmitSchedulerOptions;
 }
 
 /** رویدادِ `observeDeep` — تایپِ خودِ Yjs `any` است و اینجا مهارش می‌کنیم. */
@@ -105,6 +100,7 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   private readonly doc: Y.Doc;
   private readonly transport: SyncTransport | null;
   private readonly permissions: CanvasPermissions;
+  private readonly throttle: EmitSchedulerOptions;
 
   private inbound: CanvasInbound | null = null;
   /** همه‌ی لغوها یک‌جا — `disconnect` نباید هیچ‌کدام را جا بگذارد. */
@@ -113,11 +109,14 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   private readonly pendingRemote = new Set<string>();
   /** شمارنده‌ی نسلِ اتصال — هر `connect`/`disconnect` یکی جلو می‌بردش. */
   private epoch = 0;
+  /** صف‌بندیِ مسیرِ محلی — فقط بین `connect` و `disconnect` زنده است. */
+  private scheduler: EmitScheduler | null = null;
 
   constructor(options: YjsSyncAdapterOptions = {}) {
     this.doc = options.doc ?? createBoardDoc();
     this.transport = options.transport ?? null;
     this.permissions = options.permissions ?? FULL_PERMISSIONS;
+    this.throttle = options.throttle ?? {};
   }
 
   /** سندِ زیرین — برای تست و برای دموی دو-نمونه‌ای (گام ۳٫۷). */
@@ -162,6 +161,14 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     // ۴. **observer بعد از آن** — هرچه از این لحظه برسد یک تغییرِ واقعی است، نه
     //    بخشی از بارگذاریِ اولیه. بینِ ۳ و ۴ هیچ `await`ی نیست، پس پیامی
     //    نمی‌تواند لای این دو بیفتد.
+    this.scheduler = createEmitScheduler(
+      {
+        commit: (queued) => this.commitChanges(queued),
+        has: (id) => boardRoots(this.doc).elements.has(id),
+        textOf: (id) => this.currentText(id),
+      },
+      this.throttle,
+    );
     this.wireTransport();
     this.requestInitialSync();
     inbound.replaceDocument(readDocument(this.doc) satisfies CanvasDocument);
@@ -182,6 +189,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
    */
   disconnect(): void {
     this.epoch++;
+    // ★ **اول flush، بعد قطع** — وگرنه آخرین تیکِ درگ یا آخرین حرفی که کاربر
+    //   تایپ کرده در صف می‌مانَد و هرگز روی سند نمی‌نشیند.
+    this.scheduler?.dispose();
+    this.scheduler = null;
     for (const off of this.teardown) off();
     this.teardown = [];
     this.pendingRemote.clear();
@@ -272,7 +283,7 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     const elements = boardRoots(this.doc).elements;
     const observer = (events: DeepEvent[], transaction: Y.Transaction): void => {
       // تغییرِ خودمان است — بوم از قبل نشانش می‌دهد و برگرداندنش یعنی حلقه.
-      if (transaction.origin === LOCAL_ORIGIN) return;
+      if (transaction.origin instanceof LocalOrigin) return;
       this.collectRemote(events);
     };
     elements.observeDeep(observer);
@@ -381,23 +392,32 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     const inbound = this.inbound;
     if (!inbound) return;
 
+    // ★ «در حالِ ذخیره» از همین لحظه درست است: تغییر پذیرفته شده ولی هنوز
+    //   ننشسته. جدولِ throttle (گام ۳٫۳) تصمیم می‌گیرد کِی واقعاً بنویسد.
     inbound.setSaveState({ status: "saving" });
+    this.scheduler?.push(changes);
+  }
 
+  /**
+   * نوشتنِ واقعی — **یک تراکنش برای کلِ changeset**.
+   *
+   * ★ originِ نام‌دار و حاملِ `gestureId`. codecِ `ydoc-schema` عمداً خودش
+   * `transact` نمی‌کند و این وظیفه اینجاست — بدونش Yjs هر `set` را جدا با originِ
+   * `null` می‌فرستد: هم ترافیکِ چندبرابر، هم همان originی که `UndoManager`
+   * پیش‌فرض ردیابی می‌کند (گام ۱٫۴).
+   */
+  private commitChanges(changes: ElementChangeSet): void {
     const roots = boardRoots(this.doc);
-    // ★ یک تراکنش برای کلِ changeset، با originِ نام‌دار. codecِ `ydoc-schema`
-    //   عمداً خودش `transact` نمی‌کند و این وظیفه اینجاست — بدونش Yjs هر `set`
-    //   را جدا با originِ `null` می‌فرستد: هم ترافیکِ چندبرابر، هم همان originی
-    //   که `UndoManager` پیش‌فرض ردیابی می‌کند.
     this.doc.transact(() => {
       for (const element of changes.upserted) writeElement(roots.elements, element);
       for (const id of changes.deleted) this.softDelete(id);
       for (const asset of changes.assets ?? []) writeAsset(roots.assets, asset satisfies HbAsset);
-    }, LOCAL_ORIGIN);
+    }, new LocalOrigin(changes.gestureId));
 
     // ⚠️ **این «ذخیره شد» فقط تا وقتی راست است که سند در حافظه باشد.** قرارداد M1
     //    می‌گوید `SaveState` باید حقیقت را بگوید نه خوش‌بینی؛ گام ۴٫۳ باید
     //    `saved` را پشتِ نوشتنِ **واقعیِ** دیتابیس ببرد.
-    inbound.setSaveState({ status: "saved", at: Date.now() });
+    this.inbound?.setSaveState({ status: "saved", at: Date.now() });
   }
 
   /**
@@ -406,6 +426,14 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
    * عنصر باید بمانَد تا undo و CRDT چیزی برای برگرداندن داشته باشند. یک `set`ِ
    * تک‌فیلدی است، پس از `writeElement` (که عنصرِ کامل می‌خواهد) نمی‌گذرد.
    */
+  /** `originalText`ِ فعلیِ سند — ورودیِ تشخیصِ «فقط متن عوض شده». */
+  private currentText(id: string): string | undefined {
+    const map = boardRoots(this.doc).elements.get(id);
+    if (!(map instanceof Y.Map)) return undefined;
+    const value = map.get("originalText");
+    return value instanceof Y.Text ? value.toString() : undefined;
+  }
+
   private softDelete(id: string): void {
     const map = boardRoots(this.doc).elements.get(id);
     if (map instanceof Y.Map && map.get("isDeleted") !== true) map.set("isDeleted", true);

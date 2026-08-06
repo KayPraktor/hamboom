@@ -122,11 +122,12 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **ماژول فعال:** M2 — `realtime-sync` (فاز ۲ در جریان)
-- **گام بعدی:** ۳٫۳ — مسیرِ محلی: `doc.transact` + جدولِ throttle.
-  **فازهای ۰، ۱ و ۲ کامل‌اند** (`packages/ydoc-schema` تمام است) و **گام‌های ۳٫۱ و
-  ۳٫۲ هم تمام‌اند**: دو بومِ واقعی در مرورگر همگام می‌شوند و `Ctrl+Z` کارِ همتا را
-  برنمی‌گرداند (`pnpm --filter @hamboom/canvas-sync test:e2e`).
+- **ماژول فعال:** M2 — `realtime-sync` (فاز ۳ در جریان)
+- **گام بعدی:** ۳٫۴ — انزوای undo با `Y.UndoManager` و `trackedOrigins`.
+  **فازهای ۰، ۱ و ۲ کامل‌اند** (`packages/ydoc-schema` تمام است) و **گام‌های ۳٫۱ تا
+  ۳٫۳ هم تمام‌اند**: دو بومِ واقعی در مرورگر همگام می‌شوند، `Ctrl+Z` کارِ همتا را
+  برنمی‌گرداند، و جدولِ فرکانس رعایت می‌شود
+  (`pnpm --filter @hamboom/canvas-sync test:e2e`).
 - **★ دروازه‌ی فاز ۳ باز است:** الگوی اشتراکِ StrictMode-safe در مرورگر تایید شد
   ([ADR-032](ARCHITECTURE_DECISIONS.md#adr-032)). binder **باید** همان را به کار ببرد؛
   اشتراک در callbackِ `onReady` زیر StrictMode مرده می‌مانَد.

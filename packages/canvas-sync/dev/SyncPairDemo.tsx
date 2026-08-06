@@ -7,6 +7,7 @@ import {
 } from "@hamboom/canvas-core";
 import type { CanvasOutbound } from "@hamboom/canvas-core/sync";
 import { useEffect, useState } from "react";
+import type * as Y from "yjs";
 
 import { createCanvasBinding } from "../src/canvas-binding";
 import { LocalTransport, LocalTransportHub } from "../src/transport";
@@ -34,7 +35,10 @@ type CanvasApi = Parameters<NonNullable<HamboomCanvasProps["onReady"]>>[0];
 declare global {
   interface Window {
     /** برای تستِ E2E — بدونِ این باید با پیکسل کار می‌کردیم. */
-    __hbPair?: Record<string, { api: CanvasApi; outbound: CanvasOutbound } | undefined>;
+    __hbPair?: Record<
+      string,
+      { api: CanvasApi; outbound: CanvasOutbound; doc: Y.Doc } | undefined
+    >;
   }
 }
 
@@ -71,7 +75,7 @@ function Pane({ name, label }: PaneProps) {
       )
       .then((outbound) => {
         if (cancelled) return;
-        window.__hbPair = { ...window.__hbPair, [name]: { api, outbound } };
+        window.__hbPair = { ...window.__hbPair, [name]: { api, outbound, doc: adapter.document } };
         setReady(true);
       })
       .catch(() => {
