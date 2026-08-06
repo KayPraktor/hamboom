@@ -53,6 +53,13 @@ export {
 
 export { LocalTransport, LocalTransportHub, type SyncTransport } from "./transport.ts";
 
+export {
+  bindUndoShortcuts,
+  createUndoScope,
+  type UndoScope,
+  type UndoScopeOptions,
+} from "./undo.ts";
+
 export { applyRemoteChangesToScene, replaceSceneDocument, type CanvasApi } from "./apply-remote.ts";
 
 export { createCanvasBinding, type CanvasBindingOptions } from "./canvas-binding.ts";

@@ -82,7 +82,7 @@ ADR-012، ADR-022، ADR-024، ADR-026، **ADR-028**، ADR-029.
 | `src/canvas-binding.ts` | ساختِ `CanvasInbound` از دسته‌ی امریِ موتور | ۳٫۲ ✅ |
 | `dev/SyncPairDemo.tsx` | دو بومِ واقعی روی یک hub (زیر StrictMode) | ۳٫۲ ✅ |
 | `src/emit-local.ts` | `doc.transact(origin)` + جدولِ throttle | ۳٫۳ ✅ |
-| `src/undo.ts` | `Y.UndoManager` با `trackedOrigins` | ۳٫۴ |
+| `src/undo.ts` | `Y.UndoManager` با `trackedOrigins` + گرفتنِ کیبورد | ۳٫۴ ✅ |
 | `src/awareness.ts` | awareness ↔ `PeerState` + ephemeral | ۳٫۵ |
 | `src/assets.ts` | پورتِ `AssetTransport` | ۳٫۶ |
 | `dev/StrictModeProbe.tsx` | probeِ StrictMode (ADR-032) | ۱٫۱ ✅ |
@@ -164,6 +164,23 @@ cleanup فوراً `disconnect` می‌زند → افکت دوباره اجرا
 می‌کند. به همین دلیل observer فقط **جمع می‌کند** (`collectRemote`) و تحویل
 **بیرونِ تراکنش** انجام می‌شود (`flushRemote`). این ترتیب با تست قفل شده —
 دست‌کاری‌اش نکن. مزیتِ دوم: بوم می‌تواند در پاسخ بنویسد بدونِ تراکنشِ تودرتو.
+
+## ★★ Yjs صاحبِ undo است، نه موتور (گام ۳٫۴، [ADR-035](../../ARCHITECTURE_DECISIONS.md#adr-035))
+
+اپ **باید** `bindUndoShortcuts` را به کار ببرد. اگر جا بیفتد، تاریخچه‌ی موتور
+دوباره فعال می‌شود و یک `Ctrl+Z` **دو کار** می‌کند.
+
+⚠️ **چرا موتور صاحبش نیست، با شواهد:** undoِ موتور در مرورگر سنجیده شد و — برخلافِ
+انتظار — روی عنصرِ مشترک **درست کار می‌کرد**. مشکل این بود که **به همتا نمی‌رسد**:
+ب رنگ را پس می‌گرفت، بومِ خودش زرد می‌شد و بومِ الف بنفش می‌مانْد. واگرایی.
+
+⚠️ **قاعده‌ای که از همین‌جا آمد:** هر مسیرِ نوشتنی که originش `LocalOrigin` **نیست**
+باید بعدش `flushRemote` را صدا بزند. `observeDeep` فقط جمع می‌کند و تحویل به
+`handleMessage` گره خورده بود — پس بوم undoِ خودش را نمی‌دید.
+
+★ **گروه‌بندی:** ادغامِ ورودی‌های undo فقط **درونِ یک ژستِ شناسه‌دار** مجاز است.
+تغییرِ بی‌ژست ورودیِ خودش را می‌گیرد، وگرنه Yjs ساخت و سه ویرایشِ بعدی را یکی
+می‌کند و یک `Ctrl+Z` کلِ بورد را پاک می‌کند (سنجیده شد).
 
 ## ★★ تله‌ی `UndoManager` (پین‌شده از گام ۱٫۴)
 

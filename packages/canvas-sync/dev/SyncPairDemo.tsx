@@ -1,4 +1,5 @@
 import {
+  bumpVersion,
   commitGesture,
   createSticky,
   HamboomCanvas,
@@ -6,11 +7,13 @@ import {
   type HamboomCanvasProps,
 } from "@hamboom/canvas-core";
 import type { CanvasOutbound } from "@hamboom/canvas-core/sync";
-import { useEffect, useState } from "react";
+import type { HbElement } from "@hamboom/shared-types";
+import { useEffect, useRef, useState } from "react";
 import type * as Y from "yjs";
 
 import { createCanvasBinding } from "../src/canvas-binding";
 import { LocalTransport, LocalTransportHub } from "../src/transport";
+import { bindUndoShortcuts } from "../src/undo";
 import { YjsSyncAdapter } from "../src/adapter";
 
 /**
@@ -37,7 +40,14 @@ declare global {
     /** برای تستِ E2E — بدونِ این باید با پیکسل کار می‌کردیم. */
     __hbPair?: Record<
       string,
-      { api: CanvasApi; outbound: CanvasOutbound; doc: Y.Doc } | undefined
+      | {
+          api: CanvasApi;
+          outbound: CanvasOutbound;
+          doc: Y.Doc;
+          /** یک ژستِ محلی: هم روی صحنه‌ی خودش، هم emit — همان کاری که ابزار می‌کند. */
+          commitLocal: (elements: HbElement[]) => void;
+        }
+      | undefined
     >;
   }
 }
@@ -46,6 +56,10 @@ declare global {
 const hub = new LocalTransportHub();
 
 let nextAuthor = 0;
+let nextGesture = 0;
+
+/** هر ژست شناسه‌ی یکتای خودش را می‌گیرد — همان کاری که ابزارِ محصولی می‌کند. */
+const newGestureId = (): string => `g_${++nextGesture}`;
 
 interface PaneProps {
   name: string;
@@ -56,6 +70,7 @@ function Pane({ name, label }: PaneProps) {
   const [api, setApi] = useState<CanvasApi | null>(null);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState("—");
+  const paneRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!api) return;
@@ -65,6 +80,7 @@ function Pane({ name, label }: PaneProps) {
     //    می‌سازد که آداپتور باید تاب بیاورد (نگهبانِ نسل در `connect`).
     const adapter = new YjsSyncAdapter({ transport: new LocalTransport(hub) });
     let cancelled = false;
+    let unbindUndo: (() => void) | null = null;
 
     void adapter
       .connect(
@@ -75,7 +91,34 @@ function Pane({ name, label }: PaneProps) {
       )
       .then((outbound) => {
         if (cancelled) return;
-        window.__hbPair = { ...window.__hbPair, [name]: { api, outbound, doc: adapter.document } };
+        // ★★ `Ctrl+Z` باید به `UndoManager` برسد، نه به تاریخچه‌ی موتور
+        //    ([ADR-035](../../../ARCHITECTURE_DECISIONS.md#adr-035)). در فازِ
+        //    capture روی خودِ پنل بسته می‌شود تا قبل از listenerهای موتور اجرا شود.
+        if (paneRef.current && adapter.undo) {
+          unbindUndo = bindUndoShortcuts(paneRef.current, adapter.undo);
+        }
+        const commitLocal = (elements: HbElement[]): void => {
+          // ⚠️ `bumpVersion` لازم است، نه تشریفاتی: بدونش موتور عنصر را
+          //    «بدونِ تغییر» می‌بیند و **ورودیِ undo نمی‌سازد** — تله‌ی ثبت‌شده‌ی M1.
+          //    یک بار در گام ۳٫۴ نزدیک بود همین را به‌عنوان «undoِ موتور خراب است»
+          //    گزارش کنم.
+          const bumped = elements.map((element) => bumpVersion(element));
+          const merged = new Map(
+            api.getSceneElementsIncludingDeleted().map((element) => [element.id, element]),
+          );
+          for (const element of bumped) merged.set(element.id, toExcalidraw(element) as never);
+          commitGesture(api, [...merged.values()]);
+          outbound.emitElementChanges({
+            upserted: bumped,
+            deleted: [],
+            origin: "local-user",
+            gestureId: newGestureId(),
+          });
+        };
+        window.__hbPair = {
+          ...window.__hbPair,
+          [name]: { api, outbound, doc: adapter.document, commitLocal },
+        };
         setReady(true);
       })
       .catch(() => {
@@ -85,6 +128,7 @@ function Pane({ name, label }: PaneProps) {
 
     return () => {
       cancelled = true;
+      unbindUndo?.();
       adapter.disconnect();
       setReady(false);
       window.__hbPair = { ...window.__hbPair, [name]: undefined };
@@ -112,11 +156,16 @@ function Pane({ name, label }: PaneProps) {
       ...api.getSceneElementsIncludingDeleted(),
       ...elements.map((element) => toExcalidraw(element)),
     ]);
-    pair.outbound.emitElementChanges({ upserted: elements, deleted: [], origin: "local-user" });
+    pair.outbound.emitElementChanges({
+      upserted: elements,
+      deleted: [],
+      origin: "local-user",
+      gestureId: newGestureId(),
+    });
   };
 
   return (
-    <section className="pane" data-pane={name}>
+    <section className="pane" data-pane={name} ref={paneRef}>
       <header>
         <strong>{label}</strong>
         <button type="button" data-action="add" onClick={addSticky} disabled={!ready}>

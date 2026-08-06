@@ -31,6 +31,7 @@ import {
   type EmitSchedulerOptions,
 } from "./emit-local.ts";
 import type { SyncTransport } from "./transport.ts";
+import { createUndoScope, type UndoScope } from "./undo.ts";
 
 /**
  * `YjsSyncAdapter` — پیاده‌سازیِ `CanvasSyncAdapter`ِ M1 روی `Y.Doc`. **قلبِ M2.**
@@ -111,6 +112,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   private epoch = 0;
   /** صف‌بندیِ مسیرِ محلی — فقط بین `connect` و `disconnect` زنده است. */
   private scheduler: EmitScheduler | null = null;
+  /** دامنه‌ی undo — ★ **Yjs صاحبِ undo است، نه موتور** (گام ۳٫۴). */
+  private undoScope: UndoScope | null = null;
+  /** `gestureId`ِ آخرین commit — مرزِ ورودی‌های undo از همین می‌آید. */
+  private lastGestureId: string | undefined;
 
   constructor(options: YjsSyncAdapterOptions = {}) {
     this.doc = options.doc ?? createBoardDoc();
@@ -122,6 +127,38 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   /** سندِ زیرین — برای تست و برای دموی دو-نمونه‌ای (گام ۳٫۷). */
   get document(): Y.Doc {
     return this.doc;
+  }
+
+  /**
+   * دامنه‌ی undo — فقط بین `connect` و `disconnect` وجود دارد.
+   *
+   * ★ **Yjs صاحبِ undo است، نه موتور** ([ADR-035](../../../ARCHITECTURE_DECISIONS.md#adr-035)).
+   * اپ باید `bindUndoShortcuts` را به کار ببرد تا `Ctrl+Z` به اینجا برسد و نه
+   * به تاریخچه‌ی موتور — وگرنه یک `Ctrl+Z` دو کار می‌کند.
+   *
+   * ⚠️ **`undo`/`redo` اینجا پوشیده شده‌اند تا بعدشان `flushRemote` صدا زده شود.**
+   * دلیلش یک شکافِ واقعیِ گام ۳٫۱ بود که در ۳٫۴ بیرون آمد: `observeDeep` تغییرِ
+   * غیرِمحلی را فقط **جمع** می‌کند و تحویلش به `handleMessage` گره خورده بود.
+   * originِ undo نه `LocalOrigin` است و نه از ترابری می‌آید، پس تغییر در صف
+   * می‌مانْد و **بوم undoِ خودش را نمی‌دید**.
+   *
+   * ★ قاعده‌ای که ماند: **هر مسیرِ نوشتنِ تازه‌ای که originش `LocalOrigin` نیست،
+   * باید بعدش `flushRemote` را صدا بزند.**
+   */
+  get undo(): UndoScope | null {
+    const scope = this.undoScope;
+    if (!scope) return null;
+    return {
+      ...scope,
+      undo: () => {
+        scope.undo();
+        this.flushRemote();
+      },
+      redo: () => {
+        scope.redo();
+        this.flushRemote();
+      },
+    };
   }
 
   /**
@@ -161,6 +198,7 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     // ۴. **observer بعد از آن** — هرچه از این لحظه برسد یک تغییرِ واقعی است، نه
     //    بخشی از بارگذاریِ اولیه. بینِ ۳ و ۴ هیچ `await`ی نیست، پس پیامی
     //    نمی‌تواند لای این دو بیفتد.
+    this.undoScope = createUndoScope(this.doc);
     this.scheduler = createEmitScheduler(
       {
         commit: (queued) => this.commitChanges(queued),
@@ -193,6 +231,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     //   تایپ کرده در صف می‌مانَد و هرگز روی سند نمی‌نشیند.
     this.scheduler?.dispose();
     this.scheduler = null;
+    // ★ **بعد از** flush — وگرنه آخرین ژست جایی برای نشستن در تاریخچه ندارد.
+    this.undoScope?.destroy();
+    this.undoScope = null;
+    this.lastGestureId = undefined;
     for (const off of this.teardown) off();
     this.teardown = [];
     this.pendingRemote.clear();
@@ -407,6 +449,19 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
    * پیش‌فرض ردیابی می‌کند (گام ۱٫۴).
    */
   private commitChanges(changes: ElementChangeSet): void {
+    // ★★ مرزِ ورودیِ undo. بدونِ این، `Y.UndoManager` هرچه در پنجره‌ی
+    //    `captureTimeout` بیفتد را **در یک ورودی** ادغام می‌کند: در گام ۳٫۴
+    //    سنجیده شد که ساختِ استیکی و سه ویرایشِ بعدی‌اش همگی یک `Ctrl+Z` شدند و
+    //    کلِ بورد پاک شد.
+    //
+    // ★ ادغام **فقط درونِ یک ژستِ شناسه‌دار** مجاز است — یک درگ باید یک undo
+    //   باشد. تغییرِ **بی‌ژست** (ساخت، حذف، تغییرِ استایل) یک کنشِ گسسته است و
+    //   هر کدام ورودیِ خودش را می‌گیرد.
+    if (changes.gestureId === undefined || changes.gestureId !== this.lastGestureId) {
+      this.undoScope?.stopCapturing();
+    }
+    this.lastGestureId = changes.gestureId;
+
     const roots = boardRoots(this.doc);
     this.doc.transact(() => {
       for (const element of changes.upserted) writeElement(roots.elements, element);
