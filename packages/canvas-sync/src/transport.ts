@@ -62,11 +62,24 @@ export class LocalTransport implements SyncTransport {
     hub.join(this);
   }
 
-  send(update: Uint8Array): void {
-    this.hub.publish(this, update);
+  /**
+   * پیوستنِ دوباره به hub.
+   *
+   * ⚠️ **لازم است، نه تشریفاتی:** `disconnect` عضویت را برمی‌دارد، پس بدونِ این،
+   * یک `connect` بعد از `disconnect` روی همان آداپتور **مرده** می‌مانَد — و
+   * StrictMode دقیقاً همین چرخه را می‌سازد. در گام ۳٫۲ یک تست همین را گرفت.
+   * ترابریِ واقعیِ فاز ۴ هم دقیقاً همین کار را می‌کند (اتصالِ دوباره‌ی WebSocket).
+   */
+  connect(): Promise<void> {
+    this.hub.join(this);
+    return Promise.resolve();
   }
 
-  onMessage(handler: (update: Uint8Array) => void): () => void {
+  send(message: Uint8Array): void {
+    this.hub.publish(this, message);
+  }
+
+  onMessage(handler: (message: Uint8Array) => void): () => void {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
   }
@@ -77,7 +90,7 @@ export class LocalTransport implements SyncTransport {
   }
 
   /** فراخوانیِ داخلی توسط hub. */
-  receive(update: Uint8Array): void {
-    for (const handler of this.handlers) handler(update);
+  receive(message: Uint8Array): void {
+    for (const handler of this.handlers) handler(message);
   }
 }

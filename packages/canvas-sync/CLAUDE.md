@@ -71,7 +71,9 @@ ADR-012، ADR-022، ADR-024، ADR-026، **ADR-028**، ADR-029.
 | `src/index.ts` | صادراتِ عمومی | ۰٫۲ |
 | `src/adapter.ts` | `YjsSyncAdapter` — چرخه‌ی عمر + نگهبانِ echo | ۳٫۱ ✅ |
 | `src/transport.ts` | seamِ ترابری + `LocalTransportHub` (جای سرور در فاز ۳) | ۳٫۱ ✅ |
-| `src/apply-remote.ts` | ★ نوشتنِ تغییرِ remote با `NEVER` | ۳٫۲ |
+| `src/apply-remote.ts` | ★ نوشتنِ تغییرِ remote با `NEVER` | ۳٫۲ ✅ |
+| `src/canvas-binding.ts` | ساختِ `CanvasInbound` از دسته‌ی امریِ موتور | ۳٫۲ ✅ |
+| `dev/SyncPairDemo.tsx` | دو بومِ واقعی روی یک hub (زیر StrictMode) | ۳٫۲ ✅ |
 | `src/emit-local.ts` | `doc.transact(origin)` + جدولِ throttle | ۳٫۳ |
 | `src/undo.ts` | `Y.UndoManager` با `trackedOrigins` | ۳٫۴ |
 | `src/awareness.ts` | awareness ↔ `PeerState` + ephemeral | ۳٫۵ |
@@ -83,13 +85,41 @@ ADR-012، ADR-022، ADR-024، ADR-026، **ADR-028**، ADR-029.
 
 ```bash
 pnpm --filter @hamboom/canvas-sync test:e2e   # نیاز: playwright install chromium
+pnpm --filter @hamboom/canvas-sync dev        # /#pair → دموی دو-نمونه‌ای
 ```
+
+⚠️ **E2E در `pnpm verify` نیست** (مرورگر لازم دارد) ولی ادعاهایی را می‌آزماید که
+**فقط** آنجا قابلِ آزمودن‌اند — به‌ویژه انزوای undo در گام ۳٫۲: تاریخچه‌ی undo
+مالِ خودِ موتور است و در jsdom **اصلاً وجود ندارد**. بعد از هر تغییر در
+`apply-remote.ts` یا دمو، دستی اجرایش کن.
 
 ⚠️ **تله‌ی محیطیِ ویندوز:** محدوده‌هایی از پورت برای Hyper-V/WSL **رزرو** می‌شوند و
 `bind` رویشان `EACCES` می‌دهد — این محدوده‌ها با هر بوت عوض می‌شوند. اگر سرورِ dev
 بالا نیامد: `netsh interface ipv4 show excludedportrange protocol=tcp`. (روی ماشینِ
 توسعه محدوده‌ی ۵۱۴۸–۵۲۴۷ رزرو بود که **پورتِ ۵۱۸۰ دموی `canvas-core` را هم می‌گیرد**؛
 این پکیج روی ۵۲۸۰ نشست.)
+
+## ★★ دو تله‌ی StrictMode که در گام ۳٫۲ کشف شدند
+
+دموی جفتیِ `#pair` اولین جایی بود که آداپتور **واقعاً** زیر StrictMode رفت، و
+همان‌جا دو باگِ گام ۳٫۱ بیرون افتاد. هر دو فقط زیر StrictMode ظاهر می‌شوند.
+
+### ۱. `disconnect` وسطِ `connect` — نشتیِ observer
+
+StrictMode: افکت اجرا می‌شود → `connect` روی اولین `await` معلق می‌مانَد →
+cleanup فوراً `disconnect` می‌زند → افکت دوباره اجرا می‌شود. ادامه‌ی `connect`ِ
+**اول** observerهایش را روی سند سوار می‌کرد که هیچ `disconnect`ی سراغشان
+نمی‌آمد. رفع: شمارنده‌ی **نسلِ اتصال**؛ بعد از هر `await` بررسی می‌شود که هنوز
+همان اتصالیم، وگرنه `ConnectionCancelledError`.
+
+★ **قاعده برای گام‌های بعد:** هر `await`ِ تازه‌ای که به `connect` اضافه شود
+**باید** بعدش همین بررسی را داشته باشد.
+
+### ۲. ترابری بعد از `disconnect` باید دوباره بپیوندد
+
+`LocalTransport.disconnect` عضویتِ hub را برمی‌دارد، پس `connect`ِ بعدی روی همان
+آداپتور **مرده** می‌مانْد. رفع: `LocalTransport.connect()` دوباره join می‌کند —
+همان کاری که ترابریِ واقعیِ فاز ۴ با اتصالِ دوباره‌ی WebSocket می‌کند.
 
 ## ★★ دو تله‌ی Yjs/y-protocols که در گام ۳٫۱ کشف شدند
 

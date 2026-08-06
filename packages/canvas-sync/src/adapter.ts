@@ -78,6 +78,22 @@ export interface YjsSyncAdapterOptions {
 /** رویدادِ `observeDeep` — تایپِ خودِ Yjs `any` است و اینجا مهارش می‌کنیم. */
 type DeepEvent = Y.YEvent<Y.AbstractType<unknown>>;
 
+/**
+ * `connect` وسطِ راه لغو شد (یک `disconnect` یا `connect`ِ تازه رسید).
+ *
+ * ★ این دقیقاً همان چیزی است که **StrictMode** می‌سازد: افکت اجرا می‌شود،
+ * `connect` روی اولین `await` معلق می‌مانَد، cleanup فوراً `disconnect` را صدا
+ * می‌زند، و بعد افکت دوباره اجرا می‌شود. بدونِ این نگهبان، ادامه‌ی `connect`ِ
+ * اول observerهایش را روی سند سوار می‌کرد که هیچ `disconnect`ی سراغشان نمی‌آمد
+ * — یک نشتیِ تمام‌عیار که فقط زیر StrictMode ظاهر می‌شود.
+ */
+export class ConnectionCancelledError extends Error {
+  constructor() {
+    super("‏[hamboom] اتصال پیش از کامل‌شدن لغو شد (disconnect یا connectِ تازه).");
+    this.name = "ConnectionCancelledError";
+  }
+}
+
 const FULL_PERMISSIONS: CanvasPermissions = {
   canEdit: true,
   canComment: true,
@@ -95,6 +111,8 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   private teardown: Array<() => void> = [];
   /** شناسه‌ی عناصری که یک تراکنشِ remote دست زده و هنوز به بوم نرفته‌اند. */
   private readonly pendingRemote = new Set<string>();
+  /** شمارنده‌ی نسلِ اتصال — هر `connect`/`disconnect` یکی جلو می‌بردش. */
+  private epoch = 0;
 
   constructor(options: YjsSyncAdapterOptions = {}) {
     this.doc = options.doc ?? createBoardDoc();
@@ -125,10 +143,14 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
       );
     }
 
+    const token = ++this.epoch;
     this.inbound = inbound;
     inbound.setConnectionState({ status: "connecting" });
 
     await this.transport?.connect?.();
+    // ★ بعد از **هر** await باید بررسی شود که هنوز همان اتصالیم — StrictMode
+    //   دقیقاً همین‌جا `disconnect` را می‌چپاند.
+    if (this.epoch !== token) throw new ConnectionCancelledError();
 
     // ★★ ترتیبِ این چهار خط عمدی است و با تست قفل شده.
     //
@@ -159,8 +181,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
    * استثنا. تستش هست: بعد از `disconnect`، تغییرِ remote به بومِ قبلی نمی‌رسد.
    */
   disconnect(): void {
+    this.epoch++;
     for (const off of this.teardown) off();
     this.teardown = [];
+    this.pendingRemote.clear();
     this.transport?.disconnect?.();
     this.inbound?.setConnectionState({ status: "offline", pendingChanges: 0 });
     this.inbound = null;

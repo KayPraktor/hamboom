@@ -14,3 +14,33 @@ body {
 #root > :last-child {
   block-size: 100%;
 }
+
+/* ── دموی دو-نمونه‌ای (گام ۳٫۲، و حضور در ۳٫۷) ───────────────────────── */
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  block-size: 100%;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  border-inline-start: 1px solid #ddd;
+}
+
+.pane > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #f6f6f6;
+}
+
+/* ★ بوم باید ارتفاعِ واقعی داشته باشد، وگرنه موتور صفر در صفر رندر می‌کند و
+   کلیک به هیچ‌جا نمی‌خورد. */
+.pane > .canvas {
+  flex: 1;
+  min-block-size: 0;
+}

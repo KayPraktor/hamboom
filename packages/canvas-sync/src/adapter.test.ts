@@ -9,7 +9,7 @@ import { boardRoots, readDocument } from "@hamboom/ydoc-schema";
 import * as Y from "yjs";
 import { describe, expect, it, vi } from "vitest";
 
-import { LOCAL_ORIGIN, YjsSyncAdapter } from "./adapter.ts";
+import { ConnectionCancelledError, LOCAL_ORIGIN, YjsSyncAdapter } from "./adapter.ts";
 import { LocalTransport, LocalTransportHub } from "./transport.ts";
 
 /**
@@ -156,6 +156,32 @@ describe("چرخه‌ی عمر", () => {
     adapter.disconnect();
     expect(canvas.connectionStates.at(-1)).toEqual({ status: "offline", pendingChanges: 0 });
     expect(() => adapter.disconnect()).not.toThrow();
+  });
+
+  it("★★ `disconnect` وسطِ `connect` — الگوی دقیقِ StrictMode", async () => {
+    // افکت اجرا می‌شود → `connect` روی اولین await معلق می‌مانَد → cleanup فوراً
+    // `disconnect` می‌زند → افکت دوباره اجرا می‌شود. بدونِ نگهبانِ نسل، ادامه‌ی
+    // `connect`ِ اول observerهایش را روی سند سوار می‌کرد که هیچ `disconnect`ی
+    // سراغشان نمی‌آمد.
+    const { a, b } = twoAdapters();
+    const abandoned = fakeCanvas();
+    const live = fakeCanvas();
+
+    const cancelled = a.connect(abandoned.inbound); // منتظرش نمی‌مانیم
+    a.disconnect();
+    await expect(cancelled).rejects.toThrow(ConnectionCancelledError);
+
+    await a.connect(live.inbound);
+    const outB = await b.connect(fakeCanvas().inbound);
+    outB.emitElementChanges({
+      upserted: [element("stk_1")],
+      deleted: [],
+      origin: "local-user",
+    });
+
+    // بومِ رهاشده هیچ‌وقت چیزی نمی‌گیرد؛ بومِ زنده دقیقاً **یک بار** می‌گیرد.
+    expect(abandoned.received).toEqual([]);
+    expect(live.received).toHaveLength(1);
   });
 
   it("★★ بعد از `disconnect` هیچ تغییرِ remoteی به بومِ قبلی نمی‌رسد", async () => {

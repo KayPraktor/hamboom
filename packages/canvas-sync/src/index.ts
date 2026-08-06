@@ -43,3 +43,7 @@ export {
 } from "./adapter.ts";
 
 export { LocalTransport, LocalTransportHub, type SyncTransport } from "./transport.ts";
+
+export { applyRemoteChangesToScene, replaceSceneDocument, type CanvasApi } from "./apply-remote.ts";
+
+export { createCanvasBinding, type CanvasBindingOptions } from "./canvas-binding.ts";

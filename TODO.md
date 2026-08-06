@@ -655,24 +655,47 @@ PLAN فرض می‌کرد آماده‌اند (`rt-token`، `packages/auth-core`
   به‌علاوه: خطای بوم **بلعیده نمی‌شود** (نگهبانِ تله‌ی ۲)، و تراکنشِ محلی با originِ
   **نام‌دار** نوشته می‌شود (پایه‌ی گام ۳٫۴).
 
-### گام ۳٫۲ — ★ `applyRemoteChanges` با `captureUpdate: "NEVER"` + گیتِ خودکار
+### گام ۳٫۲ — ★ `applyRemoteChanges` با `captureUpdate: "NEVER"` + گیتِ خودکار ✅ (۱۴۰۵/۰۵/۱۴)
 
 > **ارثیه‌ی M1 (ADR-026):** بدون این، تغییری که از کاربرِ دیگر می‌رسد در undo stackِ **محلی**
 > می‌نشیند و `Ctrl+Z` این کاربر کارِ آن یکی را برمی‌گرداند — همان چیزی که ADR-012 منع کرده.
 
-- [ ] `applyRemoteChanges` صحنه را با `captureUpdate: "NEVER"` بنویسد — از راهِ
-      `commitSystemUpdate` در [`engine/scene-commit.ts`](packages/canvas-core/src/engine/scene-commit.ts)،
-      **نه `updateScene`ِ خام** (خط قرمزِ ۷ در `canvas-core/CLAUDE.md`).
-- [ ] **گیتِ خودکار:** قاعده‌ی `require-capture-update` که M1 در
-      [`eslint-config/boundaries.js`](packages/eslint-config/boundaries.js) ساخت روی
-      `canvas-sync` هم فعال شود + یک قاعده‌ی **باریک‌ترِ** جدید: در مسیرِ remote فقط `"NEVER"`
-      مجاز است. با `RuleTester` خودآزمون شود (قاعده‌ی ۱۰).
-- [ ] **ترتیبِ capture در جریانِ چندمرحله‌ای** رعایت شود (درسِ گام ۳٫۶ در M1): اگر یک تغییرِ
-      remote چندمرحله‌ای بود، `NEVER` خطِ پایه‌ی تاریخچه را جلو می‌برد.
-- **معیار پذیرش:** یک تستِ **مرورگری** (نه jsdom — undo در jsdom نیست): کلاینت A یک استیکی
-  می‌سازد → در کلاینت B ظاهر می‌شود → کلاینت B سه بار `Ctrl+Z` می‌زند → **استیکیِ A دست‌نخورده
-  می‌ماند** و فقط کارِ خودِ B برمی‌گردد. به‌علاوه: قاعده‌ی ESLint روی یک نمونه‌ی عمداً غلط
-  (`IMMEDIATELY` در مسیرِ remote) خطا می‌دهد.
+> **نتیجه (۱۴۰۵/۰۵/۱۴):** ✅ ادعا در **مرورگرِ واقعی** اثبات شد. ۳۰ تستِ واحدِ تازه
+> (`eslint-config` ۶۱ → ۷۹، `canvas-sync` ۷۲ → ۸۴) + **۳ تستِ E2E**.
+>
+> ★ **کشفِ حینِ کار:** هیچ‌کس `CanvasInbound` را پیاده نکرده بود. M1 قرارداد و
+> `commitSystemUpdate` را ساخت ولی `HamboomCanvas` فقط `onReady(api)` می‌دهد —
+> وصل‌کردنِ آن دسته به آداپتور دقیقاً تعریفِ «binder» است، پس
+> `src/canvas-binding.ts` هم اینجا ساخته شد.
+>
+> ★★ **دو باگِ گام ۳٫۱ که دموی زیرِ StrictMode بیرون کشید** (هر دو در
+> `canvas-sync/CLAUDE.md`): `disconnect` وسطِ `connect` observer نشت می‌داد (رفع:
+> شمارنده‌ی نسلِ اتصال)، و ترابری بعد از `disconnect` دوباره به hub نمی‌پیوست پس
+> `connect`ِ بعدی مرده می‌مانْد. **هیچ‌کدام در تستِ واحد دیده نمی‌شد.**
+
+- [x] `applyRemoteChanges` صحنه را با `captureUpdate: "NEVER"` می‌نویسد — از راهِ
+      `commitSystemUpdate`، در فایلِ جدا‌شده‌ی [`src/apply-remote.ts`](packages/canvas-sync/src/apply-remote.ts).
+      ★ `replaceDocument` هم `NEVER` است: اگر ورودیِ undo می‌ساخت، اولین `Ctrl+Z` **کلِ
+      بورد را پاک می‌کرد**.
+- [x] **گیتِ خودکار:** `require-capture-update` روی `canvas-sync` فعال شد + قاعده‌ی
+      **باریک‌ترِ** `hamboom/remote-writes-never` که فقط روی `src/apply-remote.ts` اعمال
+      می‌شود (روی کلِ پکیج، مسیرِ محلی که `IMMEDIATELY` می‌خواهد هم خطا می‌گرفت و قاعده به
+      بن‌بست تبدیل می‌شد). **دو لایه آزمون:** `RuleTester` برای منطق و lintِ واقعی روی
+      `eslint.config.js` برای **سیم‌کشی** — همان تفکیکی که در گام ۰٫۲ یک باگ گرفت.
+      ⚠️ تله‌ی flat config: دو configِ هم‌فایل نمی‌توانند `plugins.hamboom`ِ **جدا** بسازند؛
+      حالا هر دو به یک شیءِ مشترک ارجاع می‌دهند.
+- [x] **مبنای ادغام شاملِ حذف‌شده‌ها** است (`getSceneElementsIncludingDeleted`) — با
+      `getSceneElements` هر تغییرِ remote عناصرِ حذفِ نرم‌شده را از صحنه می‌انداخت. و ترتیبِ
+      آرایه با `index` هم‌راستا نگه داشته می‌شود.
+- [!] **ترتیبِ capture در جریانِ چندمرحله‌ای:** مسیرِ remote الان **تک‌مرحله‌ای** است، پس
+      موردی برای ترتیب وجود ندارد. اولین جریانِ چندمرحله‌ایِ remote، دارایی (گام ۳٫۶) است —
+      همان‌جا باید رعایت شود.
+- **معیار پذیرش:** ✅ [`e2e/undo-isolation.spec.ts`](packages/canvas-sync/e2e/undo-isolation.spec.ts)
+  در Chromiumِ واقعی: ب یک استیکیِ خودش می‌سازد، الف یکی می‌سازد که به ب می‌رسد، ب **سه بار**
+  `Ctrl+Z` می‌زند → **استیکیِ الف سرِ جایش می‌مانَد** و فقط کارِ خودِ ب برمی‌گردد (سه اجرای
+  پایدار). به‌علاوه یک تستِ صریح که ثابت می‌کند استیکیِ الف **واقعاً رسیده بود** — وگرنه
+  «چیزی پاک نشد» هیچ چیزی اثبات نمی‌کرد. و قاعده‌ی ESLint روی `IMMEDIATELY`ِ عمداً غلط در
+  مسیرِ remote خطا می‌دهد، ولی روی همان کد در مسیرِ محلی نه.
 
 ### گام ۳٫۳ — مسیرِ محلی: `emitElementChanges` → `doc.transact` + throttle
 

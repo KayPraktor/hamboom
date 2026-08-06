@@ -123,9 +123,10 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 ## وضعیت فعلی
 
 - **ماژول فعال:** M2 — `realtime-sync` (فاز ۲ در جریان)
-- **گام بعدی:** ۳٫۲ — `applyRemoteChanges` با `captureUpdate: "NEVER"` + گیتِ خودکار.
-  **فازهای ۰، ۱ و ۲ کامل‌اند** (`packages/ydoc-schema` تمام است) و **گام ۳٫۱ هم
-  تمام است**: `YjsSyncAdapter` دو `Y.Doc` را بدونِ هیچ شبکه‌ای همگام می‌کند.
+- **گام بعدی:** ۳٫۳ — مسیرِ محلی: `doc.transact` + جدولِ throttle.
+  **فازهای ۰، ۱ و ۲ کامل‌اند** (`packages/ydoc-schema` تمام است) و **گام‌های ۳٫۱ و
+  ۳٫۲ هم تمام‌اند**: دو بومِ واقعی در مرورگر همگام می‌شوند و `Ctrl+Z` کارِ همتا را
+  برنمی‌گرداند (`pnpm --filter @hamboom/canvas-sync test:e2e`).
 - **★ دروازه‌ی فاز ۳ باز است:** الگوی اشتراکِ StrictMode-safe در مرورگر تایید شد
   ([ADR-032](ARCHITECTURE_DECISIONS.md#adr-032)). binder **باید** همان را به کار ببرد؛
   اشتراک در callbackِ `onReady` زیر StrictMode مرده می‌مانَد.

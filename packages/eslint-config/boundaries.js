@@ -198,10 +198,103 @@ export const requireCaptureUpdateRule = {
 export function captureUpdateDiscipline() {
   return {
     name: "hamboom/capture-update-discipline",
-    plugins: { hamboom: { rules: { "require-capture-update": requireCaptureUpdateRule } } },
+    plugins: { hamboom: hamboomPlugin },
     rules: { "hamboom/require-capture-update": "error" },
   };
 }
+
+/**
+ * ★★ قاعده‌ی **باریک‌ترِ** مسیرِ remote — گام ۳٫۲.
+ *
+ * `require-capture-update` فقط می‌گوید «صریح انتخاب کن». اینجا انتخاب از قبل
+ * معلوم است: در مسیرِ اعمالِ تغییرِ **remote** تنها `"NEVER"` درست است
+ * ([ADR-026](../../ARCHITECTURE_DECISIONS.md#adr-026)).
+ *
+ * ── چرا یک قاعده‌ی جدا و نه یک کامنت ──────────────────────────────────
+ *
+ * `IMMEDIATELY` در این مسیر یک باگِ **بی‌صدا** می‌سازد: کارِ کاربرِ دیگر در undo
+ * stackِ محلیِ این کاربر می‌نشیند و `Ctrl+Z` او کارِ آن یکی را برمی‌گرداند —
+ * دقیقاً چیزی که [ADR-012](../../ARCHITECTURE_DECISIONS.md#adr-012) منع کرده. نه
+ * خطا می‌دهد، نه در تستِ واحد دیده می‌شود؛ فقط دو کاربر یک روز می‌فهمند کارشان
+ * پاک می‌شود.
+ *
+ * جدا صادر می‌شود تا با `RuleTester` مستقیم آزموده شود (قاعده‌ی ۱۰).
+ *
+ * @type {import("eslint").Rule.RuleModule}
+ */
+export const remoteWritesNeverRule = {
+  meta: {
+    type: "problem",
+    docs: {
+      description: "در مسیرِ تغییرِ remote فقط captureUpdate: 'NEVER' مجاز است (ADR-026).",
+    },
+    schema: [],
+    messages: {
+      notNever:
+        "ADR-026: در مسیرِ remote فقط captureUpdate: 'NEVER' مجاز است. " +
+        "با هر مقدارِ دیگری کارِ کاربرِ دیگر در undo stackِ محلی می‌نشیند و " +
+        "Ctrl+Z این کاربر کارِ آن یکی را برمی‌گرداند (ADR-012).",
+      gesture:
+        "ADR-026: commitGesture یک ورودی undo می‌سازد و در مسیرِ remote جا ندارد. " +
+        "از commitSystemUpdate استفاده کن (captureUpdate: 'NEVER').",
+    },
+  },
+  create(context) {
+    return {
+      CallExpression(node) {
+        const callee = node.callee;
+        // `commitGesture(...)` یا `x.commitGesture(...)`
+        const name =
+          callee.type === "Identifier"
+            ? callee.name
+            : callee.type === "MemberExpression" &&
+                callee.property.type === "Identifier" &&
+                !callee.computed
+              ? callee.property.name
+              : null;
+        if (name === "commitGesture") context.report({ node, messageId: "gesture" });
+      },
+      Property(node) {
+        if (node.computed) return;
+        const key = node.key;
+        const isCapture =
+          (key.type === "Identifier" && key.name === "captureUpdate") ||
+          (key.type === "Literal" && key.value === "captureUpdate");
+        if (!isCapture) return;
+        // مقدارِ غیرِ literal قابلِ بازرسی نیست — مثبتِ کاذب نمی‌سازیم.
+        if (node.value.type !== "Literal") return;
+        if (node.value.value !== "NEVER") context.report({ node, messageId: "notNever" });
+      },
+    };
+  },
+};
+
+/**
+ * پیش‌تنظیمِ مسیرِ remote. **روی `files` باریک اعمال شود**، نه کلِ پکیج — وگرنه
+ * مسیرِ محلی (که `IMMEDIATELY` می‌خواهد) هم خطا می‌گیرد.
+ */
+export function remoteCaptureDiscipline() {
+  return {
+    name: "hamboom/remote-capture-discipline",
+    plugins: { hamboom: hamboomPlugin },
+    rules: { "hamboom/remote-writes-never": "error" },
+  };
+}
+
+/**
+ * ★ **یک** پلاگین با همه‌ی قاعده‌های خودمان — و **یک نمونه‌ی مشترک**.
+ *
+ * ⚠️ تله‌ای که در گام ۳٫۲ خورد: در flat config اگر دو config object که به یک
+ * فایل اعمال می‌شوند هرکدام `plugins: { hamboom: {...} }`ِ **جدا** بسازند، ESLint
+ * با `Cannot redefine plugin "hamboom"` می‌افتد. پس هر دو factory باید به همین
+ * یک شیء ارجاع دهند، نه به دو شیء هم‌شکل.
+ */
+const hamboomPlugin = {
+  rules: {
+    "require-capture-update": requireCaptureUpdateRule,
+    "remote-writes-never": remoteWritesNeverRule,
+  },
+};
 
 /**
  * پیش‌تنظیم برای `packages/canvas-core` — ADR-003 / ADR-021.
