@@ -1,0 +1,389 @@
+import {
+  assertEmittable,
+  type CanvasDocument,
+  type CanvasInbound,
+  type CanvasOutbound,
+  type CanvasPermissions,
+  type CanvasSyncAdapter,
+  type ElementChangeSet,
+} from "@hamboom/canvas-core/sync";
+import type { HbAsset, HbElement } from "@hamboom/shared-types";
+import {
+  boardRoots,
+  createBoardDoc,
+  decodeMessage,
+  encodeMessage,
+  MSG_TYPES,
+  readDocument,
+  readElement,
+  writeAsset,
+  writeElement,
+} from "@hamboom/ydoc-schema";
+import * as decoding from "lib0/decoding";
+import * as encoding from "lib0/encoding";
+import * as syncProtocol from "y-protocols/sync";
+import * as Y from "yjs";
+
+import type { SyncTransport } from "./transport.ts";
+
+/**
+ * `YjsSyncAdapter` — پیاده‌سازیِ `CanvasSyncAdapter`ِ M1 روی `Y.Doc`. **قلبِ M2.**
+ *
+ * مرجعِ رفتاری: [`canvas-core/src/sync/local-adapter.ts`](../../canvas-core/src/sync/local-adapter.ts)
+ * و چرخه‌ی عمرِ ۹مرحله‌ایِ [`sync/README.md`](../../canvas-core/src/sync/README.md).
+ *
+ * ── وضعیتِ گام ۳٫۱ ────────────────────────────────────────────────────
+ *
+ * این اسکلت است: چرخه‌ی عمر، نگهبانِ echo، و مسیرِ **کاملِ رفت‌وبرگشتِ عنصر** تا
+ * بشود ادعای «بومِ بدرفتار» را روی آداپتورِ **واقعی** آزمود. آنچه هنوز نیامده و
+ * گامِ خودش را دارد:
+ *
+ * | چه چیزی | گام |
+ * |---|---|
+ * | `captureUpdate: "NEVER"` هنگام نوشتنِ remote روی صحنه + گیتِ ESLint | ۳٫۲ |
+ * | جدولِ throttle و گروه‌بندیِ ژست با `gestureId` | ۳٫۳ |
+ * | `Y.UndoManager` با `trackedOrigins` | ۳٫۴ |
+ * | awareness → `PeerState[]` (مکان‌نما، انتخاب، نما، ابزار، ephemeral) | ۳٫۵ |
+ * | آپلود و URLِ دارایی | ۳٫۶ |
+ */
+
+/**
+ * originِ تراکنش‌های **این کاربر**.
+ *
+ * ★ نام‌دار و نه `null`، به دو دلیلِ سنجیده‌شده:
+ *
+ * ۱. مسیرِ remote با همین از مسیرِ محلی تشخیص داده می‌شود (پایین، `observeDeep`).
+ * ۲. پیش‌فرضِ `Y.UndoManager` دقیقاً originِ `null` را ردیابی می‌کند (گام ۱٫۴).
+ *    گام ۳٫۴ باید `trackedOrigins: new Set([LOCAL_ORIGIN])` بدهد، وگرنه **undo
+ *    بی‌صدا هیچ کاری نمی‌کند** — نه خطا، نه هشدار.
+ */
+export const LOCAL_ORIGIN = "hamboom:local";
+
+/** originِ updateهایی که از ترابری رسیده‌اند. */
+export const REMOTE_ORIGIN = "hamboom:remote";
+
+export interface YjsSyncAdapterOptions {
+  /** سندِ موجود (مثلاً بازیابی‌شده از snapshot). پیش‌فرض: سندِ نو. */
+  doc?: Y.Doc;
+  /** ترابری. نبودش یعنی حالتِ تک‌نفره‌ی آفلاین — سند کار می‌کند، چیزی پخش نمی‌شود. */
+  transport?: SyncTransport;
+  /**
+   * مجوزها. تا وقتی `BoardAuthority` (فاز ۴) نیست، مقدارِ ورودی است نه
+   * محاسبه‌شده — و **هرگز** نباید تنها سدِ مجوز باشد: اعمالِ واقعی در سرور است
+   * ([ADR-012](../../../ARCHITECTURE_DECISIONS.md#adr-012)، گام ۴٫۵).
+   */
+  permissions?: CanvasPermissions;
+}
+
+/** رویدادِ `observeDeep` — تایپِ خودِ Yjs `any` است و اینجا مهارش می‌کنیم. */
+type DeepEvent = Y.YEvent<Y.AbstractType<unknown>>;
+
+const FULL_PERMISSIONS: CanvasPermissions = {
+  canEdit: true,
+  canComment: true,
+  canExport: true,
+  canManageAccess: true,
+};
+
+export class YjsSyncAdapter implements CanvasSyncAdapter {
+  private readonly doc: Y.Doc;
+  private readonly transport: SyncTransport | null;
+  private readonly permissions: CanvasPermissions;
+
+  private inbound: CanvasInbound | null = null;
+  /** همه‌ی لغوها یک‌جا — `disconnect` نباید هیچ‌کدام را جا بگذارد. */
+  private teardown: Array<() => void> = [];
+  /** شناسه‌ی عناصری که یک تراکنشِ remote دست زده و هنوز به بوم نرفته‌اند. */
+  private readonly pendingRemote = new Set<string>();
+
+  constructor(options: YjsSyncAdapterOptions = {}) {
+    this.doc = options.doc ?? createBoardDoc();
+    this.transport = options.transport ?? null;
+    this.permissions = options.permissions ?? FULL_PERMISSIONS;
+  }
+
+  /** سندِ زیرین — برای تست و برای دموی دو-نمونه‌ای (گام ۳٫۷). */
+  get document(): Y.Doc {
+    return this.doc;
+  }
+
+  /**
+   * چرخه‌ی عمرِ ۹مرحله‌ای — [`sync/README.md`](../../canvas-core/src/sync/README.md).
+   *
+   * ★ **دوبار `connect` بدونِ `disconnect` خطا می‌دهد، نه اینکه بی‌صدا دومی را
+   * سوار کند.** StrictMode هر افکت را دوبار اجرا می‌کند؛ اگر اینجا ساکت بودیم،
+   * دو مجموعه observer روی یک سند می‌نشست و هر تغییرِ remote **دوبار** به بوم
+   * می‌رفت — باگی که فقط زیر StrictMode ظاهر می‌شود و رد زدنش تقریباً ناممکن است.
+   * الگوی درست (ADR-032) در `useEffect([api])` cleanup برمی‌گرداند، پس این خطا
+   * فقط وقتی رخ می‌دهد که کسی از الگو خارج شده باشد.
+   */
+  async connect(inbound: CanvasInbound): Promise<CanvasOutbound> {
+    if (this.inbound) {
+      throw new Error(
+        "‏[hamboom] YjsSyncAdapter.connect دوبار بدونِ disconnect صدا زده شد. " +
+          "اشتراک را در useEffect([api]) ببند و cleanup را برگردان (ADR-032).",
+      );
+    }
+
+    this.inbound = inbound;
+    inbound.setConnectionState({ status: "connecting" });
+
+    await this.transport?.connect?.();
+
+    // ★★ ترتیبِ این چهار خط عمدی است و با تست قفل شده.
+    //
+    // ۱. ترابری اول وصل شود تا پاسخِ همتا جایی برای نشستن داشته باشد.
+    // ۲. **همگام‌سازیِ اولیه قبل از `replaceDocument`** — وگرنه بوم یک لحظه
+    //    بوردِ خالی رندر می‌کند و بعد همه‌ی عناصر به‌صورت «تغییرِ remote» رویش
+    //    می‌ریزند.
+    // ۳. `replaceDocument` با سندِ کامل.
+    // ۴. **observer بعد از آن** — هرچه از این لحظه برسد یک تغییرِ واقعی است، نه
+    //    بخشی از بارگذاریِ اولیه. بینِ ۳ و ۴ هیچ `await`ی نیست، پس پیامی
+    //    نمی‌تواند لای این دو بیفتد.
+    this.wireTransport();
+    this.requestInitialSync();
+    inbound.replaceDocument(readDocument(this.doc) satisfies CanvasDocument);
+    this.wireDocument();
+
+    inbound.setPermissions(this.permissions);
+    // ⚠️ `peers` تا گام ۳٫۵ (awareness) همیشه صفر است — عددِ واقعی از آنجا می‌آید.
+    inbound.setConnectionState({ status: "connected", peers: 0 });
+    inbound.setSaveState({ status: "saved", at: Date.now() });
+
+    return this.buildOutbound();
+  }
+
+  /**
+   * ★ **باید همه‌چیز را باز کند.** observerِ جامانده یعنی بعد از unmount هنوز
+   * روی `inbound`ِ مرده صدا زده می‌شود — و زیر StrictMode این حالتِ عادی است، نه
+   * استثنا. تستش هست: بعد از `disconnect`، تغییرِ remote به بومِ قبلی نمی‌رسد.
+   */
+  disconnect(): void {
+    for (const off of this.teardown) off();
+    this.teardown = [];
+    this.transport?.disconnect?.();
+    this.inbound?.setConnectionState({ status: "offline", pendingChanges: 0 });
+    this.inbound = null;
+  }
+
+  // ── سیم‌کشی ──────────────────────────────────────────────────
+
+  private wireTransport(): void {
+    const transport = this.transport;
+    if (!transport) return;
+
+    this.teardown.push(transport.onMessage((data) => this.handleMessage(data)));
+
+    const onUpdate = (update: Uint8Array, origin: unknown): void => {
+      // ★ آنچه از همتا رسیده دوباره فرستاده نمی‌شود. بدونِ این، دو کلاینت تا
+      //   ابد یک update را به هم پاس می‌دهند — همان حلقه‌ای که هیچ خطایی نمی‌دهد.
+      if (origin === REMOTE_ORIGIN) return;
+      const encoder = encoding.createEncoder();
+      syncProtocol.writeUpdate(encoder, update);
+      this.sendSync(encoding.toUint8Array(encoder));
+    };
+    this.doc.on("update", onUpdate);
+    this.teardown.push(() => this.doc.off("update", onUpdate));
+  }
+
+  /**
+   * ★★ **همگام‌سازیِ اولیه — بدونِ این، sync بی‌صدا کار نمی‌کند.**
+   *
+   * این را با probe سنجیدم، بعد از اینکه هفت تست افتادند: اگر فقط updateهای
+   * افزایشی رد و بدل شوند، Yjs آن‌ها را در `pendingStructs` **بایگانی می‌کند و
+   * اعمال نمی‌کند**، چون opهای قبلیِ همان کلاینت را ندیده — و هیچ خطایی هم
+   * نمی‌دهد. اینجا `createBoardDoc` همان اولین op را می‌نویسد
+   * (`meta.schemaVersion`)، پس شکافِ علّی از همان اول وجود دارد.
+   *
+   * راهِ درست همان چیزی است که `y-protocols/sync` برایش ساخته شده:
+   *
+   * - **step 1** = «بردارِ وضعیتِ من این است، چه چیزی کم دارم؟»
+   * - **step 2** = «این هم هرچه من دارم.»
+   *
+   * هر دو با هم فرستاده می‌شوند تا در **یک رفت‌وبرگشت** همگرا شوند: همتا با
+   * step 2ِ خودش به step 1 جواب می‌دهد، و step 2ِ ما را هم اعمال می‌کند.
+   * پاسخ به step 2 چیزی نیست، پس زنجیره همان‌جا تمام می‌شود.
+   */
+  private requestInitialSync(): void {
+    if (!this.transport) return;
+
+    const request = encoding.createEncoder();
+    syncProtocol.writeSyncStep1(request, this.doc);
+    this.sendSync(encoding.toUint8Array(request));
+
+    const offer = encoding.createEncoder();
+    syncProtocol.writeSyncStep2(offer, this.doc);
+    this.sendSync(encoding.toUint8Array(offer));
+  }
+
+  private sendSync(payload: Uint8Array): void {
+    this.transport?.send(encodeMessage({ type: MSG_TYPES.SYNC, payload }));
+  }
+
+  private handleMessage(data: Uint8Array): void {
+    const message = decodeMessage(data);
+    // `null` یعنی نوعِ ناشناخته — بی‌صدا نادیده گرفته می‌شود (گام ۲٫۴).
+    if (!message || message.type !== MSG_TYPES.SYNC) return;
+
+    const reply = encoding.createEncoder();
+    syncProtocol.readSyncMessage(
+      decoding.createDecoder(message.payload),
+      reply,
+      this.doc,
+      REMOTE_ORIGIN,
+      (error) => {
+        // ⚠️ y-protocols خودش `applyUpdate` را در try/catch گذاشته و خطا را فقط
+        //    `console.error` می‌کند. این hook تنها راهی است که یک خرابیِ واقعیِ
+        //    اعمال بی‌صدا نماند.
+        throw error;
+      },
+    );
+    if (encoding.length(reply) > 0) this.sendSync(encoding.toUint8Array(reply));
+
+    // ★★ **تحویل به بوم بیرونِ تراکنش** — دلیلش پایین، `flushRemote`.
+    this.flushRemote();
+  }
+
+  private wireDocument(): void {
+    const elements = boardRoots(this.doc).elements;
+    const observer = (events: DeepEvent[], transaction: Y.Transaction): void => {
+      // تغییرِ خودمان است — بوم از قبل نشانش می‌دهد و برگرداندنش یعنی حلقه.
+      if (transaction.origin === LOCAL_ORIGIN) return;
+      this.collectRemote(events);
+    };
+    elements.observeDeep(observer);
+    this.teardown.push(() => elements.unobserveDeep(observer));
+  }
+
+  /**
+   * جمع‌کردنِ شناسه‌ی عناصرِ دست‌خورده — **فقط جمع می‌کند، تحویل نمی‌دهد.**
+   *
+   * ⚠️ رویدادها **عمیق**اند: تغییرِ `x` روی یک عنصر رویدادی با
+   * `path = [elementId]` می‌دهد، و ساخت/حذفِ خودِ عنصر رویدادی با `path = []` و
+   * `keysChanged`. هر دو باید به شناسه‌ی همان عنصر برسند، وگرنه تغییرِ همتا
+   * می‌رسد ولی بوم چیزی نشان نمی‌دهد.
+   */
+  private collectRemote(events: DeepEvent[]): void {
+    for (const event of events) {
+      if (event.path.length > 0) {
+        this.pendingRemote.add(String(event.path[0]));
+      } else if (event instanceof Y.YMapEvent) {
+        // ریشه‌ی `elements` خودش عوض شده: عنصر ساخته یا کلیدش کامل رفته.
+        for (const key of event.keysChanged) this.pendingRemote.add(key);
+      }
+    }
+  }
+
+  /**
+   * ★★ تحویلِ تغییرِ remote به بوم — **بیرونِ تراکنشِ Yjs**.
+   *
+   * ── چرا نه مستقیم داخلِ observer ──────────────────────────────────────
+   *
+   * دو دلیلِ سنجیده‌شده، نه سلیقه:
+   *
+   * ۱. **y-protocols خطاهای داخلِ observer را می‌بلعد.** `readSyncStep2` خودِ
+   *    `Y.applyUpdate` را در `try/catch` گذاشته و هر خطایی را فقط
+   *    `console.error` می‌کند («This catches errors that are thrown by event
+   *    handlers» — کامنتِ خودشان). یعنی اگر `applyRemoteChanges` داخلِ observer
+   *    صدا زده می‌شد، **`EchoLoopError` هرگز به هیچ‌کس نمی‌رسید** و کلِ نگهبانِ
+   *    M1 به یک خطِ لاگ تنزل پیدا می‌کرد.
+   * ۲. **بازگشتی‌بودن.** بوم ممکن است در پاسخ چیزی بنویسد؛ نوشتن داخلِ
+   *    cleanupِ تراکنشِ Yjs یعنی تراکنشِ تودرتو.
+   */
+  private flushRemote(): void {
+    const inbound = this.inbound;
+    if (!inbound || this.pendingRemote.size === 0) return;
+
+    const touched = [...this.pendingRemote];
+    // ★ قبل از صدا زدنِ بوم پاک می‌شود: اگر بوم خطا بدهد، همان شناسه‌ها دوباره
+    //   تحویل نمی‌شوند و حلقه‌ی خطا نمی‌سازند.
+    this.pendingRemote.clear();
+
+    const elements = boardRoots(this.doc).elements;
+    const upserted: HbElement[] = [];
+    const deleted: string[] = [];
+
+    for (const id of touched) {
+      const map = elements.get(id);
+      if (!(map instanceof Y.Map)) {
+        // کلید کامل رفته — undoِ یک **ساخت** این کار را می‌کند (سنجیده در ۱٫۴).
+        deleted.push(id);
+        continue;
+      }
+      const element = readElement(map);
+      // حذفِ نرم: عنصر می‌مانَد ولی بوم باید مثلِ حذف رفتارش کند.
+      if (element.isDeleted) deleted.push(id);
+      else upserted.push(element);
+    }
+
+    inbound.applyRemoteChanges({ upserted, deleted, origin: "remote" });
+  }
+
+  // ── outbound ─────────────────────────────────────────────────
+
+  private buildOutbound(): CanvasOutbound {
+    return {
+      emitElementChanges: (changes) => this.emitElementChanges(changes),
+
+      // ── awareness — گام ۳٫۵ ──────────────────────────────────
+      // عمداً no-op و **نه throw**: throw کردن بوم را غیرقابل‌استفاده می‌کند و
+      // این‌ها در هر حرکتِ ماوس صدا زده می‌شوند. تستِ «هنوز پیاده نشده» در
+      // `adapter.test.ts` این وضعیت را پین کرده تا با گام ۳٫۵ قرمز شود.
+      emitPointer: () => {},
+      emitSelection: () => {},
+      emitViewport: () => {},
+      emitActiveTool: () => {},
+      emitEphemeral: () => {},
+
+      // ── دارایی — گام ۳٫۶ ─────────────────────────────────────
+      requestAssetUpload: () => {
+        // اینجا برخلافِ بالا throw می‌کند: مسیرِ آپلود **نتیجه** برمی‌گرداند و
+        // یک Promiseِ ساختگی یعنی بوم برای همیشه منتظرِ `fileId` می‌مانَد.
+        return Promise.reject(
+          new Error("‏[hamboom] آپلودِ دارایی هنوز پیاده نشده — گام ۳٫۶ (AssetTransport)."),
+        );
+      },
+      resolveAssetUrl: () => Promise.resolve(""),
+
+      emitReady: () => {},
+    };
+  }
+
+  private emitElementChanges(changes: ElementChangeSet): void {
+    // ★★ اولین خط، غیرقابلِ حذف — [ADR-024](../../../ARCHITECTURE_DECISIONS.md#adr-024):
+    //    از `canvas-core` قرض گرفته می‌شود، از نو نوشته نمی‌شود.
+    assertEmittable(changes);
+
+    const inbound = this.inbound;
+    if (!inbound) return;
+
+    inbound.setSaveState({ status: "saving" });
+
+    const roots = boardRoots(this.doc);
+    // ★ یک تراکنش برای کلِ changeset، با originِ نام‌دار. codecِ `ydoc-schema`
+    //   عمداً خودش `transact` نمی‌کند و این وظیفه اینجاست — بدونش Yjs هر `set`
+    //   را جدا با originِ `null` می‌فرستد: هم ترافیکِ چندبرابر، هم همان originی
+    //   که `UndoManager` پیش‌فرض ردیابی می‌کند.
+    this.doc.transact(() => {
+      for (const element of changes.upserted) writeElement(roots.elements, element);
+      for (const id of changes.deleted) this.softDelete(id);
+      for (const asset of changes.assets ?? []) writeAsset(roots.assets, asset satisfies HbAsset);
+    }, LOCAL_ORIGIN);
+
+    // ⚠️ **این «ذخیره شد» فقط تا وقتی راست است که سند در حافظه باشد.** قرارداد M1
+    //    می‌گوید `SaveState` باید حقیقت را بگوید نه خوش‌بینی؛ گام ۴٫۳ باید
+    //    `saved` را پشتِ نوشتنِ **واقعیِ** دیتابیس ببرد.
+    inbound.setSaveState({ status: "saved", at: Date.now() });
+  }
+
+  /**
+   * حذفِ **نرم** — کلید نمی‌رود، فقط `isDeleted` روشن می‌شود.
+   *
+   * عنصر باید بمانَد تا undo و CRDT چیزی برای برگرداندن داشته باشند. یک `set`ِ
+   * تک‌فیلدی است، پس از `writeElement` (که عنصرِ کامل می‌خواهد) نمی‌گذرد.
+   */
+  private softDelete(id: string): void {
+    const map = boardRoots(this.doc).elements.get(id);
+    if (map instanceof Y.Map && map.get("isDeleted") !== true) map.set("isDeleted", true);
+  }
+}

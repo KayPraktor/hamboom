@@ -15,7 +15,7 @@
 | `@excalidraw/excalidraw` | **0.18.1** (pin‌شده) | MIT | موتور رندر بوم — [ADR-003](../ARCHITECTURE_DECISIONS.md#adr-003) |
 | `react` / `react-dom` | ^19 | MIT | — |
 | `yjs` | 13.6.32 | MIT | CRDTِ سند — [ADR-004](../ARCHITECTURE_DECISIONS.md#adr-004). مصرف‌کننده‌ها: `ydoc-schema`، `canvas-sync`، `apps/realtime` |
-| `lib0` | 0.2.117 | MIT | encode/decodeِ پیام‌های پروتکل — [`ydoc-schema/src/protocol.ts`](../packages/ydoc-schema/src/protocol.ts) (گام ۲٫۴). ⚠️ در گام ۲٫۴ **صریحاً به `ydoc-schema` افزوده شد**: زیر pnpm گرافِ node_modules تخت نیست، پس «وابستگیِ Yjs است» یعنی `import "lib0/encoding"` با `ERR_MODULE_NOT_FOUND` می‌افتد |
+| `lib0` | 0.2.117 | MIT | encode/decodeِ پیام‌های پروتکل — [`ydoc-schema/src/protocol.ts`](../packages/ydoc-schema/src/protocol.ts) (گام ۲٫۴) و قاب‌بندیِ sync در [`canvas-sync/src/adapter.ts`](../packages/canvas-sync/src/adapter.ts) (گام ۳٫۱). ⚠️ **در هر پکیجِ مصرف‌کننده باید صریحاً اعلام شود**: زیر pnpm گرافِ node_modules تخت نیست، پس «وابستگیِ Yjs است» یعنی `import "lib0/encoding"` با `ERR_MODULE_NOT_FOUND` می‌افتد |
 | `y-protocols` | 1.0.7 | MIT | پروتکلِ sync و awareness — [PLAN بخش ۵٫۳](../PLAN.md). فقط در `canvas-sync` و `apps/realtime` |
 
 **ماژول M2 (گام ۰٫۲):** سه پکیجِ بالا افزوده شدند و `pnpm license:check` سبز ماند

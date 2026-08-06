@@ -15,7 +15,13 @@ import {
 } from "@hamboom/canvas-core";
 import type { CanvasDocument } from "@hamboom/canvas-core/sync";
 import { hbElement, type HbElement } from "@hamboom/shared-types";
-import { boardRoots, createBoardDoc, readDocument, readElement, writeElement } from "@hamboom/ydoc-schema";
+import {
+  boardRoots,
+  createBoardDoc,
+  readDocument,
+  readElement,
+  writeElement,
+} from "@hamboom/ydoc-schema";
 import * as Y from "yjs";
 import { describe, expect, it } from "vitest";
 

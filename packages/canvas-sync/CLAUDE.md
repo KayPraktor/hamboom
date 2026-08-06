@@ -69,7 +69,8 @@ ADR-012، ADR-022، ADR-024، ADR-026، **ADR-028**، ADR-029.
 | فایل | مسئولیت | گام TODO |
 |---|---|---|
 | `src/index.ts` | صادراتِ عمومی | ۰٫۲ |
-| `src/adapter.ts` | `YjsSyncAdapter` — چرخه‌ی عمر + نگهبانِ echo | ۳٫۱ |
+| `src/adapter.ts` | `YjsSyncAdapter` — چرخه‌ی عمر + نگهبانِ echo | ۳٫۱ ✅ |
+| `src/transport.ts` | seamِ ترابری + `LocalTransportHub` (جای سرور در فاز ۳) | ۳٫۱ ✅ |
 | `src/apply-remote.ts` | ★ نوشتنِ تغییرِ remote با `NEVER` | ۳٫۲ |
 | `src/emit-local.ts` | `doc.transact(origin)` + جدولِ throttle | ۳٫۳ |
 | `src/undo.ts` | `Y.UndoManager` با `trackedOrigins` | ۳٫۴ |
@@ -89,6 +90,33 @@ pnpm --filter @hamboom/canvas-sync test:e2e   # نیاز: playwright install chr
 بالا نیامد: `netsh interface ipv4 show excludedportrange protocol=tcp`. (روی ماشینِ
 توسعه محدوده‌ی ۵۱۴۸–۵۲۴۷ رزرو بود که **پورتِ ۵۱۸۰ دموی `canvas-core` را هم می‌گیرد**؛
 این پکیج روی ۵۲۸۰ نشست.)
+
+## ★★ دو تله‌ی Yjs/y-protocols که در گام ۳٫۱ کشف شدند
+
+هر دو **بی‌صدا** خراب می‌کنند و هیچ‌کدام حدس نبودند — اولی هفت تست را انداخت و
+دومی با خواندنِ سورسِ y-protocols پیدا شد.
+
+### ۱. فقط updateِ افزایشی کافی نیست — شکافِ علّی
+
+اگر دو کلاینت فقط updateهای افزایشی رد و بدل کنند، Yjs آن‌ها را در
+`pendingStructs` **بایگانی می‌کند و اعمال نمی‌کند**، چون opهای قبلیِ همان کلاینت
+را ندیده. **هیچ خطایی نمی‌دهد** — sync فقط کار نمی‌کند. اینجا از همان اول شکاف
+وجود دارد چون `createBoardDoc` اولین op را می‌نویسد (`meta.schemaVersion`).
+
+★ راهِ درست: همگام‌سازیِ اولیه با `y-protocols/sync` — step 1 («چه چیزی کم دارم؟»)
+و step 2 («این هم هرچه دارم») هر دو در `connect` فرستاده می‌شوند.
+
+### ۲. `y-protocols` خطاهای داخلِ observer را می‌بلعد
+
+`readSyncStep2` خودِ `Y.applyUpdate` را در `try/catch` گذاشته و هر خطایی را فقط
+`console.error` می‌کند («This catches errors that are thrown by event handlers» —
+کامنتِ خودشان).
+
+★ **پیامدش برای این پکیج:** اگر `applyRemoteChanges` **داخلِ** observer صدا زده
+شود، `EchoLoopError` هرگز به هیچ‌کس نمی‌رسد و نگهبانِ M1 به یک خطِ لاگ تنزل پیدا
+می‌کند. به همین دلیل observer فقط **جمع می‌کند** (`collectRemote`) و تحویل
+**بیرونِ تراکنش** انجام می‌شود (`flushRemote`). این ترتیب با تست قفل شده —
+دست‌کاری‌اش نکن. مزیتِ دوم: بوم می‌تواند در پاسخ بنویسد بدونِ تراکنشِ تودرتو.
 
 ## ★★ تله‌ی `UndoManager` (پین‌شده از گام ۱٫۴)
 

@@ -34,3 +34,12 @@ export const SUPPORTED_SCHEMA_VERSION = SCHEMA_VERSION;
  * `emitElementChanges` صدا می‌زند.
  */
 export { assertEmittable, EchoLoopError, isEmittableOrigin } from "@hamboom/canvas-core/sync";
+
+export {
+  LOCAL_ORIGIN,
+  REMOTE_ORIGIN,
+  YjsSyncAdapter,
+  type YjsSyncAdapterOptions,
+} from "./adapter.ts";
+
+export { LocalTransport, LocalTransportHub, type SyncTransport } from "./transport.ts";
