@@ -6,6 +6,8 @@ import {
   type CanvasPermissions,
   type CanvasSyncAdapter,
   type ElementChangeSet,
+  type PeerState,
+  type PeerUser,
 } from "@hamboom/canvas-core/sync";
 import type { HbAsset, HbElement } from "@hamboom/shared-types";
 import {
@@ -24,6 +26,11 @@ import * as encoding from "lib0/encoding";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
+import {
+  createPresenceScope,
+  type PresenceScope,
+  type PresenceThrottleOptions,
+} from "./awareness.ts";
 import {
   createEmitScheduler,
   LocalOrigin,
@@ -47,14 +54,27 @@ import { createUndoScope, type UndoScope } from "./undo.ts";
  *
  * | چه چیزی | گام |
  * |---|---|
- * | `captureUpdate: "NEVER"` هنگام نوشتنِ remote روی صحنه + گیتِ ESLint | ۳٫۲ |
- * | `Y.UndoManager` با `trackedOrigins` | ۳٫۴ |
- * | awareness → `PeerState[]` (مکان‌نما، انتخاب، نما، ابزار، ephemeral) | ۳٫۵ |
+ * | `captureUpdate: "NEVER"` هنگام نوشتنِ remote روی صحنه + گیتِ ESLint | ۳٫۲ ✅ |
+ * | `Y.UndoManager` با `trackedOrigins` | ۳٫۴ ✅ |
+ * | awareness → `PeerState[]` (مکان‌نما، انتخاب، نما، ابزار، ephemeral) | ۳٫۵ ✅ |
  * | آپلود و URLِ دارایی | ۳٫۶ |
  */
 
 /** originِ updateهایی که از ترابری رسیده‌اند. */
 export const REMOTE_ORIGIN = "hamboom:remote";
+
+/**
+ * کاربرِ پیش‌فرض — تا وقتی `BoardAuthority` (فاز ۴) هویتِ واقعی را ندهد.
+ *
+ * همان مقادیرِ [`local-adapter`](../../canvas-core/src/sync/local-adapter.ts)ِ M1،
+ * تا دو پیاده‌سازیِ یک قرارداد در دموها متفاوت رفتار نکنند.
+ */
+export const DEFAULT_PEER_USER: PeerUser = {
+  id: "u_local",
+  displayName: "کاربر محلی",
+  color: "#5B8DEF",
+  avatarUrl: null,
+};
 
 export interface YjsSyncAdapterOptions {
   /** سندِ موجود (مثلاً بازیابی‌شده از snapshot). پیش‌فرض: سندِ نو. */
@@ -67,8 +87,13 @@ export interface YjsSyncAdapterOptions {
    * ([ADR-012](../../../ARCHITECTURE_DECISIONS.md#adr-012)، گام ۴٫۵).
    */
   permissions?: CanvasPermissions;
+  /**
+   * هویتِ این کاربر روی کانالِ حضور. مثلِ `permissions` **ورودی** است نه
+   * محاسبه‌شده — منبعِ واقعی‌اش `BoardAuthority`ِ فاز ۴ است.
+   */
+  user?: PeerUser;
   /** بازنویسیِ اعدادِ جدولِ throttle — **فقط برای تست**. */
-  throttle?: EmitSchedulerOptions;
+  throttle?: EmitSchedulerOptions & PresenceThrottleOptions;
 }
 
 /** رویدادِ `observeDeep` — تایپِ خودِ Yjs `any` است و اینجا مهارش می‌کنیم. */
@@ -101,7 +126,8 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   private readonly doc: Y.Doc;
   private readonly transport: SyncTransport | null;
   private readonly permissions: CanvasPermissions;
-  private readonly throttle: EmitSchedulerOptions;
+  private readonly user: PeerUser;
+  private readonly throttle: EmitSchedulerOptions & PresenceThrottleOptions;
 
   private inbound: CanvasInbound | null = null;
   /** همه‌ی لغوها یک‌جا — `disconnect` نباید هیچ‌کدام را جا بگذارد. */
@@ -116,11 +142,25 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   private undoScope: UndoScope | null = null;
   /** `gestureId`ِ آخرین commit — مرزِ ورودی‌های undo از همین می‌آید. */
   private lastGestureId: string | undefined;
+  /** کانالِ حضور — فقط بین `connect` و `disconnect` زنده است (گام ۳٫۵). */
+  private presence: PresenceScope | null = null;
+  /** آخرین تعدادِ همتای گزارش‌شده — برای اینکه `setConnectionState` هرزه نشود. */
+  private peerCount = 0;
+  /**
+   * شمارنده‌ی awarenessِ همین `clientId`، **بین اتصال‌ها حفظ می‌شود**.
+   *
+   * ⚠️ بدونِ این، اتصالِ دوباره برای همتاها **نامرئی** است: `clientId` همان
+   * `doc.clientID` است و عوض نمی‌شود، ولی یک `Awareness`ِ تازه از صفر می‌شمارد و
+   * هر پیامِ با clockِ کوچک‌تر بی‌صدا دور ریخته می‌شود. توضیحِ کامل در
+   * [`awareness.ts`](./awareness.ts) روی گزینه‌ی `clock`.
+   */
+  private presenceClock = 0;
 
   constructor(options: YjsSyncAdapterOptions = {}) {
     this.doc = options.doc ?? createBoardDoc();
     this.transport = options.transport ?? null;
     this.permissions = options.permissions ?? FULL_PERMISSIONS;
+    this.user = options.user ?? DEFAULT_PEER_USER;
     this.throttle = options.throttle ?? {};
   }
 
@@ -211,10 +251,12 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     this.requestInitialSync();
     inbound.replaceDocument(readDocument(this.doc) satisfies CanvasDocument);
     this.wireDocument();
+    this.wirePresence();
 
     inbound.setPermissions(this.permissions);
-    // ⚠️ `peers` تا گام ۳٫۵ (awareness) همیشه صفر است — عددِ واقعی از آنجا می‌آید.
-    inbound.setConnectionState({ status: "connected", peers: 0 });
+    // همتاها هنوز نرسیده‌اند — معرفیِ awareness همین الان رفت و پاسخشان یک
+    // رفت‌وبرگشت بعد می‌آید، از راهِ `publishPeers`.
+    inbound.setConnectionState({ status: "connected", peers: this.peerCount });
     inbound.setSaveState({ status: "saved", at: Date.now() });
 
     return this.buildOutbound();
@@ -235,6 +277,15 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     this.undoScope?.destroy();
     this.undoScope = null;
     this.lastGestureId = undefined;
+    // ★★ **قبل از قطعِ ترابری** — آخرین کارِ کانالِ حضور فرستادنِ «رفتم» است و
+    //    اگر ترابری از قبل بسته شده باشد، همتاها یک مکان‌نمای یخ‌زده می‌بینند تا
+    //    وقتی awareness بعد از ۳۰ ثانیه خودش پاکش کند.
+    this.presence?.destroy();
+    // ★ **بعد از** `destroy` خوانده می‌شود — خودِ «رفتم» هم شمارنده را یکی جلو
+    //   می‌برد و اتصالِ بعدی باید از همان‌جا ادامه دهد.
+    this.presenceClock = this.presence?.clock() ?? this.presenceClock;
+    this.presence = null;
+    this.peerCount = 0;
     for (const off of this.teardown) off();
     this.teardown = [];
     this.pendingRemote.clear();
@@ -300,11 +351,28 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   private handleMessage(data: Uint8Array): void {
     const message = decodeMessage(data);
     // `null` یعنی نوعِ ناشناخته — بی‌صدا نادیده گرفته می‌شود (گام ۲٫۴).
-    if (!message || message.type !== MSG_TYPES.SYNC) return;
+    if (!message) return;
 
+    switch (message.type) {
+      case MSG_TYPES.SYNC:
+        this.handleSync(message.payload);
+        return;
+      case MSG_TYPES.AWARENESS:
+        this.presence?.receiveAwareness(message.payload);
+        return;
+      case MSG_TYPES.HB_EPHEMERAL:
+        this.presence?.receiveEphemeral(message.clientId, message.payload);
+        return;
+      default:
+        // بقیه‌ی کدها (مجوز، اطلاعاتِ اتاق، خطا) کارِ سرورِ فاز ۴ اند.
+        return;
+    }
+  }
+
+  private handleSync(payload: Uint8Array): void {
     const reply = encoding.createEncoder();
     syncProtocol.readSyncMessage(
-      decoding.createDecoder(message.payload),
+      decoding.createDecoder(payload),
       reply,
       this.doc,
       REMOTE_ORIGIN,
@@ -330,6 +398,64 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     };
     elements.observeDeep(observer);
     this.teardown.push(() => elements.unobserveDeep(observer));
+  }
+
+  /**
+   * کانالِ حضور — [`awareness.ts`](./awareness.ts).
+   *
+   * ★★ **ترتیبِ سه خطِ آخر با یک باگِ واقعی نوشته شد، نه با سلیقه.**
+   *
+   * ترابریِ لوکال همزمان است: معرفیِ ما می‌رود، همتا همان‌جا در **همان پشته‌ی
+   * فراخوانی** جواب می‌دهد، و جوابش به `handleMessage` می‌رسد. اگر معرفی داخلِ
+   * `createPresenceScope` انجام می‌شد، آن جواب وقتی می‌رسید که `this.presence`
+   * هنوز `null` بود — و بی‌صدا دور ریخته می‌شد. نشانه‌اش نامتقارن و گیج‌کننده بود:
+   * **الف همتا را می‌دید، ب هیچ‌کس را.**
+   *
+   * ⚠️ با یک WebSocketِ واقعی این جواب async می‌آمد و باگ **پشتِ شبکه پنهان
+   * می‌مانْد** — همان دلیلی که فاز ۳ عمداً قبل از فاز ۴ ساخته می‌شود.
+   */
+  private wirePresence(): void {
+    const presence = createPresenceScope({
+      doc: this.doc,
+      user: this.user,
+      throttle: this.throttle,
+      clock: this.presenceClock,
+      sink: {
+        sendAwareness: (payload) =>
+          this.transport?.send(encodeMessage({ type: MSG_TYPES.AWARENESS, payload })),
+        sendEphemeral: (payload) =>
+          this.transport?.send(
+            encodeMessage({
+              type: MSG_TYPES.HB_EPHEMERAL,
+              clientId: this.doc.clientID,
+              payload,
+            }),
+          ),
+        onPeersChanged: (peers) => this.publishPeers(peers),
+      },
+    });
+
+    this.presence = presence;
+    presence.announce();
+  }
+
+  /**
+   * تحویلِ فهرستِ همتاها به بوم.
+   *
+   * ★ `setConnectionState` فقط وقتی صدا زده می‌شود که **عدد** عوض شده باشد.
+   * `applyPeers` روی هر تکانِ مکان‌نما (هر ۴۰ms) می‌آید و آن قرارداداً یک
+   * به‌روزرسانیِ پرتکرار است؛ ولی وضعیتِ اتصال معمولاً به یک نشانگرِ ثابتِ رابط
+   * وصل است و رندرِ ۲۵بار-در-ثانیه‌اش هزینه‌ی بی‌دلیل است.
+   */
+  private publishPeers(peers: PeerState[]): void {
+    const inbound = this.inbound;
+    if (!inbound) return;
+
+    inbound.applyPeers(peers);
+    if (peers.length !== this.peerCount) {
+      this.peerCount = peers.length;
+      inbound.setConnectionState({ status: "connected", peers: peers.length });
+    }
   }
 
   /**
@@ -402,15 +528,14 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     return {
       emitElementChanges: (changes) => this.emitElementChanges(changes),
 
-      // ── awareness — گام ۳٫۵ ──────────────────────────────────
-      // عمداً no-op و **نه throw**: throw کردن بوم را غیرقابل‌استفاده می‌کند و
-      // این‌ها در هر حرکتِ ماوس صدا زده می‌شوند. تستِ «هنوز پیاده نشده» در
-      // `adapter.test.ts` این وضعیت را پین کرده تا با گام ۳٫۵ قرمز شود.
-      emitPointer: () => {},
-      emitSelection: () => {},
-      emitViewport: () => {},
-      emitActiveTool: () => {},
-      emitEphemeral: () => {},
+      // ── حضور — گام ۳٫۵ ───────────────────────────────────────
+      // اعدادِ throttle داخلِ `PresenceScope` اعمال می‌شوند، از همان
+      // `HB_THROTTLE`ی که مسیرِ عنصر هم از آن می‌خوانَد.
+      emitPointer: (pointer) => this.presence?.setPointer(pointer),
+      emitSelection: (ids) => this.presence?.setSelection(ids),
+      emitViewport: (viewport) => this.presence?.setViewport(viewport),
+      emitActiveTool: (tool) => this.presence?.setActiveTool(tool),
+      emitEphemeral: (payload) => this.presence?.setEphemeral(payload),
 
       // ── دارایی — گام ۳٫۶ ─────────────────────────────────────
       requestAssetUpload: () => {

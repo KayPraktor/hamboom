@@ -6,10 +6,10 @@ import {
   toExcalidraw,
   type HamboomCanvasProps,
 } from "@hamboom/canvas-core";
-import type { CanvasOutbound } from "@hamboom/canvas-core/sync";
+import type { CanvasOutbound, PeerState } from "@hamboom/canvas-core/sync";
 import type { HbElement } from "@hamboom/shared-types";
 import { useEffect, useRef, useState } from "react";
-import type * as Y from "yjs";
+import * as Y from "yjs";
 
 import { createCanvasBinding } from "../src/canvas-binding";
 import { LocalTransport, LocalTransportHub } from "../src/transport";
@@ -46,6 +46,10 @@ declare global {
           doc: Y.Doc;
           /** یک ژستِ محلی: هم روی صحنه‌ی خودش، هم emit — همان کاری که ابزار می‌کند. */
           commitLocal: (elements: HbElement[]) => void;
+          /** آخرین چیزی که از `applyPeers` رسیده — گام ۳٫۵. */
+          peers: () => PeerState[];
+          /** اندازه‌ی سند — ادعای «ephemeral سند را بزرگ نمی‌کند». */
+          docBytes: () => number;
         }
       | undefined
     >;
@@ -70,7 +74,16 @@ function Pane({ name, label }: PaneProps) {
   const [api, setApi] = useState<CanvasApi | null>(null);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState("—");
+  const [peerCount, setPeerCount] = useState(0);
   const paneRef = useRef<HTMLElement | null>(null);
+  /**
+   * ★ آخرین `PeerState[]` — عمداً در `ref` و نه `state`.
+   *
+   * `applyPeers` روی هر تکانِ مکان‌نما (۴۰ms) می‌آید؛ گذاشتنش در stateِ ری‌اکت
+   * یعنی ۲۵ رندر در ثانیه برای صفحه‌ای که فقط دارد آن را ثبت می‌کند. **رندرِ**
+   * حضور کارِ گام ۳٫۷ است، نه اینجا.
+   */
+  const peersRef = useRef<PeerState[]>([]);
 
   useEffect(() => {
     if (!api) return;
@@ -78,7 +91,15 @@ function Pane({ name, label }: PaneProps) {
     // ★★ الگوی ADR-032: آداپتور و اشتراکش **داخلِ افکت** ساخته می‌شوند و
     //    cleanup برمی‌گردد. زیر StrictMode این چرخه‌ی mount→cleanup→mount را
     //    می‌سازد که آداپتور باید تاب بیاورد (نگهبانِ نسل در `connect`).
-    const adapter = new YjsSyncAdapter({ transport: new LocalTransport(hub) });
+    const adapter = new YjsSyncAdapter({
+      transport: new LocalTransport(hub),
+      user: {
+        id: `u_${name}`,
+        displayName: label,
+        color: name === "a" ? "#5B8DEF" : "#D0C6F5",
+        avatarUrl: null,
+      },
+    });
     let cancelled = false;
     let unbindUndo: (() => void) | null = null;
 
@@ -86,7 +107,13 @@ function Pane({ name, label }: PaneProps) {
       .connect(
         createCanvasBinding({
           api,
-          ui: { setConnectionState: (state) => setStatus(state.status) },
+          ui: {
+            setConnectionState: (state) => setStatus(state.status),
+            applyPeers: (peers) => {
+              peersRef.current = peers;
+              setPeerCount(peers.length);
+            },
+          },
         }),
       )
       .then((outbound) => {
@@ -117,7 +144,14 @@ function Pane({ name, label }: PaneProps) {
         };
         window.__hbPair = {
           ...window.__hbPair,
-          [name]: { api, outbound, doc: adapter.document, commitLocal },
+          [name]: {
+            api,
+            outbound,
+            doc: adapter.document,
+            commitLocal,
+            peers: () => peersRef.current,
+            docBytes: () => Y.encodeStateAsUpdate(adapter.document).byteLength,
+          },
         };
         setReady(true);
       })
@@ -133,7 +167,7 @@ function Pane({ name, label }: PaneProps) {
       setReady(false);
       window.__hbPair = { ...window.__hbPair, [name]: undefined };
     };
-  }, [api, name]);
+  }, [api, name, label]);
 
   /**
    * ساختِ استیکی — دقیقاً کاری که ابزارِ محصولی می‌کند: **هم** روی صحنه‌ی خودش
@@ -173,6 +207,7 @@ function Pane({ name, label }: PaneProps) {
         </button>
         <span data-role="status">{status}</span>
         <span data-role="count">{api ? api.getSceneElements().length : 0}</span>
+        <span data-role="peers">{peerCount}</span>
       </header>
       <div className="canvas">
         <HamboomCanvas onReady={setApi} />

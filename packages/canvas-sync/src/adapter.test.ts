@@ -506,13 +506,20 @@ describe("وضعیتِ ذخیره", () => {
  * وقتی گام ۳٫۵ awareness را پیاده کند، این تست **قرمز می‌شود** و مجبور به
  * به‌روزرسانی — یعنی جای یک TODOِ فراموش‌شدنی، یک نگهبان.
  */
-describe("★ آنچه هنوز پیاده نشده — گام‌های ۳٫۵ و ۳٫۶", () => {
-  it("متدهای awareness هنوز کاری نمی‌کنند ولی خطا هم نمی‌دهند", async () => {
+describe("★ آنچه هنوز پیاده نشده — گام ۳٫۶", () => {
+  it("★ متدهای حضور دیگر no-op نیستند — گام ۳٫۵ این تست را قرمز کرد", async () => {
+    // ⚠️ این بند تا گام ۳٫۵ ادعای وارونه‌اش را می‌کرد («`applyPeers` هرگز صدا
+    // زده نمی‌شود») و عمداً همان‌جا قرمز شد. جزئیاتِ کانالِ حضور در
+    // [`awareness.test.ts`](./awareness.test.ts) است؛ اینجا فقط **سیم‌کشیِ
+    // outbound** آزموده می‌شود.
+    const hub = new LocalTransportHub();
     const canvas = fakeCanvas();
-    const adapter = new YjsSyncAdapter();
+    const peer = new YjsSyncAdapter({ transport: new LocalTransport(hub) });
+    const adapter = new YjsSyncAdapter({ transport: new LocalTransport(hub) });
+    await peer.connect(fakeCanvas().inbound);
     const outbound = await adapter.connect(canvas.inbound);
 
-    // در هر حرکتِ ماوس صدا زده می‌شوند؛ throw کردن بوم را غیرقابل‌استفاده می‌کرد.
+    expect(canvas.inbound.applyPeers).toHaveBeenCalled();
     expect(() => outbound.emitPointer({ x: 1, y: 2, visible: true })).not.toThrow();
     expect(() => outbound.emitSelection(["stk_1"])).not.toThrow();
     expect(() => outbound.emitViewport({ scrollX: 0, scrollY: 0, zoom: 1 })).not.toThrow();
@@ -520,8 +527,8 @@ describe("★ آنچه هنوز پیاده نشده — گام‌های ۳٫۵ �
     expect(() => outbound.emitEphemeral(null)).not.toThrow();
     expect(() => outbound.emitReady()).not.toThrow();
 
-    // هیچ‌کدام هنوز به همتا نمی‌رسند — گام ۳٫۵.
-    expect(canvas.inbound.applyPeers).not.toHaveBeenCalled();
+    peer.disconnect();
+    adapter.disconnect();
   });
 
   it("★ آپلودِ دارایی برخلافِ بقیه **خطا می‌دهد**", async () => {

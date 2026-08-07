@@ -37,10 +37,19 @@ export { assertEmittable, EchoLoopError, isEmittableOrigin } from "@hamboom/canv
 
 export {
   ConnectionCancelledError,
+  DEFAULT_PEER_USER,
   REMOTE_ORIGIN,
   YjsSyncAdapter,
   type YjsSyncAdapterOptions,
 } from "./adapter.ts";
+
+export {
+  createPresenceScope,
+  type PresenceScope,
+  type PresenceScopeOptions,
+  type PresenceSink,
+  type PresenceThrottleOptions,
+} from "./awareness.ts";
 
 export {
   createEmitScheduler,

@@ -8,7 +8,7 @@
 | فایل | چه چیزی دارد |
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
-| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۳۵ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
+| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۳۶ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
 | [TODO.md](TODO.md) | گام‌های ماژول فعال (الان: `realtime-sync`) با معیار پذیرش |
 | [TODO-M1-canvas-core.md](TODO-M1-canvas-core.md) · [PROGRESS-M1-canvas-core.md](PROGRESS-M1-canvas-core.md) | بایگانیِ M1 (تمام‌شده) — مرجعِ تاریخی |
 | [docs/iranian-miro-spec.md](docs/iranian-miro-spec.md) | سند محصول |
@@ -123,11 +123,11 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 ## وضعیت فعلی
 
 - **ماژول فعال:** M2 — `realtime-sync` (فاز ۳ در جریان)
-- **گام بعدی:** ۳٫۵ — awareness → `PeerState` + کانالِ ephemeral.
+- **گام بعدی:** ۳٫۶ — دارایی‌ها پشتِ پورتِ `AssetTransport`.
   **فازهای ۰، ۱ و ۲ کامل‌اند** (`packages/ydoc-schema` تمام است) و **گام‌های ۳٫۱ تا
-  ۳٫۴ هم تمام‌اند**: دو بومِ واقعی در مرورگر همگام می‌شوند، `Ctrl+Z` فقط کارِ خودِ
-  کاربر را برمی‌گرداند و به همتا هم می‌رسد، و جدولِ فرکانس رعایت می‌شود
-  (`pnpm --filter @hamboom/canvas-sync test:e2e`).
+  ۳٫۵ هم تمام‌اند**: دو بومِ واقعی در مرورگر همگام می‌شوند و همدیگر را می‌بینند،
+  `Ctrl+Z` فقط کارِ خودِ کاربر را برمی‌گرداند و به همتا هم می‌رسد، و جدولِ فرکانس
+  روی هر دو مسیر رعایت می‌شود (`pnpm --filter @hamboom/canvas-sync test:e2e`).
 - **★ دروازه‌ی فاز ۳ باز است:** الگوی اشتراکِ StrictMode-safe در مرورگر تایید شد
   ([ADR-032](ARCHITECTURE_DECISIONS.md#adr-032)). binder **باید** همان را به کار ببرد؛
   اشتراک در callbackِ `onReady` زیر StrictMode مرده می‌مانَد.
