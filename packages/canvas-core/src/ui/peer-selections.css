@@ -1,5 +1,9 @@
 /*
  * هاله‌ی انتخابِ همکاران — گام ۴٫۴. لایه‌ی شفاف روی بوم، زیرِ مکان‌نماها.
+ *
+ * ★★ **رفعِ B-1** — دقیقاً همان چیزی که در [`peer-cursors.css`](peer-cursors.css)
+ * توضیح داده شد: این لایه هم فضای **مختصاتِ بوم** است، پس LTR. اندازه‌گیریِ
+ * مرورگر: `transform.x = 60` ولی `left`ِ واقعی **۴۷۱** (لایه ۶۳۵px، هاله ۲۲۴px).
  */
 .hb-peer-selections {
   position: absolute;
@@ -7,6 +11,7 @@
   z-index: 6;
   overflow: hidden;
   pointer-events: none;
+  direction: ltr;
 }
 
 .hb-peer-halo {

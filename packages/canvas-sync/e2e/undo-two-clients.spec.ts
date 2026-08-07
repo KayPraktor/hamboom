@@ -40,7 +40,9 @@ async function boxOf(page: Page, pane: "a" | "b"): Promise<{ x: number; color: s
 
 async function pressUndo(page: Page, pane: "a" | "b", times = 1): Promise<void> {
   const container = page.locator(`[data-pane="${pane}"] .excalidraw-container`);
-  await container.click({ position: { x: 20, y: 20 } });
+  // ⚠️ y=300 و نه ۲۰: از گام ۳٫۷ ردیفِ آواتارِ همتاها گوشه‌ی بالا را گرفته
+  //    (در RTL یعنی بالا-چپ) و کلیکِ فوکوس را می‌بلعد.
+  await container.click({ position: { x: 20, y: 300 } });
   await container.focus();
   for (let i = 0; i < times; i++) await page.keyboard.press("Control+KeyZ");
   await page.waitForTimeout(200);

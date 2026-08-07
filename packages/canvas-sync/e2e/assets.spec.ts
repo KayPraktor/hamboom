@@ -131,7 +131,9 @@ test("★★ یک `Ctrl+Z` کلِ تصویر را برمی‌دارد، نه ف�
   await expect.poll(() => imagesOf(page, "b")).toHaveLength(1);
 
   const container = page.locator('[data-pane="a"] .excalidraw-container');
-  await container.click({ position: { x: 20, y: 20 } });
+  // ⚠️ y=300 و نه ۲۰: از گام ۳٫۷ ردیفِ آواتارِ همتاها گوشه‌ی بالا را گرفته
+  //    (در RTL یعنی بالا-چپ) و کلیکِ فوکوس را می‌بلعد.
+  await container.click({ position: { x: 20, y: 300 } });
   await container.focus();
   await page.keyboard.press("Control+KeyZ");
 

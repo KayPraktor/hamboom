@@ -4,14 +4,18 @@ import {
   createImageTool,
   createSticky,
   HamboomCanvas,
+  PeerAvatars,
+  PeerCursors,
+  PeerSelections,
+  sceneToOverlayPixel,
   toExcalidraw,
   type HamboomCanvasProps,
   type ImageTool,
 } from "@hamboom/canvas-core";
-import type { CanvasOutbound, PeerState } from "@hamboom/canvas-core/sync";
+import type { CanvasOutbound, PeerState, Viewport } from "@hamboom/canvas-core/sync";
 import type { HbAsset, HbElement } from "@hamboom/shared-types";
 import { readDocument } from "@hamboom/ydoc-schema";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 
 import { createLocalAssetTransport, LocalAssetStore } from "../src/assets";
@@ -60,6 +64,21 @@ declare global {
           assets: () => HbAsset[];
           /** فایل‌هایی که موتور می‌شناسد — بدونشان تصویر یک قابِ خالی است. */
           engineFiles: () => string[];
+          /**
+           * ورودی‌های پروجکشن — گام ۳٫۷.
+           *
+           * ★ تست با همین‌ها پروجکشن را **دست‌محاسبه** می‌کند و با پیکسلِ
+           * واقعیِ رندرشده می‌سنجد؛ نه با خروجیِ خودِ `sceneToOverlayPixel`.
+           * (همان روشی که در M1 باگِ panِ خالص را بیرون کشید.)
+           */
+          projection: () => {
+            viewport: Viewport;
+            offsetLeft: number;
+            offsetTop: number;
+            overlay: { left: number; top: number };
+          };
+          /** دنبال‌کردنِ یک همتا — همان کاری که کلیک روی آواتار می‌کند. */
+          follow: (clientId: number) => void;
         }
       | undefined
     >;
@@ -93,16 +112,48 @@ function Pane({ name, label }: PaneProps) {
   const [api, setApi] = useState<CanvasApi | null>(null);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState("—");
-  const [peerCount, setPeerCount] = useState(0);
   const paneRef = useRef<HTMLElement | null>(null);
+  /** هاستِ لایه‌های حضور — مبدأ پروجکشن از `getBoundingClientRect`ِ همین است. */
+  const hostRef = useRef<HTMLDivElement | null>(null);
   /**
-   * ★ آخرین `PeerState[]` — عمداً در `ref` و نه `state`.
+   * ★ همتاها حالا در **state** اند، نه فقط `ref`.
    *
-   * `applyPeers` روی هر تکانِ مکان‌نما (۴۰ms) می‌آید؛ گذاشتنش در stateِ ری‌اکت
-   * یعنی ۲۵ رندر در ثانیه برای صفحه‌ای که فقط دارد آن را ثبت می‌کند. **رندرِ**
-   * حضور کارِ گام ۳٫۷ است، نه اینجا.
+   * ⚠️ تا گام ۳٫۶ عمداً در `ref` بودند تا ۲۵ رندر در ثانیه نسازند. حالا که
+   * **رندر** می‌شوند، این استدلال دیگر برقرار نیست: کاری که کاربر می‌بیند
+   * باید از state بیاید. `ref` هم می‌مانَد چون `window.__hbPair` یک‌بار در
+   * افکت ساخته می‌شود و closureـش مقدارِ کهنه می‌گرفت.
    */
   const peersRef = useRef<PeerState[]>([]);
+  const [peers, setPeers] = useState<PeerState[]>([]);
+  const peerCount = peers.length;
+  /** عناصرِ صحنه — `PeerSelections` مرزِ هر عنصر را از صحنه‌ی **محلی** می‌گیرد. */
+  const [sceneElements, setSceneElements] = useState<HbElement[]>([]);
+  /**
+   * ★★ نمای بوم — **از `onScrollChange`، نه `getAppState()`**.
+   *
+   * خط قرمزِ ۴ این پکیج و درسِ Q1 در M1: `getAppState()` درست بعد از pan/zoom
+   * یک فریمْ **کهنه** است، و لایه‌ای که از آن پروجکت کند روی **panِ خالص** جا
+   * می‌مانَد. مقدارِ معتبر همان است که خودِ callback می‌دهد.
+   */
+  const [viewport, setViewport] = useState<Viewport>({ scrollX: 0, scrollY: 0, zoom: 1 });
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+
+  // ★ نما و صحنه — اشتراک‌ها طبق ADR-032 داخلِ افکت با cleanup.
+  useEffect(() => {
+    if (!api) return;
+    const offScroll = api.onScrollChange((scrollX, scrollY, zoom) =>
+      setViewport({ scrollX, scrollY, zoom: zoom.value }),
+    );
+    const offChange = api.onChange((elements) => {
+      // فقط هندسه و شناسه خوانده می‌شود، پس همین شکل کافی است.
+      setSceneElements(elements as unknown as HbElement[]);
+    });
+    return () => {
+      offScroll();
+      offChange();
+    };
+  }, [api]);
 
   useEffect(() => {
     if (!api) return;
@@ -136,9 +187,9 @@ function Pane({ name, label }: PaneProps) {
             api.setToast({ message: `دارایی بارگذاری نشد: ${asset.fileId}`, duration: 4000 }),
           ui: {
             setConnectionState: (state) => setStatus(state.status),
-            applyPeers: (peers) => {
-              peersRef.current = peers;
-              setPeerCount(peers.length);
+            applyPeers: (next) => {
+              peersRef.current = next;
+              setPeers(next);
             },
           },
         }),
@@ -205,6 +256,19 @@ function Pane({ name, label }: PaneProps) {
             ingestImage: (file) => imageTool!.ingestFile(file),
             assets: () => readDocument(adapter.document).assets,
             engineFiles: () => Object.keys(api.getFiles() ?? {}),
+            projection: () => {
+              const state = api.getAppState();
+              const rect = hostRef.current!.getBoundingClientRect();
+              return {
+                viewport: viewportRef.current,
+                // ★ `offsetLeft/Top` با pan/zoom عوض **نمی‌شوند** (فقط با resize)،
+                //   پس خواندنشان از `getAppState` بی‌خطر است — برخلافِ scroll/zoom.
+                offsetLeft: state.offsetLeft,
+                offsetTop: state.offsetTop,
+                overlay: { left: rect.left, top: rect.top },
+              };
+            },
+            follow: (clientId) => followRef.current?.(clientId),
           },
         };
         setReady(true);
@@ -225,6 +289,95 @@ function Pane({ name, label }: PaneProps) {
       window.__hbPair = { ...window.__hbPair, [name]: undefined };
     };
   }, [api, name, label]);
+
+  /**
+   * ★★ نقطه‌ی صحنه → پیکسلِ لایه‌ی روکش — با تابعِ **مشترکِ** `sceneToOverlayPixel`
+   * و نه یک نسخه‌ی دوم ([ADR-024](../../../ARCHITECTURE_DECISIONS.md#adr-024)).
+   *
+   * وابستگی به `[viewport]` است، پس با **هر** جابه‌جاییِ نما — از جمله panِ
+   * خالص — لایه‌ی حضور دوباره پروجکت می‌شود (باگِ Q1 در M1).
+   */
+  const projectPeer = useCallback(
+    (sceneX: number, sceneY: number) => {
+      const host = hostRef.current;
+      if (!api || !host) return { x: sceneX, y: sceneY };
+      const state = api.getAppState();
+      const rect = host.getBoundingClientRect();
+      return sceneToOverlayPixel(
+        { x: sceneX, y: sceneY },
+        viewport,
+        { offsetLeft: state.offsetLeft, offsetTop: state.offsetTop },
+        { left: rect.left, top: rect.top },
+      );
+    },
+    [api, viewport],
+  );
+
+  /**
+   * مکان‌نمای محلی → همتاها. throttleِ ۴۰ms را خودِ آداپتور می‌زند (`HB_THROTTLE`).
+   *
+   * ⚠️ **گپِ ثبت‌شده‌ی سطحِ M1:** تبدیلِ پیکسل → صحنه از `@hamboom/canvas-core`
+   * صادر نشده (`viewportCoordsToSceneCoords` فقط داخلِ خودِ پکیج است) و
+   * `HamboomCanvas` هم `onPointerUpdate`ِ موتور را — که مختصاتِ **صحنه** می‌دهد —
+   * پاس نمی‌دهد. پس اینجا فرمولِ معکوس دستی نوشته شده. **این تنها جای دمو است
+   * که چنین کاری می‌کند** و ثبت شد تا M3 قبل از تکرارش تکلیفش را روشن کند.
+   */
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!api || !host || !ready) return;
+
+    const onMove = (event: PointerEvent) => {
+      const state = api.getAppState();
+      const zoom = viewportRef.current.zoom;
+      window.__hbPair?.[name]?.outbound.emitPointer({
+        x: (event.clientX - state.offsetLeft) / zoom - viewportRef.current.scrollX,
+        y: (event.clientY - state.offsetTop) / zoom - viewportRef.current.scrollY,
+        visible: true,
+      });
+    };
+    const onLeave = () => {
+      window.__hbPair?.[name]?.outbound.emitPointer(null);
+    };
+
+    host.addEventListener("pointermove", onMove);
+    host.addEventListener("pointerleave", onLeave);
+    return () => {
+      host.removeEventListener("pointermove", onMove);
+      host.removeEventListener("pointerleave", onLeave);
+    };
+  }, [api, name, ready]);
+
+  /** انتخابِ محلی → همتاها (هاله‌ی انتخاب). */
+  useEffect(() => {
+    if (!api || !ready) return;
+    return api.onChange((_elements, state) => {
+      window.__hbPair?.[name]?.outbound.emitSelection(Object.keys(state.selectedElementIds ?? {}));
+    });
+  }, [api, name, ready]);
+
+  /**
+   * دنبال‌کردنِ همتا — نما را روی مکان‌نمای او وسط می‌کند.
+   *
+   * ⚠️ `updateScene`ِ برنامه‌ای **`onScrollChange` نمی‌دهد** (تله‌ی ثبت‌شده‌ی M1)،
+   * پس `viewport` را خودمان با همان مقادیرِ محاسبه‌شده به‌روز می‌کنیم — وگرنه
+   * لایه‌ی حضور با نمای قدیمی پروجکت می‌مانْد و مکان‌نمای همان کسی که دنبالش
+   * می‌کنیم جا می‌مانْد.
+   */
+  const followPeer = useCallback(
+    (clientId: number) => {
+      const peer = peersRef.current.find((item) => item.clientId === clientId);
+      if (!api || !peer?.pointer) return;
+      const state = api.getAppState();
+      const zoom = viewportRef.current.zoom;
+      const scrollX = state.width / 2 / zoom - peer.pointer.x;
+      const scrollY = state.height / 2 / zoom - peer.pointer.y;
+      api.updateScene({ appState: { scrollX, scrollY } as never, captureUpdate: "NEVER" });
+      setViewport({ scrollX, scrollY, zoom });
+    },
+    [api],
+  );
+  const followRef = useRef(followPeer);
+  followRef.current = followPeer;
 
   /**
    * ساختِ استیکی — دقیقاً کاری که ابزارِ محصولی می‌کند: **هم** روی صحنه‌ی خودش
@@ -266,8 +419,12 @@ function Pane({ name, label }: PaneProps) {
         <span data-role="count">{api ? api.getSceneElements().length : 0}</span>
         <span data-role="peers">{peerCount}</span>
       </header>
-      <div className="canvas">
+      {/* ★ هاستِ لایه‌های حضور — `position: relative` تا مبدأ پروجکشن همین باشد. */}
+      <div className="canvas" ref={hostRef}>
         <HamboomCanvas onReady={setApi} />
+        <PeerSelections peers={peers} elements={sceneElements} project={projectPeer} />
+        <PeerCursors peers={peers} project={projectPeer} />
+        <PeerAvatars peers={peers} onFollow={followPeer} />
       </div>
     </section>
   );

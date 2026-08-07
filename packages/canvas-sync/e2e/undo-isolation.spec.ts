@@ -51,7 +51,9 @@ test("★★ سه بار Ctrl+Z در ب، استیکیِ الف را برنمی�
 
   // ★ کیبورد باید به خودِ کانتینرِ موتور برود — تله‌ی ثبت‌شده‌ی M1.
   const containerB = page.locator('[data-pane="b"] .excalidraw-container');
-  await containerB.click({ position: { x: 20, y: 20 } });
+  // ⚠️ y=300 و نه ۲۰: از گام ۳٫۷ ردیفِ آواتارِ همتاها گوشه‌ی بالا را گرفته
+  //    (در RTL یعنی بالا-چپ) و کلیکِ فوکوس را می‌بلعد.
+  await containerB.click({ position: { x: 20, y: 300 } });
   await containerB.focus();
   for (let i = 0; i < 3; i++) await page.keyboard.press("Control+KeyZ");
 
@@ -80,7 +82,7 @@ test("★ Ctrl+Z در ب به الف هم می‌رسد — واگرایی نم�
   await expect.poll(() => liveCount(page, "a")).toBe(2);
 
   const containerB = page.locator('[data-pane="b"] .excalidraw-container');
-  await containerB.click({ position: { x: 20, y: 20 } });
+  await containerB.click({ position: { x: 20, y: 300 } });
   await containerB.focus();
   await page.keyboard.press("Control+KeyZ");
 
