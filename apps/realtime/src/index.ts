@@ -24,3 +24,17 @@ import { SCHEMA_VERSION } from "@hamboom/ydoc-schema";
  * کلاینت‌ها یک نسخه ببینند ([PLAN بخش ۷٫۵](../../../PLAN.md)).
  */
 export const SERVED_SCHEMA_VERSION = SCHEMA_VERSION;
+
+export { createRtServer, type RtServer, type RtServerOptions, type RtSession } from "./server.ts";
+
+export {
+  assertAuthorityUsable,
+  AuthError,
+  AUTH_ERROR_CODES,
+  createDevBoardAuthority,
+  signDevToken,
+  type BoardAuthority,
+  type RtTokenClaims,
+} from "./auth/index.ts";
+
+export { createLogger, maskSubject, redactSecrets, type Logger, type LogLevel } from "./log.ts";

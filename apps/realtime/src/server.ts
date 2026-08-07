@@ -1,0 +1,223 @@
+import { createServer, type IncomingMessage, type Server } from "node:http";
+import type { Duplex } from "node:stream";
+
+import { encodeMessage, MSG_TYPES, type BoardRole } from "@hamboom/ydoc-schema";
+import { WebSocketServer, type WebSocket } from "ws";
+
+import { assertAuthorityUsable, AuthError, type BoardAuthority } from "./auth/index.ts";
+import { createLogger, maskSubject, type Logger } from "./log.ts";
+
+/**
+ * سرورِ WebSocketِ همگام‌سازی — گام ۴٫۱: **دست‌دادن و احراز هویت**.
+ *
+ * مسیر: `ws://<host>/rt?board=<boardId>&token=<rtToken>` (PLAN بخش ۵٫۳).
+ *
+ * ── ★★ دو نوعِ «رد کردن»، و چرا فرق دارند ────────────────────────────
+ *
+ * | چه چیزی | پاسخ | چرا |
+ * |---|---|---|
+ * | مسیرِ اشتباه، بدونِ `board` | **HTTP 404/400**، بدونِ upgrade | این اصلاً کلاینتِ ما نیست؛ دست‌دادنِ WS برایش تشریفاتِ بی‌فایده است |
+ * | توکنِ نامعتبر/منقضی/غایب | **upgrade می‌شود**، بعد `HB_ERROR` و بستن | کلاینتِ ماست و باید **کدِ خطا** را بفهمد |
+ *
+ * ⚠️ نکته‌ی دوم عمدی و مهم است: اگر اتصال را در سطحِ HTTP رد کنیم، مرورگر فقط یک
+ * خطای عمومیِ WebSocket می‌بیند و کلاینت نمی‌فهمد باید توکن را **تازه** کند یا
+ * کاربر را به ورود بفرستد. `0x14 HB_ERROR` دقیقاً برای همین در PLAN تعریف شده:
+ * «`{ code, message }` سپس بستنِ اتصال».
+ *
+ * ── ★ «قبل از join شدن به اتاق» ──────────────────────────────────────
+ *
+ * `onJoin` تنها دری است که به اتاق باز می‌شود (گام ۴٫۲ پرش می‌کند). هیچ مسیرِ
+ * ردشده‌ای به آن نمی‌رسد — و تست این را با یک شاهد می‌سنجد، نه با خواندنِ کد.
+ */
+
+/** یک اتصالِ احراز هویت‌شده که به اتاق تحویل می‌شود (گام ۴٫۲ مصرفش می‌کند). */
+export interface RtSession {
+  socket: WebSocket;
+  boardId: string;
+  /** شناسه‌ی کاربر. ⚠️ **PII** — برای لاگ از `maskSubject` رد کن. */
+  sub: string;
+  role: BoardRole;
+  /** انقضای توکن، **ثانیه**ی یونیکس — گام ۴٫۵ رویش تایمر می‌گذارد. */
+  exp: number;
+}
+
+export interface RtServerOptions {
+  authority: BoardAuthority;
+  /** `APP_ENV` — گیتِ ADR-031 روی همین می‌نشیند. */
+  appEnv: string;
+  port?: number;
+  logger?: Logger;
+  /**
+   * ★ ورودیِ اتاق. تا گام ۴٫۲ پیش‌فرضش no-op است، ولی **سیم‌کشی‌اش همین‌جا**
+   * قفل می‌شود تا ادعای «رد شدن قبل از join» آزمودنی باشد.
+   */
+  onJoin?: (session: RtSession) => void;
+}
+
+export interface RtServer {
+  readonly port: number;
+  close(): Promise<void>;
+}
+
+/** مسیرِ WebSocketِ ما — هر چیز دیگری اصلاً upgrade نمی‌شود. */
+const RT_PATH = "/rt";
+
+/**
+ * کدِ بستنِ WebSocket برای ردِ سیاستی.
+ *
+ * ۱۰۰۸ = «policy violation». عمداً ۱۰۰۰ (بستنِ عادی) نیست: کلاینت باید بتواند
+ * «سرور مرا نپذیرفت» را از «اتصال تمام شد» تشخیص دهد، حتی اگر پیامِ `HB_ERROR`
+ * را از دست بدهد.
+ */
+const CLOSE_POLICY = 1008;
+
+/**
+ * ⚠️ **`async` است تا شکستِ گیت همیشه یک rejection باشد.**
+ *
+ * اگر تابع همزمان throw می‌کرد، صداکننده‌ای که `createRtServer(...).catch(...)`
+ * می‌نویسد آن را از دست می‌داد. برای یک گیتِ **امنیتی**، «بسته به اینکه چطور
+ * صدایش بزنی فرق می‌کند» پذیرفتنی نیست — همان درسی که در `BoardAuthority.verify`
+ * هم اعمال شد.
+ */
+export async function createRtServer({
+  authority,
+  appEnv,
+  port = 0,
+  logger = createLogger(),
+  onJoin = () => {},
+}: RtServerOptions): Promise<RtServer> {
+  // ★★ **اولین کار، قبل از هر listen** — ADR-031. اگر اینجا نبود، سرور بالا
+  //    می‌آمد و تازه اولین اتصال معلوم می‌کرد که با احراز هویتِ ساختگی کار می‌کند.
+  assertAuthorityUsable(authority, appEnv);
+
+  const http = createServer((_request, response) => {
+    // این سرور HTTP سرو نمی‌کند؛ فقط جایی برای upgrade است.
+    response.writeHead(404).end();
+  });
+  const wss = new WebSocketServer({ noServer: true });
+
+  http.on("upgrade", (request, socket, head) => {
+    const target = parseTarget(request);
+    if (!target) {
+      // ⚠️ بدونِ upgrade — این کلاینتِ ما نیست.
+      rejectHandshake(socket, 404, "not found");
+      return;
+    }
+
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      void authenticate(ws, target, { authority, logger, onJoin });
+    });
+  });
+
+  await new Promise<void>((resolve) => http.listen(port, resolve));
+
+  const address = http.address();
+  const actual = typeof address === "object" && address ? address.port : port;
+  logger.info("سرورِ realtime بالا آمد", { port: actual, appEnv });
+
+  return { port: actual, close: () => closeAll(http, wss) };
+}
+
+// ─────────────────────────────────────────────────────────────
+// دست‌دادن
+// ─────────────────────────────────────────────────────────────
+
+interface Target {
+  boardId: string;
+  token: string;
+}
+
+/**
+ * مسیر و پارامترها. `null` یعنی «اصلاً کلاینتِ ما نیست».
+ *
+ * ⚠️ نبودِ **توکن** اینجا `null` برنمی‌گرداند: آن یک کلاینتِ ماست که توکن ندارد و
+ * باید `TOKEN_MISSING` بگیرد، نه یک ۴۰۴ی گنگ.
+ */
+function parseTarget(request: IncomingMessage): Target | null {
+  if (!request.url) return null;
+  // `host` فقط برای کامل‌شدنِ URL است؛ مقدارش اهمیتی ندارد.
+  const url = new URL(request.url, "http://localhost");
+  if (url.pathname !== RT_PATH) return null;
+
+  const boardId = url.searchParams.get("board");
+  if (!boardId) return null;
+
+  return { boardId, token: url.searchParams.get("token") ?? "" };
+}
+
+interface HandshakeDeps {
+  authority: BoardAuthority;
+  logger: Logger;
+  onJoin: (session: RtSession) => void;
+}
+
+async function authenticate(
+  socket: WebSocket,
+  target: Target,
+  { authority, logger, onJoin }: HandshakeDeps,
+): Promise<void> {
+  try {
+    const claims = await authority.verify(target.token, target.boardId);
+
+    logger.info("اتصال پذیرفته شد", {
+      boardId: target.boardId,
+      // ★ P7 — شناسه هرگز خام. توکن اصلاً وارد لاگ نمی‌شود.
+      sub: maskSubject(claims.sub),
+      role: claims.role,
+    });
+
+    onJoin({
+      socket,
+      boardId: claims.boardId,
+      sub: claims.sub,
+      role: claims.role,
+      exp: claims.exp,
+    });
+  } catch (cause) {
+    const error =
+      cause instanceof AuthError
+        ? cause
+        : // خطای نامنتظره‌ی پیاده‌سازیِ پورت نباید سرور را بیندازد و نباید
+          // جزئیاتش به کلاینت برود.
+          new AuthError("FORBIDDEN", "اتصال برقرار نشد.", String(cause));
+
+    logger.warn("اتصال رد شد", {
+      boardId: target.boardId,
+      code: error.code,
+      // `detail` مالِ سرور است؛ `message` چیزی است که کاربر می‌بیند.
+      detail: error.detail,
+    });
+
+    denyConnection(socket, error);
+  }
+}
+
+/**
+ * ردِ اتصال با `HB_ERROR` و سپس بستن — قراردادِ PLAN بخش ۵٫۳.
+ *
+ * ⚠️ `close` **بعد از** فرستادنِ پیام صدا زده می‌شود و با کدِ سیاستی؛ `ws` خودش
+ * بافر را قبل از بستن تخلیه می‌کند.
+ */
+function denyConnection(socket: WebSocket, error: AuthError): void {
+  socket.send(
+    encodeMessage({ type: MSG_TYPES.HB_ERROR, code: error.code, message: error.message }),
+  );
+  socket.close(CLOSE_POLICY, error.code);
+}
+
+/** ردِ **قبل از** upgrade — پاسخِ خامِ HTTP، بدونِ دست‌دادنِ WebSocket. */
+function rejectHandshake(socket: Duplex, status: number, reason: string): void {
+  socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`);
+  socket.destroy();
+}
+
+function closeAll(http: Server, wss: WebSocketServer): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // ★ اول سوکت‌های باز، بعد خودِ سرور: `http.close` منتظرِ اتصال‌های زنده
+    //   می‌مانَد و بدونِ این، بستن در تست تا timeout طول می‌کشید.
+    for (const client of wss.clients) client.terminate();
+    wss.close(() => {
+      http.close((error) => (error ? reject(error) : resolve()));
+    });
+  });
+}

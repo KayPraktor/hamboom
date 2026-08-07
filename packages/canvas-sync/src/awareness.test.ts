@@ -322,12 +322,20 @@ describe("★★ خروجِ همتا — مکان‌نما و هاله باید 
     //
     // پس تستِ بالا مسیرِ **واقعیِ** فاز ۴ را می‌آزماید (حذفِ اعلام‌شده)، و این
     // یکی جلوی برگرداندنِ همان تستِ بی‌اثر را می‌گیرد.
+    // ⚠️ **دو ساعت، دو مبدأ.** نسخه‌ی اول یک مبدأ برای هر دو ادعا گرفته بود و
+    //    ۱ در چند اجرا می‌افتاد (`expected 59999 to be 60000`): ساعتِ ساختگی در
+    //    لحظه‌ی `useFakeTimers` یخ می‌زند، ولی مبدأ از ساعتِ **واقعی** خوانده شده
+    //    بود که تا آن لحظه یک میلی‌ثانیه جلوتر رفته بود. مقایسه‌ی دو ساعتِ متفاوت
+    //    در یک ادعا، همان اشتباهی است که این تست قرار بود درباره‌اش هشدار بدهد.
     vi.useFakeTimers();
-    const before = time.getUnixTime();
+    const fakeBefore = Date.now();
+    const realBefore = time.getUnixTime();
     vi.advanceTimersByTime(60_000);
 
-    expect(Date.now() - before).toBe(60_000);
-    expect(time.getUnixTime() - before).toBeLessThan(1_000);
+    // ساعتِ ساختگی دقیقاً جلو رفت…
+    expect(Date.now() - fakeBefore).toBe(60_000);
+    // …و ساعتِ y-protocols اصلاً تکان نخورد.
+    expect(time.getUnixTime() - realBefore).toBeLessThan(1_000);
   });
 });
 

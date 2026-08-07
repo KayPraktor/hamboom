@@ -17,11 +17,13 @@
     "@types/node": "^22.10.0",
     "eslint": "^9.17.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "@types/ws": "^8.5.13"
   },
   "dependencies": {
     "@hamboom/shared-types": "workspace:*",
     "@hamboom/ydoc-schema": "workspace:*",
-    "yjs": "^13.6.20"
+    "yjs": "^13.6.20",
+    "ws": "^8.18.0"
   }
 }
