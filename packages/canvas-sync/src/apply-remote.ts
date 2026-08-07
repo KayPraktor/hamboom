@@ -7,7 +7,7 @@ import {
   type HamboomCanvasProps,
 } from "@hamboom/canvas-core";
 import type { CanvasDocument, ElementChangeSet } from "@hamboom/canvas-core/sync";
-import type { HbElement } from "@hamboom/shared-types";
+import type { HbAsset, HbElement } from "@hamboom/shared-types";
 
 /**
  * نوشتنِ تغییرِ **remote** روی صحنه — ★ همیشه با `captureUpdate: "NEVER"`.
@@ -113,12 +113,67 @@ export function applyRemoteChangesToScene(api: CanvasApi, changes: ElementChange
  * ★ این هم `NEVER` است و نه `IMMEDIATELY`: بارگذاریِ بورد کارِ کاربر نیست. اگر
  * ورودیِ undo می‌ساخت، اولین `Ctrl+Z`ِ کاربر **کلِ بورد را پاک می‌کرد**.
  *
- * ⚠️ `appState` و `assets` عمداً هنوز اعمال نمی‌شوند: اولی به نوشتنِ appStateِ
- * موتور نیاز دارد (کارِ گام ۳٫۷) و دومی به مسیرِ فایل (گام ۳٫۶).
+ * ⚠️ `appState` عمداً هنوز اعمال نمی‌شود — به نوشتنِ appStateِ موتور نیاز دارد
+ * (کارِ گام ۳٫۷). `assets` از گام ۳٫۶ با [`registerSceneAssets`](#) ثبت می‌شود.
  */
 export function replaceSceneDocument(api: CanvasApi, document: CanvasDocument): void {
   const elements = document.elements.map(
     (element) => toExcalidraw(withRecomputedText(element)) as unknown as SceneElement,
   );
   commitSystemUpdate(api, [...elements].sort(byIndex));
+}
+
+// ─────────────────────────────────────────────────────────────
+// دارایی — گام ۳٫۶
+// ─────────────────────────────────────────────────────────────
+
+/** همان `resolve`ِ [`AssetTransport`](./assets.ts)، به‌صورت حداقلی. */
+export interface AssetResolver {
+  resolve(fileId: string): Promise<string>;
+}
+
+type EngineFiles = Record<string, unknown> | null | undefined;
+
+/**
+ * ★★ ثبتِ **بایت‌های** داراییِ رسیده در موتور.
+ *
+ * ── چرا این کار لازم است ──────────────────────────────────────────────
+ *
+ * سند فقط **متادیتا** دارد (P4، [PLAN بخش ۷٫۱](../../../PLAN.md))، و عنصرِ تصویر
+ * فقط یک `fileId` است. پس نوشتنِ عنصرِ همتا روی صحنه به‌تنهایی یک **قابِ خالی**
+ * می‌سازد: موتور فایلی به آن نام نمی‌شناسد. قراردادِ M1 هیچ متدی برای «این فایل
+ * را ثبت کن» ندارد، و تنها راهش همین است — `assets`ِ خودِ `ElementChangeSet`،
+ * به‌علاوه‌ی یک resolver که URL می‌دهد.
+ *
+ * ⚠️ **خطای یک دارایی نباید کلِ دسته را بیندازد.** قراردادِ `AssetTransport`
+ * می‌گوید `resolve` هرگز reject نمی‌کند؛ اگر پیاده‌سازی‌ای آن را بشکند، اینجا
+ * همان یک فایل رد می‌شود و بقیه ثبت می‌شوند. کانالِ خطای مخصوصِ دارایی در
+ * قراردادِ M1 وجود ندارد — `onAssetError`ِ [`canvas-binding`](./canvas-binding.ts)
+ * تنها راهِ دیدنش است.
+ */
+export async function registerSceneAssets(
+  api: CanvasApi,
+  assets: readonly HbAsset[],
+  resolver: AssetResolver,
+  onError?: (asset: HbAsset, cause: unknown) => void,
+): Promise<void> {
+  if (assets.length === 0) return;
+  // ★ چیزی که موتور از قبل دارد دوباره resolve نمی‌شود. در M3 هر resolve یک
+  //   URLِ امضاشده‌ی تازه است و هزینه‌ی شبکه دارد، نه فقط یک lookup.
+  const known = (api as unknown as { getFiles?: () => EngineFiles }).getFiles?.() ?? {};
+
+  for (const asset of assets) {
+    if (Object.prototype.hasOwnProperty.call(known, asset.fileId)) continue;
+    try {
+      const dataURL = await resolver.resolve(asset.fileId);
+      // رشته‌ی خالی یعنی «الان نمی‌شود نشانش داد» — placeholderِ موتور می‌مانَد،
+      // که از یک تصویرِ خرابِ ثبت‌شده بهتر است.
+      if (!dataURL) continue;
+      api.addFiles([
+        { id: asset.fileId, dataURL, mimeType: asset.mime, created: asset.createdAt },
+      ] as never);
+    } catch (cause) {
+      onError?.(asset, cause);
+    }
+  }
 }

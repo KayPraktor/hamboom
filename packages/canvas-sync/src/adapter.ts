@@ -26,6 +26,7 @@ import * as encoding from "lib0/encoding";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
+import type { AssetTransport } from "./assets.ts";
 import {
   createPresenceScope,
   type PresenceScope,
@@ -92,6 +93,11 @@ export interface YjsSyncAdapterOptions {
    * محاسبه‌شده — منبعِ واقعی‌اش `BoardAuthority`ِ فاز ۴ است.
    */
   user?: PeerUser;
+  /**
+   * پورتِ دارایی ([`assets.ts`](./assets.ts)). نبودش یعنی آپلود **خطا می‌دهد** —
+   * نه اینکه بی‌صدا کار نکند.
+   */
+  assets?: AssetTransport;
   /** بازنویسیِ اعدادِ جدولِ throttle — **فقط برای تست**. */
   throttle?: EmitSchedulerOptions & PresenceThrottleOptions;
 }
@@ -127,6 +133,7 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   private readonly transport: SyncTransport | null;
   private readonly permissions: CanvasPermissions;
   private readonly user: PeerUser;
+  private readonly assets: AssetTransport | null;
   private readonly throttle: EmitSchedulerOptions & PresenceThrottleOptions;
 
   private inbound: CanvasInbound | null = null;
@@ -161,6 +168,7 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     this.transport = options.transport ?? null;
     this.permissions = options.permissions ?? FULL_PERMISSIONS;
     this.user = options.user ?? DEFAULT_PEER_USER;
+    this.assets = options.assets ?? null;
     this.throttle = options.throttle ?? {};
   }
 
@@ -519,7 +527,13 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
       else upserted.push(element);
     }
 
-    inbound.applyRemoteChanges({ upserted, deleted, origin: "remote" });
+    const assets = this.assetsOf(upserted);
+    inbound.applyRemoteChanges({
+      upserted,
+      deleted,
+      origin: "remote",
+      ...(assets.length > 0 ? { assets } : {}),
+    });
   }
 
   // ── outbound ─────────────────────────────────────────────────
@@ -538,14 +552,8 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
       emitEphemeral: (payload) => this.presence?.setEphemeral(payload),
 
       // ── دارایی — گام ۳٫۶ ─────────────────────────────────────
-      requestAssetUpload: () => {
-        // اینجا برخلافِ بالا throw می‌کند: مسیرِ آپلود **نتیجه** برمی‌گرداند و
-        // یک Promiseِ ساختگی یعنی بوم برای همیشه منتظرِ `fileId` می‌مانَد.
-        return Promise.reject(
-          new Error("‏[hamboom] آپلودِ دارایی هنوز پیاده نشده — گام ۳٫۶ (AssetTransport)."),
-        );
-      },
-      resolveAssetUrl: () => Promise.resolve(""),
+      requestAssetUpload: (file) => this.uploadAsset(file),
+      resolveAssetUrl: (fileId) => this.assets?.resolve(fileId) ?? Promise.resolve(""),
 
       emitReady: () => {},
     };
@@ -598,6 +606,70 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     //    می‌گوید `SaveState` باید حقیقت را بگوید نه خوش‌بینی؛ گام ۴٫۳ باید
     //    `saved` را پشتِ نوشتنِ **واقعیِ** دیتابیس ببرد.
     this.inbound?.setSaveState({ status: "saved", at: Date.now() });
+  }
+
+  /**
+   * آپلود، و بعد **نوشتنِ متادیتا در سند** — گام ۳٫۶.
+   *
+   * ★★ **چرا متادیتا را همین‌جا می‌نویسیم و منتظرِ `changes.assets` نمی‌مانیم:**
+   * ترتیب. عنصرِ تصویر فقط یک **ارجاع** (`fileId`) است؛ اگر زودتر از متادیتا به
+   * همتا برسد، او یک ارجاعِ آویزان دارد و هیچ راهی برای نمایشش. با نوشتن در
+   * همین‌جا، متادیتا **قبل از** عنصر روی سیم می‌رود — چون `image-tool` اول
+   * `requestAssetUpload` را await می‌کند و بعد عنصر را می‌سازد.
+   *
+   * مسیرِ `changes.assets` هم زنده می‌مانَد (paste، جریان‌های M3)؛ هر دو به یک
+   * `writeAsset` می‌رسند و آن idempotent است.
+   *
+   * ⚠️ `assets` بیرونِ دامنه‌ی `UndoManager` است (که فقط `elements` را می‌بیند)،
+   * پس `Ctrl+Z` متادیتا را برنمی‌گرداند. درست هم همین است: عنصر که برگردد،
+   * متادیتای بی‌مصرف می‌مانَد و پاک‌سازی‌اش کارِ GCِ M3 است — ولی اگر undo آن را
+   * می‌برد، redo یک عنصرِ بدونِ دارایی می‌ساخت.
+   */
+  private async uploadAsset(file: File): Promise<HbAsset> {
+    const transport = this.assets;
+    if (!transport) {
+      // ★ مثلِ گام ۳٫۱ اینجا **خطا می‌دهد**، نه یک Promiseِ ساختگی: بوم منتظرِ
+      //   `fileId` می‌مانَد و placeholder هرگز جایگزین نمی‌شود.
+      throw new Error(
+        "‏[hamboom] پورتِ دارایی تنظیم نشده — گزینه‌ی `assets` را به YjsSyncAdapter بده " +
+          "(در توسعه: createLocalAssetTransport).",
+      );
+    }
+
+    const token = this.epoch;
+    const asset = await transport.upload(file);
+    // ★ همان قاعده‌ی `connect`: بعد از **هر** await باید بررسی شود که هنوز همان
+    //   اتصالیم. وگرنه متادیتا روی سندی می‌نشیند که ترابری‌اش رفته و هرگز به
+    //   همتا نمی‌رسد — یک واگراییِ بی‌صدا.
+    if (this.epoch !== token) throw new ConnectionCancelledError();
+
+    this.doc.transact(() => {
+      writeAsset(boardRoots(this.doc).assets, asset);
+    }, new LocalOrigin());
+
+    return asset;
+  }
+
+  /**
+   * متادیتای داراییِ عناصری که به بوم تحویل می‌شوند.
+   *
+   * ⚠️ بدونِ این، همتا عنصرِ تصویر را می‌گیرد ولی هیچ‌وقت نمی‌فهمد بایت‌ها کجایند —
+   * قراردادِ M1 هیچ متدی برای «این فایل را ثبت کن» ندارد و تنها راهش همین
+   * فیلدِ `assets`ِ خودِ `ElementChangeSet` است.
+   */
+  private assetsOf(elements: HbElement[]): HbAsset[] {
+    const assets = boardRoots(this.doc).assets;
+    const result: HbAsset[] = [];
+    const seen = new Set<string>();
+
+    for (const element of elements) {
+      const fileId = (element as { fileId?: unknown }).fileId;
+      if (typeof fileId !== "string" || seen.has(fileId)) continue;
+      seen.add(fileId);
+      const map = assets.get(fileId);
+      if (map instanceof Y.Map) result.push(map.toJSON() as HbAsset);
+    }
+    return result;
   }
 
   /**

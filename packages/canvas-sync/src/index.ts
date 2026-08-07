@@ -44,6 +44,14 @@ export {
 } from "./adapter.ts";
 
 export {
+  createLocalAssetTransport,
+  LocalAssetStore,
+  type AssetTransport,
+  type LocalAssetStoreOptions,
+  type LocalAssetTransportOptions,
+} from "./assets.ts";
+
+export {
   createPresenceScope,
   type PresenceScope,
   type PresenceScopeOptions,
@@ -69,6 +77,12 @@ export {
   type UndoScopeOptions,
 } from "./undo.ts";
 
-export { applyRemoteChangesToScene, replaceSceneDocument, type CanvasApi } from "./apply-remote.ts";
+export {
+  applyRemoteChangesToScene,
+  registerSceneAssets,
+  replaceSceneDocument,
+  type AssetResolver,
+  type CanvasApi,
+} from "./apply-remote.ts";
 
 export { createCanvasBinding, type CanvasBindingOptions } from "./canvas-binding.ts";

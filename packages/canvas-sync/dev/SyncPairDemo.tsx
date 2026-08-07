@@ -1,16 +1,20 @@
 import {
   bumpVersion,
   commitGesture,
+  createImageTool,
   createSticky,
   HamboomCanvas,
   toExcalidraw,
   type HamboomCanvasProps,
+  type ImageTool,
 } from "@hamboom/canvas-core";
 import type { CanvasOutbound, PeerState } from "@hamboom/canvas-core/sync";
-import type { HbElement } from "@hamboom/shared-types";
+import type { HbAsset, HbElement } from "@hamboom/shared-types";
+import { readDocument } from "@hamboom/ydoc-schema";
 import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 
+import { createLocalAssetTransport, LocalAssetStore } from "../src/assets";
 import { createCanvasBinding } from "../src/canvas-binding";
 import { LocalTransport, LocalTransportHub } from "../src/transport";
 import { bindUndoShortcuts } from "../src/undo";
@@ -50,6 +54,12 @@ declare global {
           peers: () => PeerState[];
           /** اندازه‌ی سند — ادعای «ephemeral سند را بزرگ نمی‌کند». */
           docBytes: () => number;
+          /** درجِ یک تصویر از راهِ ابزارِ **واقعیِ** M1 — گام ۳٫۶. */
+          ingestImage: (file: File) => Promise<HbElement | null>;
+          /** متادیتای داراییِ سند — برای ادعای «باینری اینجا نیست». */
+          assets: () => HbAsset[];
+          /** فایل‌هایی که موتور می‌شناسد — بدونشان تصویر یک قابِ خالی است. */
+          engineFiles: () => string[];
         }
       | undefined
     >;
@@ -58,6 +68,15 @@ declare global {
 
 /** یک hub برای کلِ صفحه — جای سرور. */
 const hub = new LocalTransportHub();
+
+/**
+ * ★ یک انبارِ **مشترک** — جای Object Storage.
+ *
+ * ⚠️ اشتراکش لازم است، نه تشریفاتی: بدونِ آن پنلِ ب یک `fileId` می‌گیرد که هیچ
+ * جا سراغش را ندارد و تصویر یک قابِ خالی می‌مانَد. در تولید، سرور این نقش را
+ * دارد ([`assets.ts`](../src/assets.ts)).
+ */
+const assetStore = new LocalAssetStore();
 
 let nextAuthor = 0;
 let nextGesture = 0;
@@ -91,8 +110,10 @@ function Pane({ name, label }: PaneProps) {
     // ★★ الگوی ADR-032: آداپتور و اشتراکش **داخلِ افکت** ساخته می‌شوند و
     //    cleanup برمی‌گردد. زیر StrictMode این چرخه‌ی mount→cleanup→mount را
     //    می‌سازد که آداپتور باید تاب بیاورد (نگهبانِ نسل در `connect`).
+    const assets = createLocalAssetTransport(assetStore, { uploadedBy: `u_${name}` });
     const adapter = new YjsSyncAdapter({
       transport: new LocalTransport(hub),
+      assets,
       user: {
         id: `u_${name}`,
         displayName: label,
@@ -102,11 +123,17 @@ function Pane({ name, label }: PaneProps) {
     });
     let cancelled = false;
     let unbindUndo: (() => void) | null = null;
+    let imageTool: ImageTool | null = null;
 
     void adapter
       .connect(
         createCanvasBinding({
           api,
+          // ★ همان پورت، این‌بار برای مسیرِ **ورودی**: بدونِ آن عنصرِ تصویرِ همتا
+          //   روی صحنه می‌نشیند ولی موتور فایلی به آن `fileId` نمی‌شناسد.
+          assets,
+          onAssetError: (asset) =>
+            api.setToast({ message: `دارایی بارگذاری نشد: ${asset.fileId}`, duration: 4000 }),
           ui: {
             setConnectionState: (state) => setStatus(state.status),
             applyPeers: (peers) => {
@@ -142,6 +169,30 @@ function Pane({ name, label }: PaneProps) {
             gestureId: newGestureId(),
           });
         };
+        // ★★ ابزارِ **واقعیِ** تصویرِ M1 — گام ۳٫۶.
+        //
+        // ⚠️ `root` روی خودِ پنل است نه `document`: با پیش‌فرضِ `document`، یک
+        //    drop یا paste به **هر دو** ابزار می‌رسید و تصویر دوبار درج می‌شد.
+        //
+        // ★ فقط **یک** emit، آن هم در انتها: `onInserted` بعد از رسیدنِ عنصر به
+        //   «saved» صدا زده می‌شود، پس Yjs یک ورودیِ undo می‌گیرد و یک `Ctrl+Z`
+        //   کلِ تصویر را برمی‌دارد — نه اینکه فقط به «pending» برگرداندش.
+        imageTool = createImageTool({
+          api,
+          outbound,
+          authorId: `u_${name}`,
+          root: paneRef.current ?? undefined,
+          onError: (message) => api.setToast({ message, duration: 4000 }),
+          onInserted: (element) => {
+            outbound.emitElementChanges({
+              upserted: [element],
+              deleted: [],
+              origin: "local-user",
+              gestureId: newGestureId(),
+            });
+          },
+        });
+
         window.__hbPair = {
           ...window.__hbPair,
           [name]: {
@@ -151,6 +202,9 @@ function Pane({ name, label }: PaneProps) {
             commitLocal,
             peers: () => peersRef.current,
             docBytes: () => Y.encodeStateAsUpdate(adapter.document).byteLength,
+            ingestImage: (file) => imageTool!.ingestFile(file),
+            assets: () => readDocument(adapter.document).assets,
+            engineFiles: () => Object.keys(api.getFiles() ?? {}),
           },
         };
         setReady(true);
@@ -163,6 +217,9 @@ function Pane({ name, label }: PaneProps) {
     return () => {
       cancelled = true;
       unbindUndo?.();
+      imageTool?.destroy();
+      // ⚠️ `assetStore.dispose()` اینجا **نیست**: انبار مشترک است و آزادکردنش
+      //    تصویر را روی پنلِ همتا هم سفید می‌کرد.
       adapter.disconnect();
       setReady(false);
       window.__hbPair = { ...window.__hbPair, [name]: undefined };

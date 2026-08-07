@@ -10,6 +10,7 @@ import * as Y from "yjs";
 import { describe, expect, it, vi } from "vitest";
 
 import { ConnectionCancelledError, YjsSyncAdapter } from "./adapter.ts";
+import { createLocalAssetTransport, LocalAssetStore } from "./assets.ts";
 import { LocalOrigin } from "./emit-local.ts";
 import { LocalTransport, LocalTransportHub } from "./transport.ts";
 
@@ -500,25 +501,35 @@ describe("وضعیتِ ذخیره", () => {
 });
 
 /**
- * ★ این تست عمداً وضعیتِ **ناقصِ فعلی** را پین می‌کند.
+ * ★★ این بلوک تا گام ۳٫۴ **وضعیتِ ناقص** را پین می‌کرد و دو بار عمداً قرمز شد.
  *
- * یک no-opِ بی‌نشان همان چیزی است که بعداً «چرا مکان‌نمای همتا نمی‌آید؟» می‌شود.
- * وقتی گام ۳٫۵ awareness را پیاده کند، این تست **قرمز می‌شود** و مجبور به
- * به‌روزرسانی — یعنی جای یک TODOِ فراموش‌شدنی، یک نگهبان.
+ * تاریخچه‌اش ارزشِ نگه‌داشتن دارد، چون الگویش کار کرد: به‌جای یک TODOِ
+ * فراموش‌شدنی، یک ادعای اجراشدنی که **گیت** نمی‌گذارد نادیده بماند.
+ *
+ * | ادعای پین‌شده | کِی قرمز شد |
+ * |---|---|
+ * | «`applyPeers` هرگز صدا زده نمی‌شود» | گام ۳٫۵ (کانالِ حضور) |
+ * | «آپلودِ دارایی خطا می‌دهد — گام ۳٫۶» | گام ۳٫۶ (پورتِ `AssetTransport`) |
+ *
+ * حالا هر دو مسیر زنده‌اند و جزئیاتشان تستِ خودشان را دارد
+ * ([`awareness.test.ts`](./awareness.test.ts) و [`assets.test.ts`](./assets.test.ts)).
+ * آنچه اینجا می‌مانَد فقط **سیم‌کشیِ outbound** است: هیچ متدی نباید بی‌صدا
+ * گم شده باشد.
  */
-describe("★ آنچه هنوز پیاده نشده — گام ۳٫۶", () => {
-  it("★ متدهای حضور دیگر no-op نیستند — گام ۳٫۵ این تست را قرمز کرد", async () => {
-    // ⚠️ این بند تا گام ۳٫۵ ادعای وارونه‌اش را می‌کرد («`applyPeers` هرگز صدا
-    // زده نمی‌شود») و عمداً همان‌جا قرمز شد. جزئیاتِ کانالِ حضور در
-    // [`awareness.test.ts`](./awareness.test.ts) است؛ اینجا فقط **سیم‌کشیِ
-    // outbound** آزموده می‌شود.
+describe("★ سیم‌کشیِ کاملِ outbound", () => {
+  it("هیچ متدِ قرارداد no-op یا گم‌شده نیست", async () => {
     const hub = new LocalTransportHub();
+    const store = new LocalAssetStore({ createUrl: () => "blob:test" });
     const canvas = fakeCanvas();
     const peer = new YjsSyncAdapter({ transport: new LocalTransport(hub) });
-    const adapter = new YjsSyncAdapter({ transport: new LocalTransport(hub) });
+    const adapter = new YjsSyncAdapter({
+      transport: new LocalTransport(hub),
+      assets: createLocalAssetTransport(store, { uploadedBy: "u_test" }),
+    });
     await peer.connect(fakeCanvas().inbound);
     const outbound = await adapter.connect(canvas.inbound);
 
+    // حضور — گام ۳٫۵
     expect(canvas.inbound.applyPeers).toHaveBeenCalled();
     expect(() => outbound.emitPointer({ x: 1, y: 2, visible: true })).not.toThrow();
     expect(() => outbound.emitSelection(["stk_1"])).not.toThrow();
@@ -527,17 +538,14 @@ describe("★ آنچه هنوز پیاده نشده — گام ۳٫۶", () => {
     expect(() => outbound.emitEphemeral(null)).not.toThrow();
     expect(() => outbound.emitReady()).not.toThrow();
 
+    // دارایی — گام ۳٫۶
+    const file = new File([new Uint8Array([1, 2])], "a.png", { type: "image/png" });
+    const asset = await outbound.requestAssetUpload(file);
+    expect(asset.fileId).toMatch(/^f_local_/);
+    await expect(outbound.resolveAssetUrl(asset.fileId)).resolves.toBe("blob:test");
+
     peer.disconnect();
     adapter.disconnect();
-  });
-
-  it("★ آپلودِ دارایی برخلافِ بقیه **خطا می‌دهد**", async () => {
-    // چون **نتیجه** برمی‌گرداند: یک Promiseِ ساختگی یعنی بوم برای همیشه منتظرِ
-    // `fileId` می‌مانَد و placeholder هرگز جایگزین نمی‌شود.
-    const adapter = new YjsSyncAdapter();
-    const outbound = await adapter.connect(fakeCanvas().inbound);
-
-    await expect(outbound.requestAssetUpload({} as File)).rejects.toThrow(/۳٫۶/);
   });
 });
 
