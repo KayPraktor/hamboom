@@ -38,3 +38,17 @@ export {
 } from "./auth/index.ts";
 
 export { createLogger, maskSubject, redactSecrets, type Logger, type LogLevel } from "./log.ts";
+
+export { RtProtocolError } from "./protocol-error.ts";
+
+export {
+  createRoomManager,
+  QUARANTINE_ORIGIN,
+  type Room,
+  type RoomLimits,
+  type RoomLoadReport,
+  type RoomManager,
+  type RoomManagerOptions,
+} from "./room.ts";
+
+export { MemoryBoardStore, type BoardSnapshot, type BoardStore } from "./store/board-store.ts";

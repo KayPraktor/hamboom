@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createDevBoardAuthority, signDevToken, type BoardAuthority } from "./auth/index.ts";
 import { createLogger } from "./log.ts";
+import { createRoomManager } from "./room.ts";
 import { createRtServer, type RtServer, type RtSession } from "./server.ts";
+import { MemoryBoardStore } from "./store/board-store.ts";
 
 /**
  * تست‌های گام ۴٫۱ — **دست‌دادن**.
@@ -42,7 +44,9 @@ async function startServer(overrides: Partial<Parameters<typeof createRtServer>[
     authority,
     appEnv: "local",
     logger: createLogger({ level: "debug", write: (line) => logLines.push(line) }),
-    onJoin: (session) => joined.push(session),
+    onJoin: (session) => {
+      joined.push(session);
+    },
     ...overrides,
   });
   return running;
@@ -136,6 +140,39 @@ describe("★★ معیارِ پذیرش — سه ردشدن، سه کدِ در�
 
     expect(outcome.message).toMatchObject({ code: "FORBIDDEN" });
     expect(joined).toEqual([]);
+  });
+});
+
+describe("★★ ردِ اتاق هم از همان مسیر می‌آید — گام ۴٫۲", () => {
+  it("سقفِ نود به کلاینت `SERVER_BUSY` می‌دهد، نه یک قطعِ گنگ", async () => {
+    // ⚠️ این ادعا **سیم‌کشی** را می‌آزماید، نه منطقِ اتاق را (آن در
+    // `room.test.ts` است): خطای لایه‌ی اتاق باید از همان مسیرِ `HB_ERROR`ِ
+    // احراز هویت بیرون بیاید. یعنی سرور نمی‌داند خطا از کجاست، فقط کدش را می‌داند.
+    const rooms = createRoomManager({
+      store: new MemoryBoardStore(),
+      limits: { maxRoomsPerNode: 1, maxDocBytes: 5_000_000, idleTimeoutMs: 60_000 },
+      logger: createLogger({ write: (line) => logLines.push(line) }),
+    });
+    const server = await startServer({ onJoin: (session) => rooms.join(session) });
+
+    const first = new WebSocket(
+      `ws://127.0.0.1:${server.port}/rt?board=brd_a&token=${validToken({ boardId: "brd_a" })}`,
+    );
+    await new Promise((resolve) => first.on("open", resolve));
+    await vi.waitFor(() => expect(rooms.size).toBe(1));
+
+    const outcome = await connect(
+      server.port,
+      `/rt?board=brd_b&token=${validToken({ boardId: "brd_b" })}`,
+    );
+
+    expect(outcome.message).toMatchObject({ code: "SERVER_BUSY" });
+    expect(outcome.closeCode).toBe(1008);
+    // ★ و اتاقِ اول دست‌نخورده مانده.
+    expect(rooms.size).toBe(1);
+
+    first.close();
+    await rooms.close();
   });
 });
 

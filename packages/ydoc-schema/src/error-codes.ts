@@ -24,6 +24,12 @@ export const HB_ERROR_CODES = {
    */
   TOKEN_INVALID: "TOKEN_INVALID",
   TOKEN_MISSING: "TOKEN_MISSING",
+  /**
+   * ★ سقفِ اتاقِ این نود پر است (گام ۴٫۲) — **موقتی**، برخلافِ `DOC_TOO_LARGE`
+   * که دائمی است. کلاینت باید دوباره تلاش کند، نه اینکه به کاربر بگوید بورد
+   * خراب است. همین تفاوتِ «کارِ بعدیِ کلاینت» دلیلِ کدِ جداست.
+   */
+  SERVER_BUSY: "SERVER_BUSY",
   DOC_TOO_LARGE: "DOC_TOO_LARGE",
   ROOM_CLOSED: "ROOM_CLOSED",
 } as const;

@@ -1,9 +1,6 @@
-import {
-  BOARD_ROLES,
-  HB_ERROR_CODES,
-  type BoardRole,
-  type HbErrorCode,
-} from "@hamboom/ydoc-schema";
+import { BOARD_ROLES, HB_ERROR_CODES, type BoardRole } from "@hamboom/ydoc-schema";
+
+import { RtProtocolError } from "../protocol-error.ts";
 
 /**
  * پورتِ احراز هویتِ بورد — [ADR-031](../../../../ARCHITECTURE_DECISIONS.md#adr-031)،
@@ -46,15 +43,9 @@ export interface RtTokenClaims {
  * ★ پیامش به کلاینت می‌رود، پس نباید چیزی درباره‌ی **علتِ دقیق** لو بدهد
  * (کدام claim خراب بود، بورد وجود دارد یا نه). جزئیات فقط در لاگِ سرور.
  */
-export class AuthError extends Error {
-  constructor(
-    readonly code: HbErrorCode,
-    /** پیامِ فارسیِ کوتاه برای کاربر. */
-    message: string,
-    /** فقط برای لاگِ سرور — هرگز به کلاینت نمی‌رود. */
-    readonly detail?: string,
-  ) {
-    super(message);
+export class AuthError extends RtProtocolError {
+  constructor(code: RtProtocolError["code"], message: string, detail?: string) {
+    super(code, message, detail);
     this.name = "AuthError";
   }
 }

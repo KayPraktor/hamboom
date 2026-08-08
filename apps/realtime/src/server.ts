@@ -4,8 +4,9 @@ import type { Duplex } from "node:stream";
 import { encodeMessage, MSG_TYPES, type BoardRole } from "@hamboom/ydoc-schema";
 import { WebSocketServer, type WebSocket } from "ws";
 
-import { assertAuthorityUsable, AuthError, type BoardAuthority } from "./auth/index.ts";
+import { assertAuthorityUsable, type BoardAuthority } from "./auth/index.ts";
 import { createLogger, maskSubject, type Logger } from "./log.ts";
+import { RtProtocolError } from "./protocol-error.ts";
 
 /**
  * سرورِ WebSocketِ همگام‌سازی — گام ۴٫۱: **دست‌دادن و احراز هویت**.
@@ -48,10 +49,13 @@ export interface RtServerOptions {
   port?: number;
   logger?: Logger;
   /**
-   * ★ ورودیِ اتاق. تا گام ۴٫۲ پیش‌فرضش no-op است، ولی **سیم‌کشی‌اش همین‌جا**
-   * قفل می‌شود تا ادعای «رد شدن قبل از join» آزمودنی باشد.
+   * ★ ورودیِ اتاق (گام ۴٫۲: `RoomManager.join`).
+   *
+   * ⚠️ **می‌تواند رد کند.** اگر `RtProtocolError` بیندازد — سقفِ نود، سندِ
+   * بیش‌ازحد بزرگ — همان مسیرِ ردِ احراز هویت طی می‌شود: `HB_ERROR` و بستن.
+   * سرور نمی‌داند خطا از کدام لایه آمده، فقط کدش را می‌داند.
    */
-  onJoin?: (session: RtSession) => void;
+  onJoin?: (session: RtSession) => void | Promise<unknown>;
 }
 
 export interface RtServer {
@@ -148,7 +152,7 @@ function parseTarget(request: IncomingMessage): Target | null {
 interface HandshakeDeps {
   authority: BoardAuthority;
   logger: Logger;
-  onJoin: (session: RtSession) => void;
+  onJoin: (session: RtSession) => void | Promise<unknown>;
 }
 
 async function authenticate(
@@ -166,7 +170,9 @@ async function authenticate(
       role: claims.role,
     });
 
-    onJoin({
+    // ★ `await` عمدی: اگر اتاق **رد** کند (سقفِ نود، سندِ بزرگ) باید همین‌جا
+    //   گرفته شود و از همان مسیرِ رد برود، نه به‌صورت یک rejectionِ بی‌صاحب.
+    await onJoin({
       socket,
       boardId: claims.boardId,
       sub: claims.sub,
@@ -175,11 +181,11 @@ async function authenticate(
     });
   } catch (cause) {
     const error =
-      cause instanceof AuthError
+      cause instanceof RtProtocolError
         ? cause
-        : // خطای نامنتظره‌ی پیاده‌سازیِ پورت نباید سرور را بیندازد و نباید
-          // جزئیاتش به کلاینت برود.
-          new AuthError("FORBIDDEN", "اتصال برقرار نشد.", String(cause));
+        : // خطای نامنتظره‌ی هیچ لایه‌ای نباید سرور را بیندازد و نباید جزئیاتش
+          // به کلاینت برود.
+          new RtProtocolError("FORBIDDEN", "اتصال برقرار نشد.", String(cause));
 
     logger.warn("اتصال رد شد", {
       boardId: target.boardId,
@@ -198,7 +204,7 @@ async function authenticate(
  * ⚠️ `close` **بعد از** فرستادنِ پیام صدا زده می‌شود و با کدِ سیاستی؛ `ws` خودش
  * بافر را قبل از بستن تخلیه می‌کند.
  */
-function denyConnection(socket: WebSocket, error: AuthError): void {
+function denyConnection(socket: WebSocket, error: RtProtocolError): void {
   socket.send(
     encodeMessage({ type: MSG_TYPES.HB_ERROR, code: error.code, message: error.message }),
   );
