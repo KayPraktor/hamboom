@@ -5,7 +5,7 @@ import {
   type ElementChangeSet,
 } from "@hamboom/canvas-core/sync";
 import type { HbElement } from "@hamboom/shared-types";
-import { boardRoots, readDocument } from "@hamboom/ydoc-schema";
+import { boardRoots, encodeMessage, MSG_TYPES, readDocument } from "@hamboom/ydoc-schema";
 import * as Y from "yjs";
 import { describe, expect, it, vi } from "vitest";
 
@@ -100,7 +100,9 @@ describe("چرخه‌ی عمر", () => {
     // سند **قبل از** اعلامِ connected می‌رسد — وگرنه بوم لحظه‌ای خالی رندر می‌شود.
     expect(canvas.documents).toHaveLength(1);
     expect(canvas.connectionStates[1]).toEqual({ status: "connected", peers: 0 });
-    expect(canvas.saveStates[0]).toMatchObject({ status: "saved" });
+    // ★ **`unsaved`، نه `saved`** (گام ۴٫۳): در لحظه‌ی اتصال هنوز هیچ سروری
+    //   چیزی تایید نکرده. با سرورِ واقعی، `HB_ROOM_INFO` بلافاصله اصلاحش می‌کند.
+    expect(canvas.saveStates[0]).toMatchObject({ status: "unsaved" });
   });
 
   it("سندِ اولیه شکلِ `CanvasDocument` دارد", async () => {
@@ -482,8 +484,17 @@ describe("رفت‌وبرگشتِ عنصر بینِ دو کلاینت", () => {
   });
 });
 
-describe("وضعیتِ ذخیره", () => {
-  it("هر changeset یک `saving` و بعد یک `saved` می‌دهد", async () => {
+describe("★★ وضعیتِ ذخیره — حقیقت، نه خوش‌بینی", () => {
+  /**
+   * ⚠️ **این تست تا گام ۴٫۳ ادعای وارونه‌اش را می‌کرد** («هر changeset یک
+   * `saving` و بعد یک `saved` می‌دهد») و همان‌جا عمداً قرمز شد.
+   *
+   * آن `saved` **دروغ** بود: سند فقط در حافظه‌ی مرورگر نشسته بود و هیچ سروری
+   * چیزی ننوشته بود. قراردادِ M1 صریح است که اگر «ذخیره شد» نشان دهیم و کاربر
+   * تب را ببندد، کارش نباید برود. حالا تنها منبعِ `saved` پیامِ `HB_ROOM_INFO`ِ
+   * سرور است که **بعد از** نوشتنِ واقعیِ دیتابیس می‌آید (ADR-009).
+   */
+  it("بدونِ سرور، `saving` می‌گوید و بعد `unsaved` — هرگز `saved`", async () => {
     const canvas = fakeCanvas();
     const adapter = new YjsSyncAdapter();
     const outbound = await adapter.connect(canvas.inbound);
@@ -496,7 +507,39 @@ describe("وضعیتِ ذخیره", () => {
     });
 
     expect(canvas.saveStates[0]).toEqual({ status: "saving" });
-    expect(canvas.saveStates[1]).toMatchObject({ status: "saved" });
+    expect(canvas.saveStates[1]).toMatchObject({ status: "unsaved" });
+    // `saveStates` عمداً `unknown[]` است (بومِ ساختگی هرچه گرفت را خام ثبت می‌کند).
+    expect(canvas.saveStates.map((state) => (state as { status: string }).status)).not.toContain(
+      "saved",
+    );
+  });
+
+  it("★ `saved` فقط با `HB_ROOM_INFO`ِ سرور می‌آید", async () => {
+    const hub = new LocalTransportHub();
+    const canvas = fakeCanvas();
+    const adapter = new YjsSyncAdapter({ transport: new LocalTransport(hub) });
+    await adapter.connect(canvas.inbound);
+    canvas.saveStates.length = 0;
+
+    // همان بایت‌هایی که سرور بعد از نوشتنِ دیتابیس می‌فرستد.
+    const line = new LocalTransport(hub);
+    line.send(encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, users: 1, seq: 7, save: "saved" }));
+
+    expect(canvas.saveStates.at(-1)).toMatchObject({ status: "saved" });
+  });
+
+  it("★★ و اگر سرور بگوید ننوشته، `unsaved` می‌مانَد", async () => {
+    // ⚠️ ضدِ ادعا: بدونِ این، یک پیاده‌سازی که همیشه `saved` می‌گوید هم پاس می‌شد.
+    const hub = new LocalTransportHub();
+    const canvas = fakeCanvas();
+    const adapter = new YjsSyncAdapter({ transport: new LocalTransport(hub) });
+    await adapter.connect(canvas.inbound);
+    canvas.saveStates.length = 0;
+
+    const line = new LocalTransport(hub);
+    line.send(encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, users: 1, seq: 0, save: "unsaved" }));
+
+    expect(canvas.saveStates.at(-1)).toMatchObject({ status: "unsaved" });
   });
 });
 

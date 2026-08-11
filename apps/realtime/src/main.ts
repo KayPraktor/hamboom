@@ -1,0 +1,78 @@
+import {
+  appEnvSchema,
+  devAuthEnvSchema,
+  databaseEnvSchema,
+  loadEnv,
+  realtimeEnvSchema,
+} from "@hamboom/config";
+
+import { createDevBoardAuthority } from "./auth/index.ts";
+import { createLogger } from "./log.ts";
+import { createPostgresUpdateLog } from "./persistence/postgres-update-log.ts";
+import { createRoomManager } from "./room.ts";
+import { createRtServer } from "./server.ts";
+import { createPersistedBoardStore } from "./store/persisted-board-store.ts";
+
+/**
+ * نقطه‌ی ورودِ سرور — **تنها جایی که قطعات به هم وصل می‌شوند.**
+ *
+ * ⚠️ عمداً نازک است و هیچ منطقی ندارد: هر تصمیمی که اینجا بیفتد، در تست دیده
+ * نمی‌شود چون تست‌ها قطعات را مستقیم می‌سازند. کارش فقط خواندنِ env، ساختنِ
+ * پیاده‌سازی‌ها، و سپردنشان به `createRtServer` است.
+ *
+ * ★ گیتِ [ADR-031](../../../ARCHITECTURE_DECISIONS.md#adr-031) داخلِ خودِ
+ * `createRtServer` است، نه اینجا — تا هر مسیرِ دیگری هم که سرور را بالا بیاورد
+ * از آن رد شود.
+ */
+async function main(): Promise<void> {
+  const env = loadEnv(
+    appEnvSchema.and(realtimeEnvSchema).and(databaseEnvSchema).and(devAuthEnvSchema),
+  );
+  const logger = createLogger({ level: env.LOG_LEVEL });
+
+  const log = createPostgresUpdateLog({
+    connectionString: env.DATABASE_URL,
+    ssl: env.DATABASE_SSL,
+    max: env.DATABASE_POOL_MAX,
+  });
+
+  const rooms = createRoomManager({
+    store: createPersistedBoardStore(log),
+    log,
+    limits: {
+      maxRoomsPerNode: env.RT_MAX_ROOMS_PER_NODE,
+      maxDocBytes: env.RT_MAX_DOC_BYTES,
+      idleTimeoutMs: env.RT_ROOM_IDLE_TIMEOUT_MS,
+    },
+    logger,
+  });
+
+  const server = await createRtServer({
+    authority: createDevBoardAuthority({ secret: env.RT_DEV_JWT_SECRET }),
+    appEnv: env.APP_ENV,
+    port: env.RT_PORT,
+    logger,
+    onJoin: (session) => rooms.join(session),
+  });
+
+  // ⚠️ خاموشیِ **مودبانه** کارِ گام ۴٫۸ است. اینجا فقط منابع بسته می‌شوند تا
+  //    اجرای محلی و اسکریپت‌ها تمیز تمام شوند.
+  const shutdown = (): void => {
+    void (async () => {
+      await server.close();
+      await rooms.close();
+      await log.close?.();
+      process.exit(0);
+    })();
+  };
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
+
+  // ★ نشانه‌ی «آماده‌ام» برای اسکریپت‌ها — `rt-durability` روی همین منتظر می‌مانَد.
+  logger.info("realtime آماده است", { port: server.port });
+}
+
+void main().catch((error: unknown) => {
+  process.stderr.write(`${String(error)}\n`);
+  process.exit(1);
+});

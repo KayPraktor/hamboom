@@ -39,15 +39,17 @@ export const EARLIEST_SCHEMA_VERSION = 1;
 export class DocumentTooNewError extends Error {
   readonly code = HB_ERROR_CODES.CLIENT_TOO_OLD;
 
-  constructor(
-    readonly documentVersion: number,
-    readonly supportedVersion: number,
-  ) {
+  readonly documentVersion: number;
+  readonly supportedVersion: number;
+
+  constructor(documentVersion: number, supportedVersion: number) {
     super(
       `نسخه‌ی سند ${documentVersion} است ولی این نسخه از برنامه تا ${supportedVersion} را می‌فهمد. ` +
         `سند به عقب migrate نمی‌شود — این build نباید بارگذاری‌اش کند.`,
     );
     this.name = "DocumentTooNewError";
+    this.documentVersion = documentVersion;
+    this.supportedVersion = supportedVersion;
   }
 }
 

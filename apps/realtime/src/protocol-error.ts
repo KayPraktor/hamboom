@@ -14,12 +14,14 @@ import type { HbErrorCode } from "@hamboom/ydoc-schema";
  * برای لاگِ سرور است و هرگز روی سیم نمی‌رود.
  */
 export class RtProtocolError extends Error {
-  constructor(
-    readonly code: HbErrorCode,
-    message: string,
-    readonly detail?: string,
-  ) {
+  readonly code: HbErrorCode;
+  /** فقط برای لاگِ سرور — هرگز روی سیم نمی‌رود. */
+  readonly detail?: string;
+
+  constructor(code: HbErrorCode, message: string, detail?: string) {
     super(message);
     this.name = "RtProtocolError";
+    this.code = code;
+    this.detail = detail;
   }
 }

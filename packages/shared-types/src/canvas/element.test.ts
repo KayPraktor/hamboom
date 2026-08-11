@@ -11,7 +11,7 @@ import {
   hbTextElement,
   type HbCustomData,
   type HbKind,
-} from "./element";
+} from "./element.ts";
 
 /** متادیتای مشترکی که هر عنصر لازم دارد. */
 function customData(kind: HbKind, extra: Partial<HbCustomData["hb"]> = {}): HbCustomData {

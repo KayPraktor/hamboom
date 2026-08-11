@@ -18,12 +18,15 @@ import { isPlainObject } from "./value-codec.ts";
  */
 
 export class BinaryInDocumentError extends Error {
-  constructor(readonly paths: readonly string[]) {
+  readonly paths: readonly string[];
+
+  constructor(paths: readonly string[]) {
     super(
       `مقدارِ باینری داخلِ سند پیدا شد (${paths.length} مورد): ${paths.join("، ")}. ` +
         `سند فقط متادیتا نگه می‌دارد؛ خودِ فایل در Object Storage است و با fileId ارجاع می‌شود.`,
     );
     this.name = "BinaryInDocumentError";
+    this.paths = paths;
   }
 }
 

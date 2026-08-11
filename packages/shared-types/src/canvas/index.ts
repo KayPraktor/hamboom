@@ -20,7 +20,7 @@ export {
   hbFrameElement,
   hbElement,
   hbAppState,
-} from "./element";
+} from "./element.ts";
 
 export type {
   HbElementType,
@@ -38,7 +38,7 @@ export type {
   HbFrameElement,
   HbElement,
   HbAppState,
-} from "./element";
+} from "./element.ts";
 
-export { hbAsset, hbAllowedImageMime, HB_ALLOWED_IMAGE_MIME } from "./asset";
-export type { HbAsset, HbAllowedImageMime } from "./asset";
+export { hbAsset, hbAllowedImageMime, HB_ALLOWED_IMAGE_MIME } from "./asset.ts";
+export type { HbAsset, HbAllowedImageMime } from "./asset.ts";

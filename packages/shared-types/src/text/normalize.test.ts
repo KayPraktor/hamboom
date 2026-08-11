@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizePersian, normalizePersianPreservingLength, persianSearchKey } from "./normalize";
+import {
+  normalizePersian,
+  normalizePersianPreservingLength,
+  persianSearchKey,
+} from "./normalize.ts";
 
 /**
  * مجموعه‌ی نمونه — همان تله‌هایی که spike گام ۱٫۳ب روی ویرایشگر واقعی آزمود.

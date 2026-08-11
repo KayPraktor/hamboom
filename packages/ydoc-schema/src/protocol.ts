@@ -75,12 +75,12 @@ export type SaveStatus = (typeof SAVE_STATUSES)[number];
 
 /** پیامی از نوعِ شناخته‌شده که خوانده نشد. */
 export class ProtocolError extends Error {
-  constructor(
-    readonly type: number,
-    cause: unknown,
-  ) {
+  readonly type: number;
+
+  constructor(type: number, cause: unknown) {
     super(`پیامِ نوعِ 0x${type.toString(16).padStart(2, "0")} خوانده نشد: ${String(cause)}`);
     this.name = "ProtocolError";
+    this.type = type;
   }
 }
 

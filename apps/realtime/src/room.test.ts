@@ -26,11 +26,22 @@ const LIMITS: RoomLimits = {
   idleTimeoutMs: 120_000,
 };
 
-/** یک سوکتِ ساختگی که فقط `once` را می‌فهمد — همان چیزی که اتاق لازم دارد. */
+/**
+ * سوکتِ ساختگی.
+ *
+ * ⚠️ از گام ۴٫۳ اتاق `on("message")` و `send` هم لازم دارد (پمپِ همگام‌سازی) —
+ * ادعای این فایل همچنان درباره‌ی **سند** است، نه سیم، پس بایت‌های فرستاده‌شده
+ * فقط دور ریخته می‌شوند. ترتیبشان در `persistence/durability.test.ts` سنجیده
+ * می‌شود.
+ */
 function fakeSocket() {
   const handlers = new Map<string, () => void>();
   return {
-    socket: { once: (event: string, cb: () => void) => handlers.set(event, cb) },
+    socket: {
+      once: (event: string, cb: () => void) => handlers.set(event, cb),
+      on: () => {},
+      send: () => {},
+    },
     /** شبیه‌سازیِ بسته‌شدنِ اتصال. */
     close: () => handlers.get("close")?.(),
   };

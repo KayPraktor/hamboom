@@ -9,5 +9,5 @@
  * یک قاعده‌ی ESLint این را اعمال می‌کند.
  */
 
-export * from "./canvas/index";
-export * from "./text/index";
+export * from "./canvas/index.ts";
+export * from "./text/index.ts";

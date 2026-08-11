@@ -2,14 +2,21 @@ import { hbElement } from "@hamboom/shared-types";
 import {
   boardRoots,
   createBoardDoc,
+  decodeMessage,
+  encodeMessage,
   HB_ERROR_CODES,
   migrateDocument,
+  MSG_TYPES,
   readElement,
   type MigrationResult,
 } from "@hamboom/ydoc-schema";
+import * as decoding from "lib0/decoding";
+import * as encoding from "lib0/encoding";
+import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
 import { createLogger, maskSubject, type Logger } from "./log.ts";
+import type { UpdateLog } from "./persistence/update-log.ts";
 import { RtProtocolError } from "./protocol-error.ts";
 import type { BoardStore } from "./store/board-store.ts";
 import type { RtSession } from "./server.ts";
@@ -41,8 +48,30 @@ import type { RtSession } from "./server.ts";
  * قبلش نسخه‌ی خام آرشیو شود.
  */
 
-/** originِ حذفِ قرنطینه — تا گام ۴٫۳ بتواند تصمیم بگیرد این را لاگ کند یا نه. */
+/**
+ * originِ حذفِ قرنطینه.
+ *
+ * ★★ **این origin عمداً پایدار نمی‌شود** (تصمیمِ گام ۴٫۳). قرنطینه یک **نمای
+ * زمانِ بارگذاری** است، نه یک ویرایشِ کاربر: لاگِ update حقیقتِ خام را نگه
+ * می‌دارد و هر بار که اتاق بالا می‌آید دوباره پالایش انجام می‌شود (ارزان و
+ * idempotent).
+ *
+ * ⚠️ این همان نگرانیِ «حذف یعنی از دست رفتن» در گام ۴٫۲ را **حل می‌کند**: داده
+ * از لاگ پاک نمی‌شود، فقط سرو نمی‌شود. اگر روزی معلوم شد اعتبارسنجی بیش‌ازحد
+ * سخت‌گیر بوده، اصلِ داده هنوز هست.
+ * ★ قیدِ گام ۴٫۴: snapshot **نباید** از سندِ قرنطینه‌شده گرفته شود، وگرنه همین
+ * تضمین می‌شکند.
+ */
 export const QUARANTINE_ORIGIN = "hamboom:quarantine";
+
+/** originِ تراکنشی که از یک نشستِ کلاینت آمده — تنها چیزی که پایدار می‌شود. */
+class ClientOrigin {
+  readonly session: RtSession;
+
+  constructor(session: RtSession) {
+    this.session = session;
+  }
+}
 
 export interface RoomLimits {
   /** `RT_MAX_ROOMS_PER_NODE`. */
@@ -55,6 +84,11 @@ export interface RoomLimits {
 
 export interface RoomManagerOptions {
   store: BoardStore;
+  /**
+   * لاگِ پایداری. **بدونش اتاق فقط در حافظه است** و هیچ ادعای «ذخیره شد» نمی‌کند
+   * — همان حالتی که تا گام ۴٫۲ داشتیم.
+   */
+  log?: UpdateLog;
   limits: RoomLimits;
   logger?: Logger;
 }
@@ -95,10 +129,13 @@ export interface RoomManager {
 interface LiveRoom extends Room {
   sessions: Set<RtSession>;
   idleTimer: ReturnType<typeof setTimeout> | null;
+  /** آخرین `seq`ِ پایدارشده — در `HB_ROOM_INFO` به کلاینت می‌رود. */
+  seq: number;
 }
 
 export function createRoomManager({
   store,
+  log,
   limits,
   logger = createLogger(),
 }: RoomManagerOptions): RoomManager {
@@ -173,10 +210,13 @@ export function createRoomManager({
       report: { migration, quarantined, bytes, pendingStructs },
       sessions: new Set(),
       idleTimer: null,
+      seq: log ? await log.latestSeq(boardId) : 0,
       get size() {
         return this.sessions.size;
       },
     };
+
+    wireDocument(room);
 
     logger.info("اتاق بارگذاری شد", {
       boardId,
@@ -188,6 +228,77 @@ export function createRoomManager({
     });
 
     return room;
+  }
+
+  /**
+   * ★★ **دوام قبل از ack** — قلبِ گام ۴٫۳.
+   *
+   * هر تراکنشی که originش یک نشستِ کلاینت باشد، **قبل از** اینکه به کسی گفته
+   * شود «ذخیره شد» روی دیتابیس می‌نشیند. ترتیب عمدی است و با تست قفل شده:
+   *
+   * ۱. `await log.append(...)` — وقتی برگشت، دوام دارد.
+   * ۲. پخش به بقیه‌ی نشست‌ها.
+   * ۳. `HB_ROOM_INFO{ save: "saved", seq }` به همه.
+   *
+   * ⚠️ پخش هم **بعد** از نوشتن است. هزینه‌اش یک رفت‌وبرگشتِ دیتابیس در مسیرِ
+   * پخش است (اندازه‌گیری‌اش در PROGRESS)، و سودش این است که هیچ‌وقت همتایی
+   * چیزی نمی‌بیند که سرور آن را از دست بدهد.
+   */
+  function wireDocument(room: LiveRoom): void {
+    room.doc.on("update", (update: Uint8Array, origin: unknown) => {
+      if (!(origin instanceof ClientOrigin)) return;
+      void persistAndFanout(room, update, origin.session);
+    });
+  }
+
+  async function persistAndFanout(
+    room: LiveRoom,
+    update: Uint8Array,
+    from: RtSession,
+  ): Promise<void> {
+    try {
+      if (log) {
+        const appended = await log.append(room.boardId, update, from.sub);
+        room.seq = appended.seq;
+      }
+    } catch (cause) {
+      // ⚠️ نوشتن نشد → **نمی‌گوییم ذخیره شد**. کلاینت `unsaved` می‌بیند و
+      //    می‌داند کارش هنوز در خطر است — این کلِ نکته‌ی ADR-009 است.
+      logger.error("نوشتنِ update شکست خورد", { boardId: room.boardId, error: String(cause) });
+      broadcast(room, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "unsaved") }));
+      return;
+    }
+
+    const encoder = encoding.createEncoder();
+    syncProtocol.writeUpdate(encoder, update);
+    const payload = encodeMessage({
+      type: MSG_TYPES.SYNC,
+      payload: encoding.toUint8Array(encoder),
+    });
+    for (const session of room.sessions) {
+      if (session !== from) send(session, payload);
+    }
+
+    broadcast(room, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saved") }));
+  }
+
+  function handleMessage(room: LiveRoom, session: RtSession, data: Uint8Array): void {
+    const message = decodeMessage(data);
+    if (!message || message.type !== MSG_TYPES.SYNC) return;
+
+    const reply = encoding.createEncoder();
+    // ★ origin نشستِ فرستنده است: هم پخش را از خودش جدا می‌کند، هم مشخص می‌کند
+    //   که این تغییر **باید پایدار شود** (برخلافِ بارگذاری و قرنطینه).
+    syncProtocol.readSyncMessage(
+      decoding.createDecoder(message.payload),
+      reply,
+      room.doc,
+      new ClientOrigin(session),
+      () => {},
+    );
+    if (encoding.length(reply) > 0) {
+      send(session, encodeMessage({ type: MSG_TYPES.SYNC, payload: encoding.toUint8Array(reply) }));
+    }
   }
 
   return {
@@ -227,6 +338,23 @@ export function createRoomManager({
       }
       room.sessions.add(session);
 
+      // ★ همگام‌سازیِ اولیه از سمتِ **سرور** هم شروع می‌شود: کلاینت step1/step2
+      //   خودش را می‌فرستد، ولی اگر سرور منتظرِ آن بمانَد، بوردی که کلاینت هیچ
+      //   خبری ازش ندارد هرگز نمی‌رسد.
+      session.socket.on("message", (data: ArrayLike<number> | ArrayBuffer) => {
+        handleMessage(room, session, new Uint8Array(data as ArrayBuffer));
+      });
+
+      const step1 = encoding.createEncoder();
+      syncProtocol.writeSyncStep1(step1, room.doc);
+      send(session, encodeMessage({ type: MSG_TYPES.SYNC, payload: encoding.toUint8Array(step1) }));
+
+      const step2 = encoding.createEncoder();
+      syncProtocol.writeSyncStep2(step2, room.doc);
+      send(session, encodeMessage({ type: MSG_TYPES.SYNC, payload: encoding.toUint8Array(step2) }));
+
+      send(session, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saved") }));
+
       const leave = (): void => {
         room.sessions.delete(session);
         logger.debug("نشست بسته شد", {
@@ -253,6 +381,33 @@ export function createRoomManager({
       return Promise.resolve();
     },
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// ارسال
+// ─────────────────────────────────────────────────────────────
+
+/** فیلدهای `HB_ROOM_INFO` — یک جا، تا `users`/`seq` هیچ‌وقت از هم عقب نیفتند. */
+function info(room: LiveRoom, save: "saved" | "saving" | "unsaved") {
+  return { users: room.sessions.size, seq: room.seq, save } as const;
+}
+
+function broadcast(room: LiveRoom, payload: Uint8Array): void {
+  for (const session of room.sessions) send(session, payload);
+}
+
+/**
+ * ارسالِ امن.
+ *
+ * ⚠️ سوکتی که همین الان بسته شده هنوز چند لحظه در `sessions` است؛ `send` رویش
+ * خطا می‌دهد و بدونِ این محافظ، یک قطعِ عادی کلِ پخش را می‌انداخت.
+ */
+function send(session: RtSession, payload: Uint8Array): void {
+  try {
+    session.socket.send(payload);
+  } catch {
+    // اتصال رفته — `close` خودش نشست را برمی‌دارد.
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

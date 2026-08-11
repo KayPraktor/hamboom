@@ -1,2 +1,6 @@
-export { normalizePersian, normalizePersianPreservingLength, persianSearchKey } from "./normalize";
-export type { NormalizeOptions } from "./normalize";
+export {
+  normalizePersian,
+  normalizePersianPreservingLength,
+  persianSearchKey,
+} from "./normalize.ts";
+export type { NormalizeOptions } from "./normalize.ts";

@@ -265,7 +265,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     // همتاها هنوز نرسیده‌اند — معرفیِ awareness همین الان رفت و پاسخشان یک
     // رفت‌وبرگشت بعد می‌آید، از راهِ `publishPeers`.
     inbound.setConnectionState({ status: "connected", peers: this.peerCount });
-    inbound.setSaveState({ status: "saved", at: Date.now() });
+    // ★★ **هنوز چیزی تایید نشده** (گام ۴٫۳). سرور بلافاصله بعد از join یک
+    //    `HB_ROOM_INFO` می‌فرستد و همان این را به `saved` می‌بَرد. تا آن لحظه —
+    //    و برای همیشه اگر سروری در کار نباشد — ادعای «ذخیره شد» دروغ است.
+    inbound.setSaveState({ status: "unsaved", pendingChanges: 0 });
 
     return this.buildOutbound();
   }
@@ -370,6 +373,16 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
         return;
       case MSG_TYPES.HB_EPHEMERAL:
         this.presence?.receiveEphemeral(message.clientId, message.payload);
+        return;
+      case MSG_TYPES.HB_ROOM_INFO:
+        // ★★ **تنها منبعِ «ذخیره شد»** (گام ۴٫۳): سرور این را بعد از نوشتنِ
+        //    واقعیِ دیتابیس می‌فرستد. اگر خودمان می‌گفتیم، به کاربر دروغ می‌گفتیم.
+        this.inbound?.setSaveState(
+          message.save === "saved"
+            ? { status: "saved", at: Date.now() }
+            : { status: message.save === "saving" ? "saving" : "unsaved", pendingChanges: 0 },
+        );
+        this.inbound?.setConnectionState({ status: "connected", peers: this.peerCount });
         return;
       default:
         // بقیه‌ی کدها (مجوز، اطلاعاتِ اتاق، خطا) کارِ سرورِ فاز ۴ اند.
@@ -602,10 +615,17 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
       for (const asset of changes.assets ?? []) writeAsset(roots.assets, asset satisfies HbAsset);
     }, new LocalOrigin(changes.gestureId));
 
-    // ⚠️ **این «ذخیره شد» فقط تا وقتی راست است که سند در حافظه باشد.** قرارداد M1
-    //    می‌گوید `SaveState` باید حقیقت را بگوید نه خوش‌بینی؛ گام ۴٫۳ باید
-    //    `saved` را پشتِ نوشتنِ **واقعیِ** دیتابیس ببرد.
-    this.inbound?.setSaveState({ status: "saved", at: Date.now() });
+    // ★★ **«ذخیره شد» را دیگر خودمان نمی‌گوییم** (گام ۴٫۳).
+    //
+    // تا فاز ۳ اینجا `saved` گفته می‌شد، که خوش‌بینی بود نه حقیقت: سند فقط در
+    // حافظه بود. حالا سرور بعد از نوشتنِ **واقعیِ** دیتابیس `HB_ROOM_INFO` با
+    // `save: "saved"` می‌فرستد و مسیرِ آن پیام این را ست می‌کند.
+    //
+    // ⚠️ **بدونِ ترابری** هیچ سروری نیست که تایید کند، پس وضعیت `unsaved`
+    // می‌مانَد — و این درست است، نه یک نقص: یک بومِ آفلاین واقعاً ذخیره نشده.
+    if (!this.transport) {
+      this.inbound?.setSaveState({ status: "unsaved", pendingChanges: 0 });
+    }
   }
 
   /**

@@ -160,6 +160,14 @@ async function authenticate(
   target: Target,
   { authority, logger, onJoin }: HandshakeDeps,
 ): Promise<void> {
+  // ★★ **مکث تا وقتی اتاق شنونده‌اش را سوار کند** — قبل از هر `await`.
+  //
+  // ⚠️ این را تستِ SIGKILL پیدا کرد، نه بازبینی: کلاینت به محضِ `open` شروع به
+  // فرستادن می‌کند (خودِ `canvas-sync` همان لحظه step1/step2 می‌فرستد)، ولی
+  // `open` **قبل از** پایانِ احراز هویت و بارگذاریِ اتاق رخ می‌دهد. بدونِ این
+  // مکث، آن پیام‌ها به سوکتی می‌رسیدند که هنوز هیچ شنونده‌ای ندارد و `ws`
+  // بی‌صدا دورشان می‌ریخت — یعنی اولین ژستِ کاربر گم می‌شد **بدونِ هیچ خطایی**.
+  socket.pause();
   try {
     const claims = await authority.verify(target.token, target.boardId);
 
@@ -179,6 +187,9 @@ async function authenticate(
       role: claims.role,
       exp: claims.exp,
     });
+
+    // ★ حالا اتاق شنونده دارد؛ هرچه در این فاصله رسیده بود تحویل می‌شود.
+    socket.resume();
   } catch (cause) {
     const error =
       cause instanceof RtProtocolError
@@ -194,6 +205,11 @@ async function authenticate(
       detail: error.detail,
     });
 
+    // ⚠️ **قبل از بستن باید resume شود.** `pause` گیرنده را متوقف می‌کند، و
+    //    سوکتِ متوقف قابِ `close`ِ کلاینت را هم نمی‌خوانَد — یعنی دست‌دادنِ بستن
+    //    نیمه‌کاره می‌مانَد و اتصال تا timeout باز. (چهار تستِ ردِ گام ۴٫۱ همین
+    //    را نشان دادند.)
+    socket.resume();
     denyConnection(socket, error);
   }
 }

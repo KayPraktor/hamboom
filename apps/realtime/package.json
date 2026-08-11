@@ -5,6 +5,9 @@
   "type": "module",
   "license": "MIT",
   "description": "سرور WebSocket همگام‌سازی بلادرنگ — Yjs، اتاق، پایداری، awareness. بدون UI.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
@@ -18,12 +21,16 @@
     "eslint": "^9.17.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",
-    "@types/ws": "^8.5.13"
+    "@types/ws": "^8.5.13",
+    "@types/pg": "^8.11.10"
   },
   "dependencies": {
     "@hamboom/shared-types": "workspace:*",
     "@hamboom/ydoc-schema": "workspace:*",
     "yjs": "^13.6.20",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "pg": "^8.13.1",
+    "y-protocols": "^1.0.6",
+    "lib0": "0.2.117"
   }
 }

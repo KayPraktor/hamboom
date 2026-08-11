@@ -1,4 +1,4 @@
-import { decodeMessage, MSG_TYPES } from "@hamboom/ydoc-schema";
+import { decodeMessage, encodeMessage, MSG_TYPES } from "@hamboom/ydoc-schema";
 import { WebSocket } from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -140,6 +140,45 @@ describe("★★ معیارِ پذیرش — سه ردشدن، سه کدِ در�
 
     expect(outcome.message).toMatchObject({ code: "FORBIDDEN" });
     expect(joined).toEqual([]);
+  });
+});
+
+describe("★★ پنجره‌ی دست‌دادن — پیامی که زودتر از اتاق می‌رسد", () => {
+  it("پیامِ فرستاده‌شده در لحظه‌ی `open` گم نمی‌شود", async () => {
+    // ⚠️ این باگ را **تستِ SIGKILL** پیدا کرد، نه تستِ واحد: کلاینت به محضِ
+    // `open` می‌فرستد (خودِ `canvas-sync` همان لحظه step1/step2 می‌دهد)، ولی
+    // `open` **قبل از** پایانِ احراز هویت و بارگذاریِ اتاق رخ می‌دهد. تا قبل از
+    // `socket.pause()`، آن پیام‌ها به سوکتی می‌رسیدند که هنوز شنونده نداشت و
+    // `ws` بی‌صدا دورشان می‌ریخت — یعنی **اولین ژستِ کاربر گم می‌شد**.
+    const received: Uint8Array[] = [];
+    const server = await startServer({
+      onJoin: (session) => {
+        // یک بارگذاریِ کند، مثلِ اتاقی که از دیتابیس می‌آید.
+        return new Promise<void>((resolve) => {
+          setTimeout(() => {
+            session.socket.on("message", (data: unknown) => {
+              received.push(new Uint8Array(data as ArrayBuffer));
+            });
+            resolve();
+          }, 60);
+        });
+      },
+    });
+
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${server.port}/rt?board=${BOARD}&token=${validToken()}`,
+    );
+    await new Promise((resolve) => socket.on("open", resolve));
+    // ★ دقیقاً در لحظه‌ی `open` — قبل از اینکه اتاق آماده باشد.
+    socket.send(encodeMessage({ type: MSG_TYPES.HB_AUTH_REFRESH, token: "probe" }));
+
+    await vi.waitFor(() => expect(received).toHaveLength(1));
+    expect(decodeMessage(received[0]!)).toEqual({
+      type: MSG_TYPES.HB_AUTH_REFRESH,
+      token: "probe",
+    });
+
+    socket.close();
   });
 });
 

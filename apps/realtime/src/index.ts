@@ -52,3 +52,12 @@ export {
 } from "./room.ts";
 
 export { MemoryBoardStore, type BoardSnapshot, type BoardStore } from "./store/board-store.ts";
+
+export { createPersistedBoardStore } from "./store/persisted-board-store.ts";
+
+export { MemoryUpdateLog, type AppendedUpdate, type UpdateLog } from "./persistence/update-log.ts";
+
+export {
+  createPostgresUpdateLog,
+  type PostgresUpdateLogOptions,
+} from "./persistence/postgres-update-log.ts";
