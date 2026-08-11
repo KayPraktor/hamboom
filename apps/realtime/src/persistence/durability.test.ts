@@ -122,7 +122,7 @@ function managerWith(log: UpdateLog) {
   return {
     lines,
     rooms: createRoomManager({
-      store: createPersistedBoardStore(log),
+      store: createPersistedBoardStore({ log }),
       log,
       limits: { maxRoomsPerNode: 10, maxDocBytes: 5_000_000, idleTimeoutMs: 60_000 },
       logger: createLogger({ level: "debug", write: (line) => lines.push(line) }),
@@ -138,6 +138,7 @@ describe("★★ دوام قبل از ack", () => {
     const log: UpdateLog = {
       since: (board, after) => inner.since(board, after),
       latestSeq: (board) => inner.latestSeq(board),
+      prune: (board, upto) => inner.prune(board, upto),
       async append(board, payload, origin): Promise<AppendedUpdate> {
         order.push("append:start");
         // یک تیک تاخیر تا اگر کسی زودتر ack بفرستد، اینجا دیده شود.
@@ -173,6 +174,7 @@ describe("★★ دوام قبل از ack", () => {
       append: () => Promise.reject(new Error("دیتابیس در دسترس نیست")),
       since: () => Promise.resolve([]),
       latestSeq: () => Promise.resolve(0),
+      prune: () => Promise.resolve(0),
     };
 
     const { rooms, lines } = managerWith(log);

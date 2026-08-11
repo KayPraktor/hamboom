@@ -17,6 +17,15 @@ export interface BoardSnapshot {
   snapshot: Uint8Array | null;
   /** updateهای بعد از snapshot، **به ترتیبِ `seq`**. */
   updates: Uint8Array[];
+  /**
+   * `seq`ی که snapshot تا آن را در خود دارد؛ صفر یعنی snapshotی نبوده.
+   *
+   * ★ گام ۴٫۴ این را اضافه کرد چون **اتاق باید بداند از کجا بشمارد**. بدونش
+   * مبدأِ آستانه‌ی فشرده‌سازی یا صفر می‌شد (بوردِ تازه‌بارگذاری‌شده بلافاصله
+   * دوباره فشرده می‌شد) یا `seq`ِ جاری (بوردی با ۴۹۹ updateِ فشرده‌نشده تا ۵۰۰
+   * updateِ **دیگر** صبر می‌کرد). هیچ‌کدام آن چیزی نیست که ADR-009 می‌خواهد.
+   */
+  seqUpto: number;
 }
 
 export interface BoardStore {
@@ -38,6 +47,7 @@ export class MemoryBoardStore implements BoardStore {
     return Promise.resolve({
       snapshot: stored?.snapshot ?? null,
       updates: [...(stored?.updates ?? [])],
+      seqUpto: stored?.seqUpto ?? 0,
     });
   }
 
@@ -46,6 +56,7 @@ export class MemoryBoardStore implements BoardStore {
     this.boards.set(boardId, {
       snapshot: data.snapshot ?? null,
       updates: data.updates ?? [],
+      seqUpto: data.seqUpto ?? 0,
     });
   }
 }

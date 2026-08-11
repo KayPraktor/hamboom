@@ -61,3 +61,36 @@ export {
   createPostgresUpdateLog,
   type PostgresUpdateLogOptions,
 } from "./persistence/postgres-update-log.ts";
+
+export { createPgPool, type PgPoolOptions } from "./persistence/pg-pool.ts";
+
+export {
+  MemorySnapshotStore,
+  snapshotKey,
+  type SnapshotStore,
+} from "./persistence/snapshot-store.ts";
+
+export {
+  createFsSnapshotStore,
+  DEFAULT_SNAPSHOT_DIR,
+  type FsSnapshotStoreOptions,
+} from "./persistence/fs-snapshot-store.ts";
+
+export {
+  MemorySnapshotCatalog,
+  type SnapshotCatalog,
+  type SnapshotRecord,
+} from "./persistence/snapshot-catalog.ts";
+
+export {
+  createPostgresSnapshotCatalog,
+  type PostgresSnapshotCatalogOptions,
+} from "./persistence/postgres-snapshot-catalog.ts";
+
+export {
+  createCompactor,
+  type CompactionResult,
+  type CompactionThresholds,
+  type Compactor,
+  type CompactorOptions,
+} from "./persistence/compactor.ts";

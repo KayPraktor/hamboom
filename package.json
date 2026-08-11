@@ -29,7 +29,8 @@
     "db:down": "docker compose -f infra/docker/docker-compose.yml --env-file .env down",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
     "db:smoke": "node --env-file-if-exists=.env scripts/db-smoke.ts",
-    "rt:durability": "node --env-file-if-exists=.env scripts/rt-durability.ts"
+    "rt:durability": "node --env-file-if-exists=.env scripts/rt-durability.ts",
+    "rt:compaction": "node --env-file-if-exists=.env scripts/rt-compaction.ts"
   },
   "devDependencies": {
     "@hamboom/config": "workspace:*",

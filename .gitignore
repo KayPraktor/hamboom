@@ -50,3 +50,6 @@ desktop.ini
 # فایل‌های موقت session های Claude
 PROGRESS.local.md
 scratch/
+
+# snapshotهای محلیِ FsSnapshotStore (D-3) — داده‌ی توسعه، نه سورس
+.hamboom/

@@ -68,6 +68,14 @@ export const realtimeEnvSchema = z.object({
   RT_HEARTBEAT_INTERVAL_MS: envInt(25_000),
   RT_SNAPSHOT_EVERY_UPDATES: envInt(500),
   RT_SNAPSHOT_EVERY_MS: envInt(60_000),
+  /**
+   * ریشه‌ی `FsSnapshotStore` (D-3) — جای Object Storage تا M3.
+   *
+   * ★ مسیرِ **لوکال** عمدی است (P3): توسعه نباید به حسابِ ابریِ واقعی نیاز
+   * داشته باشد. با آمدنِ `packages/storage`، این متغیر جایش را به تنظیماتِ
+   * S3 می‌دهد و خودش می‌رود.
+   */
+  RT_SNAPSHOT_DIR: z.string().min(1).default(".hamboom/snapshots"),
   /** سقفِ سختِ حجمِ هر بورد — ریسکِ ثبت‌شده در PLAN بخش ۱۰. */
   RT_MAX_DOC_BYTES: envInt(52_428_800),
 });

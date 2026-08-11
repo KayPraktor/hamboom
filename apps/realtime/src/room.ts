@@ -16,6 +16,7 @@ import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
 import { createLogger, maskSubject, type Logger } from "./log.ts";
+import type { Compactor } from "./persistence/compactor.ts";
 import type { UpdateLog } from "./persistence/update-log.ts";
 import { RtProtocolError } from "./protocol-error.ts";
 import type { BoardStore } from "./store/board-store.ts";
@@ -89,6 +90,15 @@ export interface RoomManagerOptions {
    * — همان حالتی که تا گام ۴٫۲ داشتیم.
    */
   log?: UpdateLog;
+  /**
+   * فشرده‌سازی — گام ۴٫۴. بدونش لاگ برای همیشه رشد می‌کند (رفتارِ تا ۴٫۳).
+   *
+   * ★ اتاق فقط **ماشه** را می‌کشد و `boardId` می‌دهد؛ سندِ خودش را نمی‌دهد و
+   * نمی‌تواند بدهد. دلیلش در [`compactor.ts`](./persistence/compactor.ts) است:
+   * سندِ اتاق **قرنطینه‌شده** است و snapshot گرفتن از آن، پاک‌سازی را دائمی
+   * می‌کند — همان تصمیمِ معلقِ گام ۴٫۲.
+   */
+  compactor?: Compactor;
   limits: RoomLimits;
   logger?: Logger;
 }
@@ -131,11 +141,18 @@ interface LiveRoom extends Room {
   idleTimer: ReturnType<typeof setTimeout> | null;
   /** آخرین `seq`ِ پایدارشده — در `HB_ROOM_INFO` به کلاینت می‌رود. */
   seq: number;
+  /** `seq`ی که آخرین snapshot تا آن را دارد — مبدأِ شمارشِ آستانه‌ی فشرده‌سازی. */
+  compactedSeq: number;
+  /** زمانِ آخرین فشرده‌سازی — مبدأِ `RT_SNAPSHOT_EVERY_MS`. */
+  compactedAt: number;
+  /** ★ یک فشرده‌سازی در هر لحظه؛ دو تای همزمان روی یک بورد به هم می‌رسند. */
+  compacting: boolean;
 }
 
 export function createRoomManager({
   store,
   log,
+  compactor,
   limits,
   logger = createLogger(),
 }: RoomManagerOptions): RoomManager {
@@ -168,8 +185,27 @@ export function createRoomManager({
       );
     }
 
-    const { snapshot, updates } = await store.load(boardId);
-    const doc = createBoardDoc();
+    const { snapshot, updates, seqUpto } = await store.load(boardId);
+
+    /**
+     * ★★ **فقط بوردِ نو `createBoardDoc` می‌گیرد** — کشفِ گام ۴٫۴.
+     *
+     * `createBoardDoc` هر بار `meta.schemaVersion` را با یک `clientID`ِ **تازه**
+     * می‌نویسد. تا وقتی روی بوردِ موجود هم صدا زده می‌شد، **هر بار که اتاق بالا
+     * می‌آمد** یک مدخلِ کلاینتِ دیگر به سندی که کلاینت‌ها می‌بینند اضافه می‌شد.
+     *
+     * ⚠️ و بی‌ضرر هم نبود: آن opها پایدار نمی‌شوند (originشان `ClientOrigin`
+     * نیست)، ولی به کلاینت می‌رسند — و کلاینتی که بعد از یک ری‌استارت دوباره
+     * وصل شود، در step2ِ خودش همان opِ اتاقِ **قبلی** را به سرور برمی‌گرداند،
+     * این‌بار با originِ کلاینت. یعنی با هر ری‌استارت یک opِ زائد در لاگ ته‌نشین
+     * می‌شد و برای همیشه می‌مانْد.
+     *
+     * ★ سنجه‌ی ۴٫۴ همین را نشان داد: state vectorِ کلاینتِ تازه با کلاینتِ اول
+     * نمی‌خواند، در حالی که محتوا مو‌به‌مو یکی بود. سندِ موجود `meta` را از قبل
+     * دارد؛ اگر هم نداشته باشد، `migrateDocument` پایین‌تر مهرش می‌زند.
+     */
+    const isNewBoard = snapshot === null && updates.length === 0;
+    const doc = isNewBoard ? createBoardDoc() : new Y.Doc();
 
     // ⚠️ در **یک** تراکنش: هر update جداگانه یک رویداد است و بارگذاریِ یک بوردِ
     //    بزرگ را به هزاران رویدادِ بی‌فایده تبدیل می‌کند.
@@ -204,13 +240,23 @@ export function createRoomManager({
       );
     }
 
+    const seq = log ? await log.latestSeq(boardId) : 0;
     const room: LiveRoom = {
       boardId,
       doc,
       report: { migration, quarantined, bytes, pendingStructs },
       sessions: new Set(),
       idleTimer: null,
-      seq: log ? await log.latestSeq(boardId) : 0,
+      seq,
+      // ★ مبدأ از **کاتالوگ** می‌آید، نه از `seq`ِ جاری و نه از صفر: بوردی که با
+      //   ۴۹۹ updateِ فشرده‌نشده بالا می‌آید باید با یکی دو updateِ بعدی به آستانه
+      //   برسد، نه اینکه ۵۰۰ تای **دیگر** صبر کند.
+      compactedSeq: seqUpto,
+      // ⚠️ زمانِ **بارگذاری** است نه زمانِ واقعیِ snapshot (که در `created_at`
+      //    کاتالوگ است). یعنی آستانه‌ی `everyMs` از لحظه‌ی بالا آمدنِ اتاق شمرده
+      //    می‌شود؛ محافظه‌کارانه است — دیرتر فشرده می‌کند، نه زودتر.
+      compactedAt: Date.now(),
+      compacting: false,
       get size() {
         return this.sessions.size;
       },
@@ -280,6 +326,57 @@ export function createRoomManager({
     }
 
     broadcast(room, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saved") }));
+
+    // ★ **بعد** از ack — فشرده‌سازی یک بهینه‌سازیِ پس‌زمینه است و هیچ‌وقت نباید
+    //   بینِ کاربر و «ذخیره شد» بایستد.
+    maybeCompact(room);
+  }
+
+  /**
+   * ماشه‌ی فشرده‌سازی.
+   *
+   * ⚠️ **شکستش اتاق را نمی‌شکند.** بدترین حالتِ یک فشرده‌سازیِ ناموفق این است که
+   * لاگ بزرگ‌تر می‌مانَد؛ ولی اگر خطایش بالا برود، مسیرِ پخش را می‌اندازد — یعنی
+   * یک بهینه‌سازی به یک قطعیِ همگام‌سازی تبدیل می‌شود.
+   *
+   * ★ و **در بازه‌ی `everyMs` هم فقط روی update نگاه می‌شود**، نه با تایمر. یعنی
+   * بوردی که کاملاً ساکت شده فشرده نمی‌شود — که اشکالی ندارد: چیزی برای فشردن
+   * ندارد و اتاقش هم به‌زودی تخلیه می‌شود. تایمرِ اضافه فقط یک مسیرِ خطای دیگر
+   * می‌ساخت.
+   */
+  function maybeCompact(room: LiveRoom): void {
+    if (!compactor || room.compacting) return;
+    if (
+      !compactor.shouldCompact({
+        seq: room.seq,
+        sinceSeq: room.compactedSeq,
+        sinceAt: room.compactedAt,
+      })
+    ) {
+      return;
+    }
+
+    // ★ هدف را **همین‌جا** قفل کن: بعد از این `await` باز هم update می‌آید و
+    //   `room.seq` جلو می‌رود؛ snapshot نباید ادعا کند شامل چیزی است که ندیده.
+    const target = room.seq;
+    room.compacting = true;
+    void compactor
+      .compact(room.boardId, target)
+      .then((result) => {
+        if (!result) return;
+        room.compactedSeq = result.seqUpto;
+        room.compactedAt = Date.now();
+      })
+      .catch((cause: unknown) => {
+        logger.error("فشرده‌سازی شکست خورد؛ لاگ دست‌نخورده مانْد", {
+          boardId: room.boardId,
+          target,
+          error: String(cause),
+        });
+      })
+      .finally(() => {
+        room.compacting = false;
+      });
   }
 
   function handleMessage(room: LiveRoom, session: RtSession, data: Uint8Array): void {

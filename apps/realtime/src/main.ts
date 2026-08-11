@@ -8,6 +8,10 @@ import {
 
 import { createDevBoardAuthority } from "./auth/index.ts";
 import { createLogger } from "./log.ts";
+import { createCompactor } from "./persistence/compactor.ts";
+import { createFsSnapshotStore } from "./persistence/fs-snapshot-store.ts";
+import { createPgPool } from "./persistence/pg-pool.ts";
+import { createPostgresSnapshotCatalog } from "./persistence/postgres-snapshot-catalog.ts";
 import { createPostgresUpdateLog } from "./persistence/postgres-update-log.ts";
 import { createRoomManager } from "./room.ts";
 import { createRtServer } from "./server.ts";
@@ -30,15 +34,28 @@ async function main(): Promise<void> {
   );
   const logger = createLogger({ level: env.LOG_LEVEL });
 
-  const log = createPostgresUpdateLog({
+  const pool = createPgPool({
     connectionString: env.DATABASE_URL,
     ssl: env.DATABASE_SSL,
     max: env.DATABASE_POOL_MAX,
   });
+  const log = createPostgresUpdateLog({ pool, logger });
+  const catalog = createPostgresSnapshotCatalog({ pool });
+  const store = createFsSnapshotStore({ directory: env.RT_SNAPSHOT_DIR });
 
   const rooms = createRoomManager({
-    store: createPersistedBoardStore(log),
+    store: createPersistedBoardStore({ log, snapshots: { store, catalog } }),
     log,
+    compactor: createCompactor({
+      log,
+      store,
+      catalog,
+      thresholds: {
+        everyUpdates: env.RT_SNAPSHOT_EVERY_UPDATES,
+        everyMs: env.RT_SNAPSHOT_EVERY_MS,
+      },
+      logger,
+    }),
     limits: {
       maxRoomsPerNode: env.RT_MAX_ROOMS_PER_NODE,
       maxDocBytes: env.RT_MAX_DOC_BYTES,
@@ -61,7 +78,7 @@ async function main(): Promise<void> {
     void (async () => {
       await server.close();
       await rooms.close();
-      await log.close?.();
+      await pool.end();
       process.exit(0);
     })();
   };
