@@ -214,6 +214,8 @@ export function createRoomManager({
   const rooms = new Map<string, LiveRoom>();
   /** بارگذاری‌های در جریان — دو نشستِ همزمان نباید دو بار سند را بسازند. */
   const loading = new Map<string, Promise<LiveRoom>>();
+  /** نوشتن‌های در جریان — خاموشیِ مودبانه منتظرشان می‌مانَد (گام ۴٫۸). */
+  const inFlight = new Set<Promise<void>>();
 
   function evict(room: LiveRoom): void {
     if (room.sessions.size > 0) return;
@@ -533,7 +535,15 @@ export function createRoomManager({
       //    سدِ اولِ ضدِ حلقه؛ برچسبِ `nodeId` سدِ دوم است (ADR-006).
       if (from) publishToBus(room, BUS_KINDS.UPDATE, update, 0);
 
-      void persistAndFanout(room, update, from);
+      // ★★ **نوشتنِ در جریان شمرده می‌شود** — گام ۴٫۸.
+      //
+      // ⚠️ بدونِ این، `SIGTERM` می‌توانست وسطِ یک `append` برسد و فرایند قبل از
+      //    نشستنِ آن روی دیسک تمام شود. کلاینت هنوز «ذخیره شد» ندیده، پس
+      //    ADR-009 فنی نقض نمی‌شد — ولی کارِ کاربر **بی‌صدا** می‌رفت، و معیارِ
+      //    پذیرشِ این گام صریح است: «هیچ updateای گم نمی‌شود».
+      const task = persistAndFanout(room, update, from);
+      inFlight.add(task);
+      void task.finally(() => inFlight.delete(task));
     });
   }
 
@@ -898,7 +908,45 @@ export function createRoomManager({
       return room;
     },
 
+    /**
+     * ★★ خاموشیِ مودبانه — گام ۴٫۸. **ترتیب کلِ ادعاست.**
+     *
+     * ۱. **تخلیه:** صبر تا پایانِ نوشتن‌های در جریان. صداکننده باید سوکت‌ها را
+     *    از قبل با `1001` بسته باشد، وگرنه ورودیِ تازه ادامه دارد و این صف
+     *    هیچ‌وقت خالی نمی‌شود.
+     * ۲. **snapshot:** فقط برای اتاق‌هایی که **صاحبشان** هستیم — قاعده‌ی ۴٫۷.
+     *    نودِ بعدی بورد را از snapshot می‌خوانَد، نه از هزاران update.
+     * ۳. **رهاکردنِ قفل:** تا بورد ۳۰ ثانیه بی‌صاحب نمانَد.
+     */
     async close() {
+      // ۱) تخلیه
+      if (inFlight.size > 0) {
+        logger.info("خاموشی: صبر برای نوشتن‌های در جریان", { pending: inFlight.size });
+        await Promise.allSettled([...inFlight]);
+      }
+
+      // ۲) snapshot
+      for (const room of rooms.values()) {
+        if (!room.owner || !compactor) continue;
+        try {
+          const result = await compactor.compact(room.boardId, room.seq);
+          if (result) {
+            logger.info("خاموشی: snapshot گرفته شد", {
+              boardId: room.boardId,
+              seqUpto: result.seqUpto,
+            });
+          }
+        } catch (cause) {
+          // ⚠️ شکستِ snapshot نباید جلوی خاموشی را بگیرد: داده در لاگ هست و
+          //    نودِ بعدی از همان می‌خوانَد — فقط کندتر.
+          logger.error("خاموشی: snapshot نشد", {
+            boardId: room.boardId,
+            error: String(cause),
+          });
+        }
+      }
+
+      // ۳) رهاکردن
       for (const room of rooms.values()) {
         if (room.idleTimer) clearTimeout(room.idleTimer);
         releaseRoom(room);

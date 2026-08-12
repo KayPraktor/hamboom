@@ -33,26 +33,28 @@
     "rt:compaction": "node --env-file-if-exists=.env scripts/rt-compaction.ts",
     "rt:permission": "node --env-file-if-exists=.env scripts/rt-permission.ts",
     "rt:presence": "node --env-file-if-exists=.env scripts/rt-presence.ts",
-    "rt:cluster": "node --env-file-if-exists=.env scripts/rt-cluster.ts"
+    "rt:cluster": "node --env-file-if-exists=.env scripts/rt-cluster.ts",
+    "rt:shutdown": "node --env-file-if-exists=.env scripts/rt-shutdown.ts"
   },
   "devDependencies": {
     "@hamboom/config": "workspace:*",
     "@hamboom/eslint-config": "workspace:*",
+    "@hamboom/realtime": "workspace:*",
     "@hamboom/tsconfig": "workspace:*",
+    "@hamboom/ydoc-schema": "workspace:*",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.10",
-    "pg": "^8.13.1",
+    "@types/ws": "^8.5.13",
     "eslint": "^9.17.0",
+    "ioredis": "^6.0.0",
+    "lib0": "0.2.117",
+    "pg": "^8.13.1",
     "prettier": "^3.4.0",
     "stylelint": "^17.14.1",
     "turbo": "^2.3.0",
     "typescript": "^5.7.0",
-    "@hamboom/realtime": "workspace:*",
-    "@hamboom/ydoc-schema": "workspace:*",
     "ws": "^8.18.0",
-    "yjs": "^13.6.20",
     "y-protocols": "^1.0.6",
-    "lib0": "0.2.117",
-    "@types/ws": "^8.5.13"
+    "yjs": "^13.6.20"
   }
 }

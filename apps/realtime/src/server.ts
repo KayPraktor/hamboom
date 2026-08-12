@@ -47,6 +47,8 @@ export interface RtServerOptions {
   /** `APP_ENV` — گیتِ ADR-031 روی همین می‌نشیند. */
   appEnv: string;
   port?: number;
+  /** `RT_HEARTBEAT_INTERVAL_MS` — باید **کوتاه‌تر** از idle timeoutِ لودبالانسر باشد. */
+  heartbeatMs?: number;
   logger?: Logger;
   /**
    * ★ ورودیِ اتاق (گام ۴٫۲: `RoomManager.join`).
@@ -60,6 +62,16 @@ export interface RtServerOptions {
 
 export interface RtServer {
   readonly port: number;
+  /** آیا `/readyz` سبز است؟ در خاموشیِ مودبانه `false` می‌شود. */
+  readonly ready: boolean;
+  /**
+   * ★★ خاموشیِ **مودبانه** — گام ۴٫۸.
+   *
+   * از لودبالانسر بیرون می‌رود و کلاینت‌ها را با `1001 Going Away` بدرقه می‌کند،
+   * ولی سرور را نمی‌بندد: صداکننده بعدش فرصت دارد کارِ نیمه‌تمام را تخلیه کند و
+   * snapshot بگیرد.
+   */
+  shutdown(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -76,6 +88,18 @@ const RT_PATH = "/rt";
 const CLOSE_POLICY = 1008;
 
 /**
+ * ★ کدِ بستنِ خاموشیِ مودبانه — `1001 Going Away` (الزامِ ADR-006).
+ *
+ * ⚠️ عمداً ۱۰۰۰ نیست: ۱۰۰۰ یعنی «کار تمام شد» و کلاینت می‌تواند آرام بگیرد.
+ * ۱۰۰۱ یعنی «این نود دارد می‌رود» — کلاینت باید **فوراً** دوباره وصل شود، نه با
+ * backoff (گام ۵٫۱ سمتِ کلاینت را می‌سازد).
+ */
+const CLOSE_GOING_AWAY = 1001;
+
+/** سقفِ صبر برای رسیدنِ خداحافظیِ کلاینت‌ها — کلاینتِ مرده نباید گروگان بگیرد. */
+const GOODBYE_TIMEOUT_MS = 5_000;
+
+/**
  * ⚠️ **`async` است تا شکستِ گیت همیشه یک rejection باشد.**
  *
  * اگر تابع همزمان throw می‌کرد، صداکننده‌ای که `createRtServer(...).catch(...)`
@@ -87,6 +111,7 @@ export async function createRtServer({
   authority,
   appEnv,
   port = 0,
+  heartbeatMs = 25_000,
   logger = createLogger(),
   onJoin = () => {},
 }: RtServerOptions): Promise<RtServer> {
@@ -94,13 +119,46 @@ export async function createRtServer({
   //    می‌آمد و تازه اولین اتصال معلوم می‌کرد که با احراز هویتِ ساختگی کار می‌کند.
   assertAuthorityUsable(authority, appEnv);
 
-  const http = createServer((_request, response) => {
+  /**
+   * ★★ آیا این نود **آماده‌ی گرفتنِ ترافیک** است؟
+   *
+   * ⚠️ در خاموشیِ مودبانه **اول این `false` می‌شود**، بعد سوکت‌ها بسته می‌شوند.
+   * ترتیبِ برعکس یعنی کلاینتی که همین الان بیرون انداختیم، دوباره به **همین**
+   * نود برگردد — چون لودبالانسر هنوز آن را سالم می‌داند.
+   */
+  let ready = true;
+
+  const http = createServer((request, response) => {
+    // ── ★ کاوشِ سلامت — بدونِ auth (الزامِ K8s در ADR-006) ──────────
+    //
+    // ⚠️ دو چیزِ متفاوت‌اند و قاطی‌کردنشان استقرار را خراب می‌کند:
+    //   `/healthz` = «زنده‌ام» → اگر رد شود، K8s پاد را **می‌کشد**.
+    //   `/readyz`  = «ترافیک بده» → اگر رد شود، فقط از لودبالانسر خارج می‌شود.
+    // اگر `healthz` هم در خاموشی رد می‌شد، پاد وسطِ تخلیه کشته می‌شد.
+    if (request.url === "/healthz") {
+      response.writeHead(200, { "content-type": "text/plain" }).end("ok");
+      return;
+    }
+    if (request.url === "/readyz") {
+      response
+        .writeHead(ready ? 200 : 503, { "content-type": "text/plain" })
+        .end(ready ? "ready" : "draining");
+      return;
+    }
+
     // این سرور HTTP سرو نمی‌کند؛ فقط جایی برای upgrade است.
     response.writeHead(404).end();
   });
   const wss = new WebSocketServer({ noServer: true });
 
   http.on("upgrade", (request, socket, head) => {
+    // ⚠️ در حالِ خاموشی هیچ اتصالِ تازه‌ای نمی‌پذیریم — وگرنه کلاینتی وصل می‌شود
+    //    که چند لحظه بعد با ۱۰۰۱ بیرون انداخته می‌شود.
+    if (!ready) {
+      rejectHandshake(socket, 503, "shutting down");
+      return;
+    }
+
     const target = parseTarget(request);
     if (!target) {
       // ⚠️ بدونِ upgrade — این کلاینتِ ما نیست.
@@ -109,9 +167,49 @@ export async function createRtServer({
     }
 
     wss.handleUpgrade(request, socket, head, (ws) => {
+      // ⚠️ **اینجا ثبت می‌شود، نه در رویدادِ `connection`.** با `noServer: true`
+      //    آن رویداد **خودش emit نمی‌شود** — `handleUpgrade` فقط این callback را
+      //    صدا می‌زند. با تکیه بر `connection`، هیچ سوکتی «زنده» علامت نمی‌خورد و
+      //    اولین تیکِ heartbeat **همه‌ی کلاینت‌ها را می‌کشت**.
+      markAlive(ws);
       void authenticate(ws, target, { authority, logger, onJoin });
     });
   });
+
+  /**
+   * ★★ heartbeat — [ADR-006](../../../ARCHITECTURE_DECISIONS.md#adr-006).
+   *
+   * دو کار می‌کند و هر دو لازم‌اند:
+   *
+   * ۱. **اتصال را از دیدِ لودبالانسر زنده نگه می‌دارد.** فاصله عمداً کوتاه‌تر از
+   *    timeoutِ idleِ Ingress است؛ وگرنه یک بومِ باز ولی ساکت قطع می‌شود.
+   * ۲. ★ **اتصالِ نیم‌باز را پیدا می‌کند.** روی شبکه‌ای که وسط راه بسته می‌شود
+   *    (ریسکِ صریحِ PLAN بخش ۱۰)، TCP می‌تواند تا دقایق «باز» بماند در حالی که
+   *    هیچ بایتی رد نمی‌شود. آن سوکت **نه `close` می‌دهد نه خطا** — یعنی حضورِ
+   *    کاربرِ رفته روی بومِ بقیه یخ می‌زند و اتاق هم تخلیه نمی‌شود.
+   *
+   * ⚠️ پس «پاسخ نداد» یعنی `terminate`، نه `close`: سوکتی که مرده، دستِ‌دادنِ
+   * بستن را هم تمام نمی‌کند و `close`ِ مودبانه تا timeout معلق می‌مانَد.
+   */
+  const alive = new WeakSet<WebSocket>();
+  function markAlive(socket: WebSocket): void {
+    alive.add(socket);
+    socket.on("pong", () => alive.add(socket));
+  }
+
+  const heartbeat = setInterval(() => {
+    for (const client of wss.clients) {
+      if (!alive.has(client)) {
+        logger.debug("اتصالِ بی‌پاسخ بسته شد (heartbeat)");
+        client.terminate();
+        continue;
+      }
+      alive.delete(client);
+      client.ping();
+    }
+  }, heartbeatMs);
+  // ⚠️ یک تایمرِ heartbeat نباید جلوی خاموش‌شدنِ فرایند را بگیرد.
+  heartbeat.unref?.();
 
   await new Promise<void>((resolve) => http.listen(port, resolve));
 
@@ -119,7 +217,54 @@ export async function createRtServer({
   const actual = typeof address === "object" && address ? address.port : port;
   logger.info("سرورِ realtime بالا آمد", { port: actual, appEnv });
 
-  return { port: actual, close: () => closeAll(http, wss) };
+  return {
+    port: actual,
+    get ready() {
+      return ready;
+    },
+
+    async shutdown() {
+      // ★ ترتیب عمدی است: **اول** از چشمِ لودبالانسر بیفت، بعد کلاینت‌ها را
+      //   بفرست. برعکسش یعنی همان کلاینت دوباره به همین نود برمی‌گردد.
+      ready = false;
+      clearInterval(heartbeat);
+
+      /**
+       * ★★ **و منتظرِ رسیدنِ خداحافظی می‌مانیم.**
+       *
+       * ⚠️ `close()` فقط دستِ‌دادنِ بستن را **شروع** می‌کند. اولین نسخه بلافاصله
+       * برمی‌گشت و `close()`ِ بعدی سوکت‌ها را `terminate` می‌کرد — یعنی قابِ
+       * بستن هرگز نمی‌رسید و کلاینت **۱۰۰۶ (قطعِ غیرعادی)** می‌دید، نه ۱۰۰۱.
+       * سنجه‌ی زنده دقیقاً همین را گرفت. «مودبانه» یعنی صبر تا رسیدنِ خبر.
+       */
+      const goodbyes = [...wss.clients].map(
+        (client) =>
+          new Promise<void>((resolve) => {
+            client.once("close", () => resolve());
+            client.close(CLOSE_GOING_AWAY, "going away");
+          }),
+      );
+
+      if (goodbyes.length > 0) {
+        // ⚠️ ولی **بی‌کران هم صبر نمی‌کنیم**: کلاینتی که مرده هرگز جواب نمی‌دهد و
+        //    نباید خاموشیِ نود را گروگان بگیرد. سقفِ K8s برای کلِ خاموشی ۶۰
+        //    ثانیه است (ADR-006) و این فقط اولین قدم است.
+        await Promise.race([
+          Promise.all(goodbyes),
+          new Promise((resolve) => setTimeout(resolve, GOODBYE_TIMEOUT_MS).unref?.()),
+        ]);
+      }
+
+      logger.info("خاموشیِ مودبانه: کلاینت‌ها با ۱۰۰۱ بدرقه شدند", {
+        clients: goodbyes.length,
+      });
+    },
+
+    close: () => {
+      clearInterval(heartbeat);
+      return closeAll(http, wss);
+    },
+  };
 }
 
 // ─────────────────────────────────────────────────────────────

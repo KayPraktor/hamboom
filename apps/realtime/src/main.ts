@@ -21,6 +21,7 @@ import { createRoomManager } from "./room.ts";
 import { createRedisBoardBus } from "./pubsub/redis-board-bus.ts";
 import { createRedisOwnerLock } from "./pubsub/redis-owner-lock.ts";
 import { createRtServer } from "./server.ts";
+import { gracefulShutdown } from "./shutdown.ts";
 import { createPersistedBoardStore } from "./store/persisted-board-store.ts";
 
 /**
@@ -109,22 +110,33 @@ async function main(): Promise<void> {
     authority: createDevBoardAuthority({ secret: env.RT_DEV_JWT_SECRET }),
     appEnv: env.APP_ENV,
     port: env.RT_PORT,
+    heartbeatMs: env.RT_HEARTBEAT_INTERVAL_MS,
     logger,
     onJoin: (session) => rooms.join(session),
   });
 
-  // ⚠️ خاموشیِ **مودبانه** کارِ گام ۴٫۸ است. اینجا فقط منابع بسته می‌شوند تا
-  //    اجرای محلی و اسکریپت‌ها تمیز تمام شوند.
-  const shutdown = (): void => {
-    void (async () => {
-      await server.close();
-      await rooms.close();
-      await pool.end();
+  // ★ ترتیبِ خاموشی عمداً **اینجا نیست** — در [`shutdown.ts`](./shutdown.ts) است
+  //   تا آزمودنی باشد. اینجا فقط سیگنال به آن وصل می‌شود.
+  let shuttingDown = false;
+  const onSignal = (signal: string): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info("خاموشی آغاز شد", { signal, nodeId });
+
+    void gracefulShutdown({
+      server,
+      rooms,
+      closeResources: async () => {
+        await pool.end();
+      },
+      logger,
+    }).then(() => {
+      logger.info("خاموشی تمام شد", { nodeId });
       process.exit(0);
-    })();
+    });
   };
-  process.once("SIGTERM", shutdown);
-  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", () => onSignal("SIGTERM"));
+  process.once("SIGINT", () => onSignal("SIGINT"));
 
   // ★ نشانه‌ی «آماده‌ام» برای اسکریپت‌ها — `rt-durability` روی همین منتظر می‌مانَد.
   logger.info("realtime آماده است", { port: server.port, nodeId });

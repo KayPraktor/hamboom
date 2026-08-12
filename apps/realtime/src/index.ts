@@ -43,6 +43,8 @@ export { createLogger, maskSubject, redactSecrets, type Logger, type LogLevel } 
 
 export { RtProtocolError } from "./protocol-error.ts";
 
+export { gracefulShutdown, type GracefulShutdownOptions } from "./shutdown.ts";
+
 export { mayBroadcastPresence, mayWriteDocument } from "./permission.ts";
 
 export { createRoomPresence, type RoomPresence, type RoomPresenceOptions } from "./awareness.ts";
