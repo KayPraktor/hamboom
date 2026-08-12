@@ -1014,13 +1014,23 @@ PLAN فرض می‌کرد آماده‌اند (`rt-token`، `packages/auth-core`
 
 ### گام ۴٫۵ — اعمالِ مجوز روی هر update ([ADR-012](ARCHITECTURE_DECISIONS.md#adr-012))
 
-- [ ] ★ نقش **در هر update** بررسی شود، نه فقط هنگام اتصال (صریحِ ADR-012 — چون نقش می‌تواند
-      وسطِ session عوض شود).
-- [ ] `viewer` می‌تواند awareness بفرستد ولی **هیچ updateِ سندی** نه — رد + `HB_ERROR{FORBIDDEN}`.
-- [ ] تغییرِ نقش در لحظه → `HB_PERMISSION` به کلاینت → `setPermissions` روی بوم.
-- **معیار پذیرش:** ★ تستِ **مهاجم**: یک کلاینت با نقشِ `viewer` مستقیماً یک updateِ باینریِ
-  معتبرِ Yjs می‌فرستد (دور زدنِ UI) → **سرور ردش می‌کند و سند تغییر نمی‌کند**. این رایج‌ترین
-  حفره‌ی امنیتی در محصولات مشابه است و ADR-012 صریحاً نامش را برده.
+- [x] ★ نقش **در هر update** بررسی می‌شود، نه فقط هنگام اتصال — در `handleMessage` و
+      **قبل از** `readSyncMessage`. بعدش دیر است: Yjs عقب‌گرد ندارد.
+      ⚠️ `step1` عمداً استثناست، وگرنه `viewer` بوردِ خالی می‌دید.
+- [x] `viewer` می‌تواند awareness بفرستد ولی **هیچ updateِ سندی** نه — رد + `HB_ERROR{FORBIDDEN}`
+      به‌همراهِ `HB_PERMISSION`، **بدونِ بستنِ اتصال** ([ADR-038](ARCHITECTURE_DECISIONS.md#adr-038)).
+      ⚠️ `commenter` هم فعلاً کنارِ `viewer` است (fail closed) — گپِ **G-2** در PROGRESS.
+- [x] تغییرِ نقش در لحظه → `HB_PERMISSION` به کلاینت (`RoomManager.applyRoleChange`).
+      سمتِ کلاینت (`setPermissions` روی بوم) گام ۵٫۳ است.
+      ★ **و حفره‌ی توکن بسته شد:** نقش داخلِ توکن است و توکن عوض نمی‌شود، پس بدونِ
+      بازپرسی از پورت (`currentRole`)، کاربرِ تنزل‌داده‌شده با بستن و بازکردنِ تب دوباره
+      `editor` می‌شد.
+- [x] **معیار پذیرش:** ✅ تستِ **مهاجم** در دو لایه — تستِ واحد (سند دست‌نخورده) و
+      [`scripts/rt-permission.ts`](scripts/rt-permission.ts) (`pnpm rt:permission`) با سرور،
+      سوکت و Postgresِ **واقعی**: updateِ `viewer` نه در سند می‌نشیند، نه در `board_updates`،
+      نه به همتا می‌رسد — و اتصالش باز می‌مانَد و همچنان می‌خوانَد.
+      ⚠️ همان سنجه نشان داد هر اتصالِ **سالمِ** `viewer` یک `FORBIDDEN`ِ کاذب می‌گرفت
+      (step2ِ تهیِ پاسخِ step1)؛ updateِ بدونِ op دیگر «نوشتن» شمرده نمی‌شود.
 
 ### گام ۴٫۶ — awareness و ephemeral سمتِ سرور
 
