@@ -33,6 +33,8 @@ export {
   AUTH_ERROR_CODES,
   createDevBoardAuthority,
   signDevToken,
+  type DevBoardAuthority,
+  type DevRoleOverrides,
   type BoardAuthority,
   type RtTokenClaims,
 } from "./auth/index.ts";
@@ -40,6 +42,8 @@ export {
 export { createLogger, maskSubject, redactSecrets, type Logger, type LogLevel } from "./log.ts";
 
 export { RtProtocolError } from "./protocol-error.ts";
+
+export { mayBroadcastPresence, mayWriteDocument } from "./permission.ts";
 
 export {
   createRoomManager,

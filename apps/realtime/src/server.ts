@@ -170,12 +170,15 @@ async function authenticate(
   socket.pause();
   try {
     const claims = await authority.verify(target.token, target.boardId);
+    const role = await effectiveRole(authority, claims);
 
     logger.info("اتصال پذیرفته شد", {
       boardId: target.boardId,
       // ★ P7 — شناسه هرگز خام. توکن اصلاً وارد لاگ نمی‌شود.
       sub: maskSubject(claims.sub),
-      role: claims.role,
+      role,
+      // فقط وقتی چیزی برای گفتن هست: نقشِ توکن با نقشِ واقعی نخوانده.
+      ...(role === claims.role ? {} : { tokenRole: claims.role }),
     });
 
     // ★ `await` عمدی: اگر اتاق **رد** کند (سقفِ نود، سندِ بزرگ) باید همین‌جا
@@ -184,7 +187,7 @@ async function authenticate(
       socket,
       boardId: claims.boardId,
       sub: claims.sub,
-      role: claims.role,
+      role,
       exp: claims.exp,
     });
 
@@ -212,6 +215,35 @@ async function authenticate(
     socket.resume();
     denyConnection(socket, error);
   }
+}
+
+/**
+ * ★★ نقشِ **واقعی**، نه نقشی که توکن ادعا می‌کند — گام ۴٫۵.
+ *
+ * ⚠️ بدونِ این، اعمالِ مجوز فقط **تا اولین اتصالِ مجدد** دوام دارد: نقش داخلِ
+ * توکن است و توکن تغییر نمی‌کند، پس کاربری که به `viewer` تنزل داده شده کافی
+ * است تبش را ببندد و باز کند تا با همان توکن دوباره `editor` شود.
+ * [ADR-012](../../../ARCHITECTURE_DECISIONS.md#adr-012) دقیقاً برای همین نقش را
+ * یک مقدارِ **محاسبه‌شده** تعریف کرده، نه یک claimِ ذخیره‌شده.
+ *
+ * ★ **و در جهتِ امن fail می‌کند:** اگر پیاده‌سازی نظری نداشته باشد
+ * (`undefined` یا اصلاً متد را نداشته باشد) نقشِ توکن می‌مانَد؛ ولی `null` یعنی
+ * دسترسی برداشته شده و اتصال **رد** می‌شود.
+ */
+async function effectiveRole(
+  authority: BoardAuthority,
+  claims: { sub: string; boardId: string; role: BoardRole },
+): Promise<BoardRole> {
+  const current = await authority.currentRole?.(claims.sub, claims.boardId);
+  if (current === undefined) return claims.role;
+  if (current === null) {
+    throw new RtProtocolError(
+      "FORBIDDEN",
+      "به این بورد دسترسی ندارید.",
+      "دسترسی برداشته شده؛ توکن هنوز نقشِ قدیمی را حمل می‌کند",
+    );
+  }
+  return current;
 }
 
 /**

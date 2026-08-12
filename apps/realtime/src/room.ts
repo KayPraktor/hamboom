@@ -8,6 +8,7 @@ import {
   migrateDocument,
   MSG_TYPES,
   readElement,
+  type BoardRole,
   type MigrationResult,
 } from "@hamboom/ydoc-schema";
 import * as decoding from "lib0/decoding";
@@ -16,6 +17,7 @@ import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
 import { createLogger, maskSubject, type Logger } from "./log.ts";
+import { mayWriteDocument } from "./permission.ts";
 import type { Compactor } from "./persistence/compactor.ts";
 import type { UpdateLog } from "./persistence/update-log.ts";
 import { RtProtocolError } from "./protocol-error.ts";
@@ -130,6 +132,21 @@ export interface Room {
 
 export interface RoomManager {
   join(session: RtSession): Promise<Room>;
+  /**
+   * ★★ تغییرِ نقش **وسطِ session** — گام ۴٫۵.
+   *
+   * ADR-012 نقش را یک مقدارِ **محاسبه‌شده** می‌داند که هر لحظه می‌تواند عوض شود
+   * (تنزل در تیم، برداشته‌شدن از `board_members`، ابطالِ لینک). این متد همان
+   * لحظه را به نشست‌های زنده می‌رسانَد: نقش عوض می‌شود، `HB_PERMISSION` می‌رود، و
+   * **updateِ بعدی با نقشِ تازه سنجیده می‌شود**.
+   *
+   * ⚠️ عمداً **push** است نه polling: هیچ پنجره‌ی «تا انقضای کش» وجود ندارد که
+   * در آن یک کاربرِ تنزل‌داده‌شده هنوز بنویسد. صداکننده‌اش امروز تست است و در
+   * گام ۴٫۷ کانالِ Redis (و در M3، خودِ API).
+   *
+   * @returns تعدادِ نشست‌هایی که واقعاً عوض شدند.
+   */
+  applyRoleChange(boardId: string, sub: string, role: BoardRole): number;
   /** اتاق‌های **در حافظه** — تستِ تخلیه همین را می‌خواند. */
   readonly size: number;
   has(boardId: string): boolean;
@@ -379,9 +396,55 @@ export function createRoomManager({
       });
   }
 
+  /**
+   * ★★ **مرزِ مجوز — گام ۴٫۵، [ADR-012](../../../ARCHITECTURE_DECISIONS.md#adr-012).**
+   *
+   * ADR-012 صریح است: «سرور realtime باید نقش را **در هر update** بررسی کند، نه
+   * فقط هنگام اتصال». پس بررسی اینجاست، در مسیرِ هر پیام — نه در `join`.
+   *
+   * ⚠️ **و باید قبل از `readSyncMessage` باشد.** بعدش دیر است: Yjs عقب‌گرد ندارد،
+   * پس هر updateی که اعمال شود در سند مانده — حتی اگر بلافاصله خطا بدهیم، پخش
+   * نکنیم و پایدار نکنیم. «اعمال کن، بعد پشیمان شو» در CRDT وجود ندارد.
+   *
+   * ── ★ چرا `step1` استثناست ────────────────────────────────────────
+   *
+   * پیامِ syncِ Yjs سه زیرنوع دارد و فقط دوتاشان **نوشتن** اند:
+   *
+   * | زیرنوع | چه می‌کند | `viewer` |
+   * |---|---|---|
+   * | `step1` | «چه چیزی کم دارم؟» — فقط بردارِ وضعیت می‌فرستد | ✔ مجاز |
+   * | `step2` · `update` | opهای فرستنده را روی سند **می‌نشاند** | ✘ رد |
+   *
+   * اگر `step1` را هم می‌بستیم، `viewer` اصلاً بورد را **نمی‌دید** — یعنی نقشِ
+   * تماشاگر بی‌معنا می‌شد.
+   */
   function handleMessage(room: LiveRoom, session: RtSession, data: Uint8Array): void {
     const message = decodeMessage(data);
     if (!message || message.type !== MSG_TYPES.SYNC) return;
+
+    // ⚠️ decoderِ **جدا** برای سرک کشیدن: `readVarUint` نشانگر را جلو می‌برد و
+    //    اگر همین decoder را به `readSyncMessage` بدهیم، زیرنوع را دوباره
+    //    نمی‌خوانَد و پیام را غلط تفسیر می‌کند.
+    const peek = decoding.createDecoder(message.payload);
+    const kind = decoding.readVarUint(peek);
+    const isWrite =
+      kind === syncProtocol.messageYjsSyncStep2 || kind === syncProtocol.messageYjsUpdate;
+
+    if (isWrite && !mayWriteDocument(session.role)) {
+      // ★★ **updateِ تهی نوشتن نیست** — و این یک ریزه‌کاریِ آرایشی نیست.
+      //
+      // ⚠️ سنجه‌ی زنده نشان داد هر کلاینتِ `viewer` **هنگام اتصال** یک `FORBIDDEN`
+      // می‌گیرد: پروتکلِ sync ایجاب می‌کند که به step1ِ سرور با step2 جواب بدهد،
+      // و آن step2 برای تماشاگرِ تازه **صفر op** دارد. رد کردنش فنی درست بود ولی
+      // در عمل یک هشدارِ امنیتیِ کاذب به‌ازای هر اتصالِ سالم می‌ساخت — و هشداری که
+      // همیشه می‌آید، همان هشداری است که کسی نمی‌خوانَد.
+      //
+      // ★ هزینه‌ی این بررسی فقط روی مسیرِ **ردشده** است: کسی که حقِ نوشتن دارد
+      //   هرگز از اینجا رد نمی‌شود.
+      if (isEmptyUpdate(peek)) return;
+      denyWrite(room, session);
+      return;
+    }
 
     const reply = encoding.createEncoder();
     // ★ origin نشستِ فرستنده است: هم پخش را از خودش جدا می‌کند، هم مشخص می‌کند
@@ -398,12 +461,67 @@ export function createRoomManager({
     }
   }
 
+  /**
+   * ردِ یک نوشتنِ بی‌مجوز.
+   *
+   * ⚠️ **اتصال بسته نمی‌شود، و این عمدی است** ([ADR-038](../../../ARCHITECTURE_DECISIONS.md#adr-038)):
+   * تنزلِ نقش وسطِ کار یک حالتِ **عادی** است، نه حمله. کاربری که همین الان
+   * `viewer` شده باید بورد را ببیند؛ پرت کردنش بیرون هم بی‌فایده است و هم
+   * بی‌اثر — با همان توکن دوباره وصل می‌شود.
+   *
+   * ★ و `HB_PERMISSION` **همراهش** می‌رود، نه فقط خطا: کلاینت باید بفهمد
+   * **چرا** رد شد و UIاش را به فقط-خواندنی ببرد (کارِ گام ۵٫۳)، وگرنه کاربر
+   * می‌نویسد و هر بار بی‌صدا شکست می‌خورد.
+   */
+  function denyWrite(room: LiveRoom, session: RtSession): void {
+    logger.warn("نوشتنِ بی‌مجوز رد شد", {
+      boardId: room.boardId,
+      sub: maskSubject(session.sub),
+      role: session.role,
+    });
+    send(session, encodeMessage({ type: MSG_TYPES.HB_PERMISSION, role: session.role }));
+    send(
+      session,
+      encodeMessage({
+        type: MSG_TYPES.HB_ERROR,
+        code: HB_ERROR_CODES.FORBIDDEN,
+        message: "با نقشِ فعلی اجازه‌ی ویرایشِ این بورد را ندارید.",
+      }),
+    );
+  }
+
   return {
     get size() {
       return rooms.size;
     },
 
     has: (boardId) => rooms.has(boardId),
+
+    applyRoleChange(boardId, sub, role) {
+      const room = rooms.get(boardId);
+      if (!room) return 0;
+
+      let changed = 0;
+      for (const session of room.sessions) {
+        if (session.sub !== sub || session.role === role) continue;
+        // ★ **خودِ نشست عوض می‌شود**، نه یک نقشه‌ی کنارِ آن: `handleMessage` روی
+        //   `session.role` قضاوت می‌کند، پس هر نگه‌داریِ موازی یک منبعِ دومِ
+        //   حقیقت می‌شد که می‌تواند واگرا شود.
+        session.role = role;
+        changed++;
+        send(session, encodeMessage({ type: MSG_TYPES.HB_PERMISSION, role }));
+      }
+
+      if (changed > 0) {
+        logger.info("نقش وسطِ session عوض شد", {
+          boardId,
+          sub: maskSubject(sub),
+          role,
+          sessions: changed,
+        });
+      }
+      return changed;
+    },
 
     async join(session) {
       const boardId = session.boardId;
@@ -441,6 +559,11 @@ export function createRoomManager({
       session.socket.on("message", (data: ArrayLike<number> | ArrayBuffer) => {
         handleMessage(room, session, new Uint8Array(data as ArrayBuffer));
       });
+
+      // ★ **اول نقش، بعد سند.** کلاینت باید پیش از فرستادنِ هر چیزی بداند
+      //   `viewer` است — وگرنه step2ِ خودش را می‌فرستد، `FORBIDDEN` می‌گیرد، و
+      //   یک اتصالِ کاملاً سالم با یک خطا شروع می‌شود.
+      send(session, encodeMessage({ type: MSG_TYPES.HB_PERMISSION, role: session.role }));
 
       const step1 = encoding.createEncoder();
       syncProtocol.writeSyncStep1(step1, room.doc);
@@ -549,6 +672,23 @@ function quarantineInvalid(doc: Y.Doc, boardId: string, logger: Logger): string[
   });
 
   return invalid.map((entry) => entry.id);
+}
+
+/**
+ * آیا این updateِ Yjs **هیچ** تغییری ندارد؟
+ *
+ * ⚠️ به شکلِ بایتیِ «۰۰ ۰۰» تکیه نمی‌کند: آن یک جزئیاتِ پیاده‌سازیِ codec است.
+ * `decodeUpdate` خودِ Yjs را می‌پرسد. اگر هر روز خواندنش شکست خورد، **تهی
+ * نیست** برمی‌گردانیم — یعنی به مسیرِ رد می‌رود، نه به مسیرِ اجازه.
+ */
+function isEmptyUpdate(decoder: decoding.Decoder): boolean {
+  try {
+    const update = decoding.readVarUint8Array(decoder);
+    const meta = Y.decodeUpdate(update);
+    return meta.structs.length === 0 && meta.ds.clients.size === 0;
+  } catch {
+    return false;
+  }
 }
 
 /**

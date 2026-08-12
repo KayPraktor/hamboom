@@ -292,3 +292,55 @@ describe("★★ نگهبانِ P7 — هیچ PII در لاگ", () => {
     expect(lines.join("")).toContain("[redacted]");
   });
 });
+
+/**
+ * ★★ گام ۴٫۵ — **نقشِ توکن حرفِ آخر نیست**.
+ *
+ * ⚠️ این حفره‌ی واقعیِ «اعمالِ مجوز روی هر update» است: نقش داخلِ توکن است و توکن
+ * **تغییر نمی‌کند**. بدونِ بازپرسی از پورت، کاربری که وسطِ کار تنزل داده شده کافی
+ * است تبش را ببندد و باز کند تا با همان توکن دوباره `editor` شود — و کلِ گام ۴٫۵
+ * از پشت دور می‌خورد ([ADR-012](../../ARCHITECTURE_DECISIONS.md#adr-012)).
+ */
+describe("★★ نقشِ جاری بر نقشِ توکن مقدم است — گام ۴٫۵", () => {
+  it("توکن `editor` می‌گوید ولی نقشِ جاری `viewer` است → نشست `viewer` می‌شود", async () => {
+    const demoting = createDevBoardAuthority({ secret: SECRET });
+    demoting.roles.set("usr_9f3c1a", BOARD, "viewer");
+    const server = await startServer({ authority: demoting });
+
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${server.port}/rt?board=${BOARD}&token=${validToken()}`,
+    );
+    await new Promise((resolve) => socket.on("open", resolve));
+    await vi.waitFor(() => expect(joined).toHaveLength(1));
+
+    // ★ توکن هنوز `editor` می‌گوید؛ نشست `viewer` است.
+    expect(joined[0]?.role).toBe("viewer");
+    socket.close();
+  });
+
+  it("نبودِ نظر یعنی نقشِ توکن معتبر است", async () => {
+    const server = await startServer();
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${server.port}/rt?board=${BOARD}&token=${validToken()}`,
+    );
+    await new Promise((resolve) => socket.on("open", resolve));
+    await vi.waitFor(() => expect(joined).toHaveLength(1));
+
+    expect(joined[0]?.role).toBe("editor");
+    socket.close();
+  });
+
+  it("★ دسترسیِ برداشته‌شده (`null`) اتصال را با `FORBIDDEN` رد می‌کند", async () => {
+    // ⚠️ `null` و «نظری ندارم» نباید یکی رفتار کنند — وگرنه یک کاربرِ اخراج‌شده
+    //    با توکنِ قدیمی‌اش تا انقضا وصل می‌مانْد.
+    const revoking = createDevBoardAuthority({ secret: SECRET });
+    revoking.roles.set("usr_9f3c1a", BOARD, null);
+    const server = await startServer({ authority: revoking });
+
+    const outcome = await connect(server.port, `/rt?board=${BOARD}&token=${validToken()}`);
+
+    expect(outcome.message).toMatchObject({ type: MSG_TYPES.HB_ERROR, code: "FORBIDDEN" });
+    expect(outcome.closeCode).toBe(1008);
+    expect(joined).toHaveLength(0);
+  });
+});
