@@ -1,13 +1,13 @@
 import { hbElement } from "@hamboom/shared-types";
 import {
   boardRoots,
-  createBoardDoc,
   decodeMessage,
   encodeMessage,
   HB_ERROR_CODES,
   migrateDocument,
   MSG_TYPES,
   readElement,
+  SCHEMA_VERSION,
   type BoardRole,
   type MigrationResult,
 } from "@hamboom/ydoc-schema";
@@ -16,8 +16,9 @@ import * as encoding from "lib0/encoding";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
+import { createRoomPresence, type RoomPresence } from "./awareness.ts";
 import { createLogger, maskSubject, type Logger } from "./log.ts";
-import { mayWriteDocument } from "./permission.ts";
+import { mayBroadcastPresence, mayWriteDocument } from "./permission.ts";
 import type { Compactor } from "./persistence/compactor.ts";
 import type { UpdateLog } from "./persistence/update-log.ts";
 import { RtProtocolError } from "./protocol-error.ts";
@@ -164,6 +165,8 @@ interface LiveRoom extends Room {
   compactedAt: number;
   /** ★ یک فشرده‌سازی در هر لحظه؛ دو تای همزمان روی یک بورد به هم می‌رسند. */
   compacting: boolean;
+  /** دفترِ حضور — گام ۴٫۶. هیچ‌چیزش پایدار نمی‌شود (ADR-022). */
+  presence: RoomPresence;
 }
 
 export function createRoomManager({
@@ -205,24 +208,31 @@ export function createRoomManager({
     const { snapshot, updates, seqUpto } = await store.load(boardId);
 
     /**
-     * ★★ **فقط بوردِ نو `createBoardDoc` می‌گیرد** — کشفِ گام ۴٫۴.
+     * ★★★ **سرور هیچ opی نمی‌نویسد — نه اینجا، نه در migration.**
      *
-     * `createBoardDoc` هر بار `meta.schemaVersion` را با یک `clientID`ِ **تازه**
-     * می‌نویسد. تا وقتی روی بوردِ موجود هم صدا زده می‌شد، **هر بار که اتاق بالا
-     * می‌آمد** یک مدخلِ کلاینتِ دیگر به سندی که کلاینت‌ها می‌بینند اضافه می‌شد.
+     * گام ۴٫۴ نصفِ این را فهمید (فقط بوردِ نو `createBoardDoc` بگیرد)؛ گام ۴٫۶
+     * نصفِ دیگرش را با یک flakeِ واقعی نشان داد. زنجیره‌اش این بود:
      *
-     * ⚠️ و بی‌ضرر هم نبود: آن opها پایدار نمی‌شوند (originشان `ClientOrigin`
-     * نیست)، ولی به کلاینت می‌رسند — و کلاینتی که بعد از یک ری‌استارت دوباره
-     * وصل شود، در step2ِ خودش همان opِ اتاقِ **قبلی** را به سرور برمی‌گرداند،
-     * این‌بار با originِ کلاینت. یعنی با هر ری‌استارت یک opِ زائد در لاگ ته‌نشین
-     * می‌شد و برای همیشه می‌مانْد.
+     * ۱. سرور برای بوردِ نو `meta.schemaVersion` را با `clientID`ِ **خودش**
+     *    می‌نوشت. آن op هرگز پایدار نمی‌شد (originش `ClientOrigin` نیست).
+     * ۲. کلاینت هم `meta.schemaVersion`ِ خودش را داشت. دو نوشتن روی **یک کلید**
+     *    یعنی یکی برنده و دیگری **حذف** می‌شود.
+     * ۳. اگر opِ سرور برنده می‌شد، کلاینت opِ خودش را حذف‌شده علامت می‌زد — و
+     *    آن **delete** در updateِ بعدیِ کلاینت **پایدار می‌شد**.
+     * ۴. نتیجه: لاگ opِ meta را دارد ولی حذف‌شده. `getSchemaVersion` می‌شد
+     *    `undefined`، پس هر بارگذاریِ بعدی دوباره **مهر** می‌زد — یعنی باز هم یک
+     *    opِ سرور، و بازگشت به همان چرخه.
      *
-     * ★ سنجه‌ی ۴٫۴ همین را نشان داد: state vectorِ کلاینتِ تازه با کلاینتِ اول
-     * نمی‌خواند، در حالی که محتوا مو‌به‌مو یکی بود. سندِ موجود `meta` را از قبل
-     * دارد؛ اگر هم نداشته باشد، `migrateDocument` پایین‌تر مهرش می‌زند.
+     * ⚠️ **بی‌صدا بود:** عناصر همه سالم بودند و sync کار می‌کرد؛ فقط نسخه‌ی
+     * schemaِ بورد بی‌سر و صدا گم می‌شد. سنجه‌ی فشرده‌سازی گرفتش، چون state
+     * vectorِ کلاینتِ تازه یک مدخلِ اضافه داشت که در دیتابیس نبود.
+     *
+     * ★ رفع، هم‌راستا با مرزی که گام ۴٫۲ کشید (**فقط کلاینت‌ها می‌نویسند**):
+     * سند همیشه خالی ساخته می‌شود و migration روی سندِ **تهی** اجرا نمی‌شود —
+     * چیزی برای مهاجرت ندارد و تنها اثرش همان مهرِ مسئله‌ساز بود. اولین کلاینت
+     * `meta` را با خودش می‌آورد و **آن** پایدار می‌شود.
      */
-    const isNewBoard = snapshot === null && updates.length === 0;
-    const doc = isNewBoard ? createBoardDoc() : new Y.Doc();
+    const doc = new Y.Doc();
 
     // ⚠️ در **یک** تراکنش: هر update جداگانه یک رویداد است و بارگذاریِ یک بوردِ
     //    بزرگ را به هزاران رویدادِ بی‌فایده تبدیل می‌کند.
@@ -244,7 +254,12 @@ export function createRoomManager({
     }
 
     // ★ migration **در سرور**، نه کلاینت (PLAN ۷٫۵) — تا همه یک نسخه ببینند.
-    const migration = migrateDocument(doc);
+    //   ⚠️ ولی **نه روی سندِ تهی**: آنجا چیزی برای مهاجرت نیست و تنها کارش
+    //      نوشتنِ یک مهر با `clientID`ِ سرور است — دقیقاً همان چیزی که بالا
+    //      توضیح داده شد.
+    const migration = isDocumentEmpty(doc)
+      ? { from: SCHEMA_VERSION, to: SCHEMA_VERSION, applied: [], changed: false }
+      : migrateDocument(doc);
     const quarantined = quarantineInvalid(doc, boardId, logger);
 
     const bytes = Y.encodeStateAsUpdate(doc).byteLength;
@@ -274,10 +289,25 @@ export function createRoomManager({
       //    می‌شود؛ محافظه‌کارانه است — دیرتر فشرده می‌کند، نه زودتر.
       compactedAt: Date.now(),
       compacting: false,
+      // ★ بعد از ساختِ اتاق پر می‌شود: خودِ `presence` برای پخش به اتاق نیاز دارد.
+      presence: null as unknown as RoomPresence,
       get size() {
         return this.sessions.size;
       },
     };
+
+    room.presence = createRoomPresence({
+      doc,
+      // ⚠️ `except` عمداً به خودِ نشست گره خورده، نه به `clientID`: یک نشست
+      //    می‌تواند بیش از یک `clientID` داشته باشد (StrictMode، تبِ دوباره‌بازشده)
+      //    و فرستنده نباید صدای خودش را پس بگیرد.
+      broadcast: (payload, except) => {
+        for (const target of room.sessions) {
+          if (target !== except) send(target, payload);
+        }
+      },
+      logger,
+    });
 
     wireDocument(room);
 
@@ -420,7 +450,41 @@ export function createRoomManager({
    */
   function handleMessage(room: LiveRoom, session: RtSession, data: Uint8Array): void {
     const message = decodeMessage(data);
-    if (!message || message.type !== MSG_TYPES.SYNC) return;
+    if (!message) return;
+
+    // ── حضور و داده‌ی موقت — گام ۴٫۶ ────────────────────────────────
+    //
+    // ★★ **هیچ‌کدام از این دو مسیر به `log` نمی‌رسند** و این تنها تضمینِ
+    //    «ephemeral هرگز پایدار نمی‌شود» است (ADR-022): پایداری به
+    //    `doc.on("update")` گره خورده، و اینجا اصلاً به سند دست نمی‌زنیم.
+    if (message.type === MSG_TYPES.AWARENESS) {
+      // ⚠️ حضور برای **همه‌ی** نقش‌ها باز است، حتی `viewer` — تماشاگری که دیده
+      //    نمی‌شود از نظرِ بقیه در اتاق نیست (تصمیمِ گام ۴٫۵).
+      if (mayBroadcastPresence(session.role)) room.presence.receive(session, message.payload);
+      return;
+    }
+
+    if (message.type === MSG_TYPES.HB_EPHEMERAL) {
+      if (!mayBroadcastPresence(session.role)) return;
+      // ★ جعلِ `clientId` را رد کن: بدونِ این، یک همتا می‌تواند استروک یا لیزر را
+      //   به نامِ **کاربرِ دیگری** بکشد. مالکیت از دفترِ حضور می‌آید و تا وقتی
+      //   نشست حضورش را اعلام نکرده، سخت‌گیری نمی‌کنیم (fail-open، عمدی).
+      if (!room.presence.ownsClient(session, message.clientId)) {
+        logger.debug("ephemeral با clientIdِ غیرِ خودی دور ریخته شد", {
+          sub: maskSubject(session.sub),
+          clientId: message.clientId,
+        });
+        return;
+      }
+      // ⚠️ **بایت‌های خام بازپخش می‌شوند.** `payload` برای سرور مات است — نه
+      //    parse، نه اعتبارسنجی، نه ذخیره (قراردادِ `protocol.ts`).
+      for (const target of room.sessions) {
+        if (target !== session) send(target, data);
+      }
+      return;
+    }
+
+    if (message.type !== MSG_TYPES.SYNC) return;
 
     // ⚠️ decoderِ **جدا** برای سرک کشیدن: `readVarUint` نشانگر را جلو می‌برد و
     //    اگر همین decoder را به `readSyncMessage` بدهیم، زیرنوع را دوباره
@@ -573,15 +637,33 @@ export function createRoomManager({
       syncProtocol.writeSyncStep2(step2, room.doc);
       send(session, encodeMessage({ type: MSG_TYPES.SYNC, payload: encoding.toUint8Array(step2) }));
 
-      send(session, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saved") }));
+      // ★★ **حضورِ کسانی که از قبل اینجا بودند** — گام ۴٫۶.
+      //
+      // ⚠️ بدونِ این، تازه‌وارد تا **اولین تکانِ** هر همتا او را نمی‌بیند؛ و همتای
+      //    ساکن ممکن است اصلاً تکان نخورد. یعنی یک بومِ پر از آدم، خالی به نظر
+      //    می‌رسید.
+      const present = room.presence.snapshot();
+      if (present) send(session, present);
+
+      // ★ و بقیه باید بدانند یک نفر اضافه شد: `users` باید **همیشه** درست باشد،
+      //   نه فقط بعد از نوشتنِ بعدی.
+      broadcast(room, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saved") }));
 
       const leave = (): void => {
+        // ⚠️ **اول از فهرست بردار، بعد حضور را پاک کن**: `forget` پخش می‌کند و
+        //    نباید به سوکتی که همین الان بسته شده هم بفرستد.
         room.sessions.delete(session);
+        // ★★ همان چیزی که گام ۳٫۵ نتوانست بیازماید: قطعِ اتصال، مکان‌نمای رفته را
+        //    **فوری** پاک می‌کند — نه بعد از جاروی ۳۰ثانیه‌ای awareness.
+        room.presence.forget(session);
         logger.debug("نشست بسته شد", {
           boardId,
           sub: maskSubject(session.sub),
           remaining: room.sessions.size,
         });
+        if (room.sessions.size > 0) {
+          broadcast(room, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saved") }));
+        }
         // ★ آخرین نفر که رفت، ساعتِ تخلیه شروع می‌شود — نه بلافاصله، چون رفرشِ
         //   ساده‌ی صفحه نباید بارگذاریِ کاملِ بورد را دوباره تحمیل کند.
         if (room.sessions.size === 0) scheduleEviction(room);
@@ -672,6 +754,16 @@ function quarantineInvalid(doc: Y.Doc, boardId: string, logger: Logger): string[
   });
 
   return invalid.map((entry) => entry.id);
+}
+
+/**
+ * آیا این سند **هیچ** opی ندارد؟
+ *
+ * ★ «تهی» یعنی هیچ کلاینتی چیزی ننوشته — نه اینکه محتوایش خالی به نظر برسد.
+ * بوردی که همه‌ی عناصرش حذف شده‌اند تهی **نیست** و باید migrate شود.
+ */
+function isDocumentEmpty(doc: Y.Doc): boolean {
+  return doc.store.clients.size === 0;
 }
 
 /**

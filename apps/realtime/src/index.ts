@@ -45,6 +45,8 @@ export { RtProtocolError } from "./protocol-error.ts";
 
 export { mayBroadcastPresence, mayWriteDocument } from "./permission.ts";
 
+export { createRoomPresence, type RoomPresence, type RoomPresenceOptions } from "./awareness.ts";
+
 export {
   createRoomManager,
   QUARANTINE_ORIGIN,
