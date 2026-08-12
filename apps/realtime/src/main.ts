@@ -1,10 +1,14 @@
+import { randomUUID } from "node:crypto";
+
 import {
   appEnvSchema,
   devAuthEnvSchema,
   databaseEnvSchema,
   loadEnv,
   realtimeEnvSchema,
+  redisEnvSchema,
 } from "@hamboom/config";
+import Redis from "ioredis";
 
 import { createDevBoardAuthority } from "./auth/index.ts";
 import { createLogger } from "./log.ts";
@@ -14,6 +18,8 @@ import { createPgPool } from "./persistence/pg-pool.ts";
 import { createPostgresSnapshotCatalog } from "./persistence/postgres-snapshot-catalog.ts";
 import { createPostgresUpdateLog } from "./persistence/postgres-update-log.ts";
 import { createRoomManager } from "./room.ts";
+import { createRedisBoardBus } from "./pubsub/redis-board-bus.ts";
+import { createRedisOwnerLock } from "./pubsub/redis-owner-lock.ts";
 import { createRtServer } from "./server.ts";
 import { createPersistedBoardStore } from "./store/persisted-board-store.ts";
 
@@ -30,9 +36,22 @@ import { createPersistedBoardStore } from "./store/persisted-board-store.ts";
  */
 async function main(): Promise<void> {
   const env = loadEnv(
-    appEnvSchema.and(realtimeEnvSchema).and(databaseEnvSchema).and(devAuthEnvSchema),
+    appEnvSchema
+      .and(realtimeEnvSchema)
+      .and(databaseEnvSchema)
+      .and(redisEnvSchema)
+      .and(devAuthEnvSchema),
   );
   const logger = createLogger({ level: env.LOG_LEVEL });
+
+  /**
+   * ★ شناسه‌ی این نود — برچسبِ ضدِ حلقه‌ی ADR-006.
+   *
+   * ⚠️ عمداً از env نمی‌آید: باید در هر **فرایند** یکتا باشد، و یک متغیرِ محیطی
+   * که فراموش شود روی دو replica یک مقدار می‌گیرد — یعنی هر دو پیامِ هم را
+   * «مالِ خودم» می‌بینند و دور می‌ریزند. آن‌وقت دو نود بی‌صدا از هم جدا می‌شوند.
+   */
+  const nodeId = randomUUID();
 
   const pool = createPgPool({
     connectionString: env.DATABASE_URL,
@@ -43,9 +62,31 @@ async function main(): Promise<void> {
   const catalog = createPostgresSnapshotCatalog({ pool });
   const store = createFsSnapshotStore({ directory: env.RT_SNAPSHOT_DIR });
 
+  // ── خوشه (ADR-006 فاز ۲) ────────────────────────────────────────
+  //
+  // ⚠️ **دو اتصالِ Redis لازم است**: اتصالی که `SUBSCRIBE` کرده دیگر دستورِ
+  //    معمولی نمی‌پذیرد، و قفلِ صاحب `SET` می‌خواهد.
+  const redisOptions = { lazyConnect: false, ...(env.REDIS_TLS ? { tls: {} } : {}) };
+  const publisher = new Redis(env.REDIS_URL, redisOptions);
+  const subscriber = new Redis(env.REDIS_URL, redisOptions);
+  for (const [name, client] of [
+    ["publisher", publisher],
+    ["subscriber", subscriber],
+  ] as const) {
+    // ⚠️ بدونِ این، خطای اتصالِ Redis یک `unhandled error event` می‌شود و
+    //    **کلِ فرایند** را می‌اندازد — یعنی قطعیِ Redis به قطعیِ سرور ترجمه شود،
+    //    در حالی که سرور بدونِ خوشه هم می‌تواند کلاینت‌های خودش را سرو کند.
+    client.on("error", (error: unknown) => {
+      logger.error("خطای اتصالِ Redis", { client: name, error: String(error) });
+    });
+  }
+
   const rooms = createRoomManager({
     store: createPersistedBoardStore({ log, snapshots: { store, catalog } }),
     log,
+    bus: createRedisBoardBus({ publisher, subscriber, logger }),
+    ownerLock: createRedisOwnerLock({ redis: publisher, nodeId }),
+    nodeId,
     compactor: createCompactor({
       log,
       store,
@@ -86,7 +127,7 @@ async function main(): Promise<void> {
   process.once("SIGINT", shutdown);
 
   // ★ نشانه‌ی «آماده‌ام» برای اسکریپت‌ها — `rt-durability` روی همین منتظر می‌مانَد.
-  logger.info("realtime آماده است", { port: server.port });
+  logger.info("realtime آماده است", { port: server.port, nodeId });
 }
 
 void main().catch((error: unknown) => {

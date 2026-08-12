@@ -53,23 +53,42 @@ export interface RoomPresence {
    * است زودتر از awarenessش برسد) بی‌دلیل دور ریخته می‌شد.
    */
   ownsClient(session: RtSession, clientId: number): boolean;
+  /**
+   * حضوری که از **نودِ دیگر** آمده (گام ۴٫۷).
+   *
+   * ⚠️ عمداً از `receive` جداست: مالکیتِ `clientID` را ثبت **نمی‌کند**. آن کلاینت
+   * روی نودِ دیگری نشسته و پاک‌کردنش کارِ همان نود است — اگر اینجا هم مالکش
+   * می‌شدیم، بستنِ یک نشستِ محلی حضورِ یک کاربرِ **زنده‌ی** نودِ دیگر را پاک می‌کرد.
+   */
+  receiveRemote(payload: Uint8Array): void;
   /** نشست رفت → حضورش پاک و حذف به بقیه پخش می‌شود. */
   forget(session: RtSession): void;
 }
 
 export interface RoomPresenceOptions {
   doc: Y.Doc;
-  /** پخش به همه‌ی نشست‌ها به‌جز `except`. */
+  /** پخش به همه‌ی نشست‌های **این نود** به‌جز `except`. */
   broadcast: (payload: Uint8Array, except: RtSession | null) => void;
+  /**
+   * انتشار برای نودهای دیگر (گام ۴٫۷) — فقط برای تغییرهای **محلی**.
+   *
+   * ⚠️ اگر تغییرِ رسیده از گذرگاه را دوباره منتشر کنیم، یک حلقه‌ی بی‌پایان بینِ
+   * دو نود می‌شود. برچسبِ `nodeId` سدِ دوم است؛ سدِ اول همین‌جاست.
+   */
+  publish?: (payload: Uint8Array) => void;
   logger?: Logger;
 }
 
 /** originِ حذفِ ناشی از قطعِ اتصال — تا از به‌روزرسانیِ خودِ کلاینت جدا بماند. */
 const LEAVE_ORIGIN = "hamboom:leave";
 
+/** originِ حضوری که از نودِ دیگر آمده — **دوباره منتشر نمی‌شود**. */
+const REMOTE_ORIGIN = "hamboom:remote";
+
 export function createRoomPresence({
   doc,
   broadcast,
+  publish,
   logger = createLogger(),
 }: RoomPresenceOptions): RoomPresence {
   const awareness = new Awareness(doc);
@@ -111,13 +130,12 @@ export function createRoomPresence({
       //    `removed` اصلاً بایتِ ورودی‌ای وجود ندارد (حذف را خودِ سرور می‌سازد)،
       //    و برای بقیه هم این تضمین می‌کند آنچه پخش می‌شود همان چیزی است که در
       //    دفتر نشسته — نه چیزی که فرستنده *ادعا* کرده.
-      broadcast(
-        encodeMessage({
-          type: MSG_TYPES.AWARENESS,
-          payload: encodeAwarenessUpdate(awareness, changed),
-        }),
-        session,
-      );
+      const update = encodeAwarenessUpdate(awareness, changed);
+      broadcast(encodeMessage({ type: MSG_TYPES.AWARENESS, payload: update }), session);
+
+      // ★ فقط تغییرِ **محلی** به نودهای دیگر می‌رود. آنچه از گذرگاه آمده
+      //   (`REMOTE_ORIGIN`) همین‌جا می‌ایستد — سدِ اولِ ضدِ حلقه.
+      if (from !== REMOTE_ORIGIN) publish?.(update);
     },
   );
 
@@ -148,6 +166,14 @@ export function createRoomPresence({
     ownsClient(session, clientId) {
       const holder = owner.get(clientId);
       return holder === undefined || holder === session;
+    },
+
+    receiveRemote(payload) {
+      try {
+        applyAwarenessUpdate(awareness, payload, REMOTE_ORIGIN);
+      } catch (cause) {
+        logger.warn("حضورِ رسیده از گذرگاه خوانده نشد", { error: String(cause) });
+      }
     },
 
     forget(session) {

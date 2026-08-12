@@ -48,6 +48,27 @@ export { mayBroadcastPresence, mayWriteDocument } from "./permission.ts";
 export { createRoomPresence, type RoomPresence, type RoomPresenceOptions } from "./awareness.ts";
 
 export {
+  BUS_KINDS,
+  decodeEnvelope,
+  encodeEnvelope,
+  MemoryBoardBus,
+  type BoardBus,
+  type BusEnvelope,
+  type BusKind,
+} from "./pubsub/board-bus.ts";
+
+export { MemoryOwnerLock, OWNER_LEASE_SECONDS, type OwnerLock } from "./pubsub/owner-lock.ts";
+
+export {
+  awarenessChannel,
+  boardChannel,
+  createRedisBoardBus,
+  type RedisBoardBusOptions,
+} from "./pubsub/redis-board-bus.ts";
+
+export { createRedisOwnerLock, type RedisOwnerLockOptions } from "./pubsub/redis-owner-lock.ts";
+
+export {
   createRoomManager,
   QUARANTINE_ORIGIN,
   type Room,

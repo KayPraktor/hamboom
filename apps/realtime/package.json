@@ -18,19 +18,20 @@
     "@hamboom/eslint-config": "workspace:*",
     "@hamboom/tsconfig": "workspace:*",
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "@types/ws": "^8.5.13",
     "eslint": "^9.17.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0",
-    "@types/ws": "^8.5.13",
-    "@types/pg": "^8.11.10"
+    "vitest": "^3.0.0"
   },
   "dependencies": {
     "@hamboom/shared-types": "workspace:*",
     "@hamboom/ydoc-schema": "workspace:*",
-    "yjs": "^13.6.20",
-    "ws": "^8.18.0",
+    "ioredis": "^6.0.0",
+    "lib0": "0.2.117",
     "pg": "^8.13.1",
+    "ws": "^8.18.0",
     "y-protocols": "^1.0.6",
-    "lib0": "0.2.117"
+    "yjs": "^13.6.20"
   }
 }

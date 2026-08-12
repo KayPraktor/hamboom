@@ -22,6 +22,8 @@ import { mayBroadcastPresence, mayWriteDocument } from "./permission.ts";
 import type { Compactor } from "./persistence/compactor.ts";
 import type { UpdateLog } from "./persistence/update-log.ts";
 import { RtProtocolError } from "./protocol-error.ts";
+import { BUS_KINDS, type BoardBus, type BusEnvelope, type BusKind } from "./pubsub/board-bus.ts";
+import { OWNER_LEASE_SECONDS, type OwnerLock } from "./pubsub/owner-lock.ts";
 import type { BoardStore } from "./store/board-store.ts";
 import type { RtSession } from "./server.ts";
 
@@ -68,6 +70,18 @@ import type { RtSession } from "./server.ts";
  */
 export const QUARANTINE_ORIGIN = "hamboom:quarantine";
 
+/**
+ * originِ updateی که از **نودِ دیگر** آمده — گام ۴٫۷.
+ *
+ * ★ دو چیز را همزمان می‌گوید: «دوباره منتشرش نکن» (ضدِ حلقه) و «اگر صاحبی،
+ * پایدارش کن». اگر مثلِ بارگذاری بی‌نشان می‌ماند، updateهای نودهای دیگر هرگز
+ * نوشته نمی‌شدند.
+ */
+const REMOTE_UPDATE_ORIGIN = "hamboom:bus";
+
+/** payloadِ خالی — برای پیام‌هایی که فقط یک عدد حمل می‌کنند (`SAVED`). */
+const EMPTY = new Uint8Array(0);
+
 /** originِ تراکنشی که از یک نشستِ کلاینت آمده — تنها چیزی که پایدار می‌شود. */
 class ClientOrigin {
   readonly session: RtSession;
@@ -102,6 +116,18 @@ export interface RoomManagerOptions {
    * می‌کند — همان تصمیمِ معلقِ گام ۴٫۲.
    */
   compactor?: Compactor;
+  /**
+   * گذرگاهِ بینِ نودها — گام ۴٫۷. بدونش سرور تک‌نودی است (فاز ۱ در ADR-006) و
+   * همه‌چیز مثلِ قبل کار می‌کند.
+   */
+  bus?: BoardBus;
+  /**
+   * قفلِ صاحب. ⚠️ **بدونِ `bus` معنا ندارد** و بدونِ **آن** هم چندنودی امن نیست:
+   * اگر گذرگاه باشد و قفل نباشد، دو نود همزمان روی `board_updates` می‌نویسند.
+   */
+  ownerLock?: OwnerLock;
+  /** شناسه‌ی این نود — برچسبِ ضدِ حلقه. */
+  nodeId?: string;
   limits: RoomLimits;
   logger?: Logger;
 }
@@ -167,12 +193,21 @@ interface LiveRoom extends Room {
   compacting: boolean;
   /** دفترِ حضور — گام ۴٫۶. هیچ‌چیزش پایدار نمی‌شود (ADR-022). */
   presence: RoomPresence;
+  /** ★ آیا این نود صاحبِ بورد است؟ **فقط صاحب در دیتابیس می‌نویسد.** */
+  owner: boolean;
+  /** برداشتنِ اشتراکِ گذرگاه هنگام تخلیه. */
+  unsubscribe: (() => void) | null;
+  /** تمدید (یا تلاش برای گرفتنِ) اجاره‌ی صاحبی. */
+  ownerTimer: ReturnType<typeof setInterval> | null;
 }
 
 export function createRoomManager({
   store,
   log,
   compactor,
+  bus,
+  ownerLock,
+  nodeId = "node-1",
   limits,
   logger = createLogger(),
 }: RoomManagerOptions): RoomManager {
@@ -183,8 +218,24 @@ export function createRoomManager({
   function evict(room: LiveRoom): void {
     if (room.sessions.size > 0) return;
     rooms.delete(room.boardId);
+    releaseRoom(room);
     room.doc.destroy();
     logger.info("اتاق از حافظه رفت", { boardId: room.boardId });
+  }
+
+  /**
+   * رهاکردنِ منابعِ خوشه‌ای.
+   *
+   * ★ **قفل داوطلبانه پس داده می‌شود** و منتظرِ انقضای اجاره نمی‌مانیم: نودِ بعدی
+   * فوراً صاحب می‌شود، نه بعد از ۳۰ ثانیه‌ای که در آن هیچ‌کس نمی‌نویسد.
+   */
+  function releaseRoom(room: LiveRoom): void {
+    if (room.ownerTimer) clearInterval(room.ownerTimer);
+    room.ownerTimer = null;
+    room.unsubscribe?.();
+    room.unsubscribe = null;
+    if (room.owner) void ownerLock?.release(room.boardId).catch(() => undefined);
+    room.owner = false;
   }
 
   function scheduleEviction(room: LiveRoom): void {
@@ -192,6 +243,88 @@ export function createRoomManager({
     // ⚠️ `unref` تا یک اتاقِ بی‌کار جلوی خاموش‌شدنِ فرایند را نگیرد.
     room.idleTimer = setTimeout(() => evict(room), limits.idleTimeoutMs);
     room.idleTimer.unref?.();
+  }
+
+  /**
+   * ★★ پیامی که از نودِ دیگر رسید.
+   *
+   * ⚠️ **اولین خط، ضدِ حلقه است** (ADR-006): پیامِ خودمان را دوباره پردازش
+   * نمی‌کنیم. بدونش هر update بی‌پایان بینِ دو نود رفت‌وبرگشت می‌کند — و چون
+   * Yjs idempotent است، هیچ‌وقت هم *خراب* نمی‌شود؛ فقط شبکه و CPU را می‌خورد،
+   * که بدترین نوعِ باگ است: کار می‌کند و آرام‌آرام سرور را می‌کشد.
+   */
+  function handleBus(room: LiveRoom, envelope: BusEnvelope): void {
+    if (envelope.node === nodeId) return;
+
+    switch (envelope.kind) {
+      case BUS_KINDS.UPDATE:
+        // ★ با originِ **گذرگاه**: `wireDocument` از رویش می‌فهمد که نباید دوباره
+        //   منتشرش کند، ولی اگر صاحب باشیم **باید** پایدارش کند.
+        Y.applyUpdate(room.doc, envelope.payload, REMOTE_UPDATE_ORIGIN);
+        return;
+
+      case BUS_KINDS.AWARENESS:
+        room.presence.receiveRemote(envelope.payload);
+        return;
+
+      case BUS_KINDS.EPHEMERAL:
+        // ⚠️ بایتِ خام، بدونِ باز کردن — همان قراردادِ محلی.
+        for (const session of room.sessions) send(session, envelope.payload);
+        return;
+
+      case BUS_KINDS.SAVED:
+        // ⚠️ `max`: پیام‌های گذرگاه ترتیب ندارند و «ذخیره شد» نباید عقب برود.
+        if (envelope.seq <= room.seq) return;
+        room.seq = envelope.seq;
+        broadcast(room, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saved") }));
+        return;
+
+      default:
+        return;
+    }
+  }
+
+  /**
+   * ★★ گرفتن یا از دست دادنِ صاحبی — و کاری که هنگام **گرفتن** باید کرد.
+   *
+   * ⚠️ نودی که تازه صاحب می‌شود ممکن است updateهایی در حافظه داشته باشد که
+   * **هیچ‌وقت پایدار نشده‌اند**: صاحبِ قبلی مرده و بینِ مرگش تا انقضای اجاره،
+   * updateها فقط روی گذرگاه پخش شده‌اند. پس اولین کارِ صاحبِ تازه نوشتنِ
+   * **حالتِ کاملِ** سند است. Yjs idempotent است، پس بدترین هزینه‌اش یک ردیفِ
+   * تکراری است — در برابرِ از دست رفتنِ کارِ کاربر.
+   */
+  async function refreshOwnership(room: LiveRoom, initial = false): Promise<void> {
+    if (!ownerLock) return;
+    const was = room.owner;
+    try {
+      room.owner = was
+        ? await ownerLock.renew(room.boardId)
+        : await ownerLock.acquire(room.boardId);
+    } catch (cause) {
+      // ⚠️ Redisِ در دسترس نبودن **نباید** به یک صاحبِ خیالی تبدیل شود: اگر
+      //    نمی‌دانیم صاحبیم یا نه، نمی‌نویسیم (fail closed).
+      logger.error("بررسیِ قفلِ صاحب شکست خورد", {
+        boardId: room.boardId,
+        error: String(cause),
+      });
+      room.owner = false;
+      return;
+    }
+
+    if (room.owner === was) return;
+    logger.info(room.owner ? "صاحبِ بورد شدیم" : "صاحبیِ بورد از دست رفت", {
+      boardId: room.boardId,
+      nodeId,
+    });
+
+    // ⚠️ **نه در اولین گرفتن.** آنجا اتاق همین الان از دیتابیس خوانده شده، پس
+    //    چیزی برای جبران نیست — و نوشتنِ حالتِ کامل در **هر باز شدنِ اتاق** یعنی
+    //    یک ردیفِ بزرگِ بی‌فایده به‌ازای هر اتاق، که کارِ فشرده‌سازی را خنثی می‌کند.
+    //    (اولین نسخه همین را می‌کرد و تست‌های خوشه با ردیف‌های اضافه قرمز شدند.)
+    if (room.owner && log && !initial) {
+      // ★ نوشتنِ جبرانی — بالا.
+      void persistAndFanout(room, Y.encodeStateAsUpdate(room.doc), null).catch(() => undefined);
+    }
   }
 
   async function open(boardId: string): Promise<LiveRoom> {
@@ -204,6 +337,28 @@ export function createRoomManager({
         `سقفِ اتاقِ نود پر است (${limits.maxRoomsPerNode})`,
       );
     }
+
+    /**
+     * ★★ **اشتراک قبل از خواندن از دیتابیس** — و بافر کردنِ آنچه در این فاصله
+     * می‌رسد.
+     *
+     * ⚠️ ترتیبِ برعکس یک شکافِ **دائمی** می‌سازد: updateای که بینِ `store.load` و
+     * `subscribe` منتشر شود، نه در آن خواندن هست و نه به این نود می‌رسد. Redis
+     * pub/sub تحویل را تضمین نمی‌کند و پیامِ از دست رفته **هرگز** برنمی‌گردد؛
+     * پس آن بورد روی این نود تا ابد ناقص می‌مانْد.
+     *
+     * ★ و بافر لازم است چون خودِ `handleBus` به اتاقی نیاز دارد که هنوز ساخته
+     * نشده.
+     */
+    const buffered: BusEnvelope[] = [];
+    let deliver = (envelope: BusEnvelope): void => {
+      buffered.push(envelope);
+    };
+    const unsubscribe = bus
+      ? await bus.subscribe(boardId, (envelope) => {
+          deliver(envelope);
+        })
+      : null;
 
     const { snapshot, updates, seqUpto } = await store.load(boardId);
 
@@ -265,6 +420,7 @@ export function createRoomManager({
     const bytes = Y.encodeStateAsUpdate(doc).byteLength;
     if (bytes > limits.maxDocBytes) {
       doc.destroy();
+      unsubscribe?.();
       throw new RtProtocolError(
         HB_ERROR_CODES.DOC_TOO_LARGE,
         "این بورد از حدِ مجاز بزرگ‌تر است.",
@@ -291,6 +447,11 @@ export function createRoomManager({
       compacting: false,
       // ★ بعد از ساختِ اتاق پر می‌شود: خودِ `presence` برای پخش به اتاق نیاز دارد.
       presence: null as unknown as RoomPresence,
+      // ⚠️ **پیش‌فرض `false` است، نه `true`:** تا وقتی قفل را نگرفته‌ایم نمی‌نویسیم.
+      //    بدونِ قفل (تک‌نودی) `true` می‌شود، پایین.
+      owner: ownerLock === undefined,
+      unsubscribe,
+      ownerTimer: null,
       get size() {
         return this.sessions.size;
       },
@@ -306,10 +467,31 @@ export function createRoomManager({
           if (target !== except) send(target, payload);
         }
       },
+      publish: (payload) => {
+        publishToBus(room, BUS_KINDS.AWARENESS, payload, 0);
+      },
       logger,
     });
 
     wireDocument(room);
+
+    // ★ از حالا پیام‌های گذرگاه مستقیم پردازش می‌شوند؛ آنچه در فاصله رسیده بود
+    //   همین‌جا تخلیه می‌شود (به همان ترتیبِ رسیدن).
+    deliver = (envelope) => {
+      handleBus(room, envelope);
+    };
+    for (const envelope of buffered) handleBus(room, envelope);
+
+    await refreshOwnership(room, true);
+    if (ownerLock) {
+      // ⚠️ فاصله عمداً **یک‌سومِ** اجاره است: با تمدیدِ دقیقاً سرِ ۳۰ ثانیه، اولین
+      //    کندیِ شبکه یعنی اجاره منقضی شده و بورد بی‌صاحب مانده.
+      room.ownerTimer = setInterval(
+        () => void refreshOwnership(room),
+        (OWNER_LEASE_SECONDS * 1000) / 3,
+      );
+      room.ownerTimer.unref?.();
+    }
 
     logger.info("اتاق بارگذاری شد", {
       boardId,
@@ -318,6 +500,7 @@ export function createRoomManager({
       fromSnapshot: snapshot !== null,
       migrated: migration.changed ? `${migration.from}→${migration.to}` : null,
       quarantined: quarantined.length,
+      owner: room.owner,
     });
 
     return room;
@@ -339,20 +522,43 @@ export function createRoomManager({
    */
   function wireDocument(room: LiveRoom): void {
     room.doc.on("update", (update: Uint8Array, origin: unknown) => {
-      if (!(origin instanceof ClientOrigin)) return;
-      void persistAndFanout(room, update, origin.session);
+      const from = origin instanceof ClientOrigin ? origin.session : null;
+      const fromBus = origin === REMOTE_UPDATE_ORIGIN;
+
+      // ⚠️ هر originِ دیگری (بارگذاری، قرنطینه، migration) **این نود را ترک
+      //    نمی‌کند**: نه پخش می‌شود، نه پایدار، نه منتشر. مرزِ گام ۴٫۲.
+      if (!from && !fromBus) return;
+
+      // ★★ **updateِ محلی به نودهای دیگر می‌رود، رسیده از گذرگاه نه.**
+      //    سدِ اولِ ضدِ حلقه؛ برچسبِ `nodeId` سدِ دوم است (ADR-006).
+      if (from) publishToBus(room, BUS_KINDS.UPDATE, update, 0);
+
+      void persistAndFanout(room, update, from);
     });
   }
 
   async function persistAndFanout(
     room: LiveRoom,
     update: Uint8Array,
-    from: RtSession,
+    from: RtSession | null,
   ): Promise<void> {
+    // ★★ **فقط صاحب می‌نویسد** (ADR-006 فاز ۲). نودِ غیرِ صاحب پخشِ محلی را
+    //    انجام می‌دهد ولی حق ندارد بگوید «ذخیره شد» — حقیقتش را صاحب با
+    //    `BUS_KINDS.SAVED` می‌فرستد.
+    if (!room.owner) {
+      fanoutLocal(room, update, from);
+      if (from) {
+        broadcast(room, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saving") }));
+      }
+      return;
+    }
+
     try {
       if (log) {
-        const appended = await log.append(room.boardId, update, from.sub);
-        room.seq = appended.seq;
+        const appended = await log.append(room.boardId, update, from?.sub ?? null);
+        // ⚠️ `max` و نه انتساب: ترتیبِ رسیدنِ ackها با ترتیبِ `seq` یکی نیست و
+        //    عددِ «ذخیره شد» هرگز نباید عقب برود.
+        room.seq = Math.max(room.seq, appended.seq);
       }
     } catch (cause) {
       // ⚠️ نوشتن نشد → **نمی‌گوییم ذخیره شد**. کلاینت `unsaved` می‌بیند و
@@ -362,6 +568,20 @@ export function createRoomManager({
       return;
     }
 
+    fanoutLocal(room, update, from);
+    broadcast(room, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saved") }));
+
+    // ★ و به نودهای دیگر بگو **تا کجا** پایدار شده — تنها راهی که کلاینتِ نشسته
+    //   روی نودِ غیرِ صاحب می‌تواند «ذخیره شد»ِ صادق ببیند (ADR-009).
+    publishToBus(room, BUS_KINDS.SAVED, EMPTY, room.seq);
+
+    // ★ **بعد** از ack — فشرده‌سازی یک بهینه‌سازیِ پس‌زمینه است و هیچ‌وقت نباید
+    //   بینِ کاربر و «ذخیره شد» بایستد.
+    maybeCompact(room);
+  }
+
+  /** پخشِ یک updateِ سند به نشست‌های **همین نود**. */
+  function fanoutLocal(room: LiveRoom, update: Uint8Array, from: RtSession | null): void {
     const encoder = encoding.createEncoder();
     syncProtocol.writeUpdate(encoder, update);
     const payload = encodeMessage({
@@ -371,12 +591,10 @@ export function createRoomManager({
     for (const session of room.sessions) {
       if (session !== from) send(session, payload);
     }
+  }
 
-    broadcast(room, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saved") }));
-
-    // ★ **بعد** از ack — فشرده‌سازی یک بهینه‌سازیِ پس‌زمینه است و هیچ‌وقت نباید
-    //   بینِ کاربر و «ذخیره شد» بایستد.
-    maybeCompact(room);
+  function publishToBus(room: LiveRoom, kind: BusKind, payload: Uint8Array, seq: number): void {
+    bus?.publish(room.boardId, { node: nodeId, kind, payload, seq });
   }
 
   /**
@@ -392,7 +610,10 @@ export function createRoomManager({
    * می‌ساخت.
    */
   function maybeCompact(room: LiveRoom): void {
-    if (!compactor || room.compacting) return;
+    // ⚠️ **فقط صاحب فشرده می‌کند.** فشرده‌سازی می‌نویسد **و حذف می‌کند**؛ دو نود
+    //    که همزمان این کار را بکنند، دقیقاً همان چیزی است که ترتیبِ امنِ گام ۴٫۴
+    //    فرض کرده هرگز رخ نمی‌دهد.
+    if (!compactor || room.compacting || !room.owner) return;
     if (
       !compactor.shouldCompact({
         seq: room.seq,
@@ -481,6 +702,9 @@ export function createRoomManager({
       for (const target of room.sessions) {
         if (target !== session) send(target, data);
       }
+      // ★ و به نودهای دیگر هم می‌رود، وگرنه استروکِ زنده فقط برای کسانی دیده
+      //   می‌شود که تصادفاً روی همان نود نشسته‌اند.
+      publishToBus(room, BUS_KINDS.EPHEMERAL, data, 0);
       return;
     }
 
@@ -674,13 +898,15 @@ export function createRoomManager({
       return room;
     },
 
-    close() {
+    async close() {
       for (const room of rooms.values()) {
         if (room.idleTimer) clearTimeout(room.idleTimer);
+        releaseRoom(room);
         room.doc.destroy();
       }
       rooms.clear();
-      return Promise.resolve();
+      await bus?.close();
+      await ownerLock?.close();
     },
   };
 }
