@@ -8,6 +8,9 @@ import { defineConfig } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
+  // ⚠️ گام ۶٫۱ زیرساختِ واقعی می‌خواهد و اجرای جدای خودش را دارد
+  //    () — وگرنه کلِ E2E به داکر گره می‌خورد.
+  testIgnore: ["**/g1-server.spec.ts"],
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),

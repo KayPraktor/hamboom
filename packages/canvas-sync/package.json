@@ -18,7 +18,8 @@
     "predev": "pnpm run assets && node ../../scripts/check-dev-port.mjs 15280",
     "dev": "vite",
     "pretest:e2e": "pnpm run assets",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:server": "playwright test -c playwright.server.config.ts"
   },
   "devDependencies": {
     "@hamboom/eslint-config": "workspace:*",

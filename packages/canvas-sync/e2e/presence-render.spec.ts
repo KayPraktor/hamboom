@@ -1,4 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+
+import { handProject, pointAt, projectionOf, sample, settleViewport } from "./pair-helpers";
 
 /**
  * ★★ گام ۳٫۷ — **G-1الف**: دو بومِ واقعی، حضورِ رندرشده، بدونِ سرور.
@@ -34,76 +36,6 @@ const PAIR = "/#pair";
 
 /** نقطه‌ای در صحنه که تست‌ها از آن استفاده می‌کنند. */
 const PEER_POINT = { x: 220, y: 140 };
-
-interface Projection {
-  viewport: { scrollX: number; scrollY: number; zoom: number };
-  offsetLeft: number;
-  offsetTop: number;
-  overlay: { left: number; top: number };
-}
-
-/** ★ همان فرمول، **دستی** — نه صدا زدنِ `sceneToOverlayPixel`. */
-function handProject(scene: { x: number; y: number }, p: Projection): { x: number; y: number } {
-  return {
-    x: (scene.x + p.viewport.scrollX) * p.viewport.zoom + p.offsetLeft - p.overlay.left,
-    y: (scene.y + p.viewport.scrollY) * p.viewport.zoom + p.offsetTop - p.overlay.top,
-  };
-}
-
-const projectionOf = (page: Page, pane: "a" | "b") =>
-  page.evaluate((name) => window.__hbPair![name]!.projection(), pane) as Promise<Projection>;
-
-/**
- * ★ نما و پیکسلِ رندرشده را در **یک** `evaluate` می‌خواند.
- *
- * ⚠️ لازم است، نه تمیزکاری: اولین نسخه دو رفت‌وبرگشتِ جدا داشت و بینشان یک
- * رندرِ ری‌اکت افتاد — نما را از **قبلِ** `follow` خواند و `transform` را از
- * **بعدش**. تست قرمز شد در حالی که کد درست بود. هر دو باید از **یک فریم** بیایند.
- */
-async function sample(
-  page: Page,
-  pane: "a" | "b",
-  selector: string,
-): Promise<{ projection: Projection; translate: { x: number; y: number } }> {
-  return page.evaluate(
-    ({ name, css }) => {
-      const element = document.querySelector(`[data-pane="${name}"] ${css}`)!;
-      const matrix = new DOMMatrix(getComputedStyle(element).transform);
-      return {
-        projection: window.__hbPair![name]!.projection(),
-        translate: { x: matrix.m41, y: matrix.m42 },
-      };
-    },
-    { name: pane, css: selector },
-  );
-}
-
-/**
- * ★ صبر تا نما **آرام بگیرد** — دو خواندنِ پیاپیِ یکسان.
- *
- * ⚠️ یک چرخِ ماوس یک رویداد نیست، یک **رگبار** است. بدونِ این، `follow` وسطِ
- * رگبار اجرا می‌شد و `onScrollChange`ِ بعدی مقدارش را پس می‌گرفت — تست قرمز
- * می‌شد در حالی که کد درست بود. (مهلتِ ثابت راهِ درستش نیست؛ درسِ ثبت‌شده‌ی M1.)
- */
-async function settleViewport(page: Page, pane: "a" | "b"): Promise<void> {
-  let previous = JSON.stringify((await projectionOf(page, pane)).viewport);
-  await expect
-    .poll(async () => {
-      const now = JSON.stringify((await projectionOf(page, pane)).viewport);
-      const stable = now === previous;
-      previous = now;
-      return stable;
-    })
-    .toBe(true);
-}
-
-/** مکان‌نمای الف را روی یک نقطه‌ی صحنه بگذار (بدونِ وابستگی به ماوسِ واقعی). */
-async function pointAt(page: Page, scene: { x: number; y: number }): Promise<void> {
-  await page.evaluate(
-    (point) => window.__hbPair!.a!.outbound.emitPointer({ ...point, visible: true }),
-    scene,
-  );
-}
 
 test.beforeEach(async ({ page }) => {
   await page.goto(PAIR);

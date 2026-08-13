@@ -1,15 +1,27 @@
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 
+import { databaseEnvSchema, loadEnv, redisEnvSchema } from "@hamboom/config";
 import {
+  createCompactor,
   createDevBoardAuthority,
+  createFsSnapshotStore,
+  createPersistedBoardStore,
+  createPgPool,
+  createPostgresSnapshotCatalog,
+  createPostgresUpdateLog,
+  createRedisBoardBus,
+  createRedisOwnerLock,
   createRoomManager,
   createRtServer,
   MemoryBoardBus,
+  MemoryBoardStore,
   MemoryOwnerLock,
   MemoryUpdateLog,
   signDevToken,
+  type RoomManager,
 } from "@hamboom/realtime";
-import { MemoryBoardStore } from "@hamboom/realtime";
+import Redis from "ioredis";
 
 /**
  * سرورِ realtimeِ **بدونِ زیرساخت** — برای دمو و E2E.
@@ -41,9 +53,20 @@ import { MemoryBoardStore } from "@hamboom/realtime";
  * `APP_ENV=production` اصلاً بالا نمی‌آید (ADR-031) و این اسکریپت هم همان گیت
  * را از سرِ راهش برنمی‌دارد.
  *
+ * ── ★★ و یک حالتِ دوم: `--pg` (گام ۶٫۱) ──────────────────────────────
+ *
+ * معیارِ پذیرشِ G-1ب صریحاً **Postgres + Redisِ بالا** می‌خواهد، پس انبارِ
+ * حافظه‌ای آنجا کافی نیست: بدونِ Redis دو نود همدیگر را نمی‌بینند و بدونِ
+ * Postgres «بعد از قطعی همان حالت برمی‌گردد» چیزی را ثابت نمی‌کند.
+ *
+ * با `--pg` دقیقاً همان چیزی سرِ هم می‌شود که `main.ts` می‌سازد. **کدِ سرور در
+ * هر دو حالت یکی است** — فقط پورت‌های انبار عوض می‌شوند، که کلِ نکته‌ی
+ * [ADR-031](../ARCHITECTURE_DECISIONS.md#adr-031) بود.
+ *
  * اجرا:
- *   node scripts/rt-dev-server.ts            # ۱۵۳۰۰ و ۱۵۳۰۱
- *   node scripts/rt-dev-server.ts 16000      # ۱۶۰۰۰ و ۱۶۰۰۱
+ *   node scripts/rt-dev-server.ts            # حافظه‌ای، ۱۵۳۰۰ و ۱۵۳۰۱
+ *   node scripts/rt-dev-server.ts 16000      # حافظه‌ای، ۱۶۰۰۰ و ۱۶۰۰۱
+ *   node scripts/rt-dev-server.ts 16000 --pg # Postgres + Redisِ واقعی
  */
 
 const SECRET = "hamboom-dev-only-secret-at-least-32-chars";
@@ -51,19 +74,64 @@ const DEFAULT_PORT = 15_300;
 /** عمرِ توکن — کوتاه، تا مسیرِ «توکنِ تازه برای هر تلاش» واقعاً پیموده شود. */
 const TOKEN_TTL_SECONDS = 60;
 
-const port = Number(process.argv[2] ?? DEFAULT_PORT);
+const SNAPSHOT_DIR = ".hamboom/snapshots-dev";
+const LIMITS = { maxRoomsPerNode: 50, maxDocBytes: 52_428_800, idleTimeoutMs: 120_000 };
+
+const args = process.argv.slice(2);
+const persistent = args.includes("--pg");
+const port = Number(args.find((value) => !value.startsWith("--")) ?? DEFAULT_PORT);
 const tokenPort = port + 1;
 
 const authority = createDevBoardAuthority({ secret: SECRET });
 
-const rooms = createRoomManager({
-  store: new MemoryBoardStore(),
-  log: new MemoryUpdateLog(),
-  bus: new MemoryBoardBus(),
-  ownerLock: new MemoryOwnerLock("dev-node"),
-  nodeId: "dev-node",
-  limits: { maxRoomsPerNode: 50, maxDocBytes: 52_428_800, idleTimeoutMs: 120_000 },
-});
+/** انبارِ حافظه‌ای — پیش‌فرض، و همان چیزی که E2Eهای ۵٫۲ و ۵٫۳ رویش نشسته‌اند. */
+function memoryRooms(): RoomManager {
+  return createRoomManager({
+    store: new MemoryBoardStore(),
+    log: new MemoryUpdateLog(),
+    bus: new MemoryBoardBus(),
+    ownerLock: new MemoryOwnerLock("dev-node"),
+    nodeId: "dev-node",
+    limits: LIMITS,
+  });
+}
+
+/**
+ * ★ نودِ واقعی — همان ترکیبی که `main.ts` می‌سازد.
+ *
+ * ⚠️ `nodeId` تصادفی است، نه ثابت: دو پروسه‌ی این اسکریپت باید برای قفلِ صاحب
+ * **دو نودِ متفاوت** باشند (گام ۴٫۷). با شناسه‌ی یکسان هر دو خودشان را صاحب
+ * می‌دیدند و کلِ ادعای خوشه بی‌معنا می‌شد.
+ */
+function persistentRooms(): RoomManager {
+  const env = loadEnv(databaseEnvSchema.and(redisEnvSchema));
+  const nodeId = randomUUID();
+  const pool = createPgPool({ connectionString: env.DATABASE_URL, ssl: env.DATABASE_SSL });
+  const log = createPostgresUpdateLog({ pool });
+  const catalog = createPostgresSnapshotCatalog({ pool });
+  const store = createFsSnapshotStore({ directory: SNAPSHOT_DIR });
+  const publisher = new Redis(env.REDIS_URL);
+  const subscriber = new Redis(env.REDIS_URL);
+  for (const client of [publisher, subscriber]) client.on("error", () => undefined);
+
+  return createRoomManager({
+    store: createPersistedBoardStore({ log, snapshots: { store, catalog } }),
+    log,
+    bus: createRedisBoardBus({ publisher, subscriber }),
+    ownerLock: createRedisOwnerLock({ redis: publisher, nodeId }),
+    nodeId,
+    // آستانه‌های محصولی — این نود قرار است مثلِ یک نودِ واقعی رفتار کند.
+    compactor: createCompactor({
+      log,
+      store,
+      catalog,
+      thresholds: { everyUpdates: 500, everyMs: 300_000 },
+    }),
+    limits: LIMITS,
+  });
+}
+
+const rooms = persistent ? persistentRooms() : memoryRooms();
 
 const server = await createRtServer({
   authority,

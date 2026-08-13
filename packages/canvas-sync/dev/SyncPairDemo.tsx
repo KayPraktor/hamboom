@@ -20,7 +20,8 @@ import * as Y from "yjs";
 
 import { createLocalAssetTransport, LocalAssetStore } from "../src/assets";
 import { createCanvasBinding } from "../src/canvas-binding";
-import { LocalTransport, LocalTransportHub } from "../src/transport";
+import { LocalTransport, LocalTransportHub, type SyncTransport } from "../src/transport";
+import { createWebSocketTransport } from "../src/websocket-transport";
 import { bindUndoShortcuts } from "../src/undo";
 import { YjsSyncAdapter } from "../src/adapter";
 
@@ -39,6 +40,22 @@ import { YjsSyncAdapter } from "../src/adapter";
  * در callbackِ `onReady`.
  *
  * گام ۳٫۷ همین صفحه را با حضور (مکان‌نما/انتخاب/follow) کامل می‌کند — G-1الف.
+ *
+ * ── ★★ گام ۶٫۱: همین صفحه، این‌بار روی سرورِ **واقعی** (G-1ب) ──────────
+ *
+ * با پارامترهای هش، هر پنل به‌جای `LocalTransportHub` یک ترابریِ WebSocketِ
+ * واقعی می‌گیرد:
+ *
+ * `#pair?board=<id>&ws=<port>&ws2=<port>&token=<port>&token2=<port>`
+ *
+ * ★ **و هیچ خطِ دیگری از این فایل عوض نشد** — همان قولی که
+ * [ADR-030](../../../ARCHITECTURE_DECISIONS.md#adr-030) داد و
+ * [ADR-039](../../../ARCHITECTURE_DECISIONS.md#adr-039) ادایش کرد: آداپتور فقط
+ * `SyncTransport` را می‌شناسد. `ws2`/`token2` هست تا دو پنل بتوانند روی **دو
+ * نودِ متفاوت** بنشینند (معیارِ گام ۶٫۱، خوشه‌ی گام ۴٫۷).
+ *
+ * ⚠️ بدونِ این پارامترها رفتار **دقیقاً** مثلِ قبل است — همه‌ی تست‌های ۳٫۲ تا
+ * ۳٫۷ روی همان مسیرِ درون‌حافظه‌ای می‌مانند.
  */
 
 type CanvasApi = Parameters<NonNullable<HamboomCanvasProps["onReady"]>>[0];
@@ -58,6 +75,15 @@ declare global {
           peers: () => PeerState[];
           /** اندازه‌ی سند — ادعای «ephemeral سند را بزرگ نمی‌کند». */
           docBytes: () => number;
+          /**
+           * ★★ بردارِ وضعیتِ سند — ادعای همگراییِ گام ۶٫۱.
+           *
+           * ⚠️ عمداً از شمردنِ عنصر قوی‌تر است: دو سند می‌توانند عناصرِ یکسان
+           * داشته باشند و هنوز opهای متفاوتی دیده باشند. برابریِ بردارِ وضعیت
+           * یعنی **دقیقاً همان opها** — همان چیزی که معیارِ پذیرش می‌خواهد
+           * («مقایسه‌ی state vector، نه چشمی»).
+           */
+          stateVector: () => number[];
           /** درجِ یک تصویر از راهِ ابزارِ **واقعیِ** M1 — گام ۳٫۶. */
           ingestImage: (file: File) => Promise<HbElement | null>;
           /** متادیتای داراییِ سند — برای ادعای «باینری اینجا نیست». */
@@ -87,6 +113,39 @@ declare global {
 
 /** یک hub برای کلِ صفحه — جای سرور. */
 const hub = new LocalTransportHub();
+
+function params(): URLSearchParams {
+  return new URLSearchParams(window.location.hash.split("?")[1] ?? "");
+}
+
+/**
+ * ترابریِ این پنل — درون‌حافظه‌ای، مگر اینکه هش پورتی داده باشد (گام ۶٫۱).
+ *
+ * ★ پنلِ «ب» اگر `ws2` بگیرد به نودِ **دیگری** وصل می‌شود؛ وگرنه همان نودِ اول.
+ * دو حالت هر دو لازم‌اند: یک‌نودی مسیرِ عادی است و دو‌نودی ادعای خوشه (۴٫۷).
+ */
+function paneTransport(name: string): SyncTransport {
+  const query = params();
+  const board = query.get("board");
+  const wsPort = name === "b" ? (query.get("ws2") ?? query.get("ws")) : query.get("ws");
+  if (!board || !wsPort) return new LocalTransport(hub);
+
+  const tokenPort =
+    name === "b"
+      ? (query.get("token2") ?? query.get("token"))
+      : (query.get("token") ?? String(Number(wsPort) + 1));
+
+  return createWebSocketTransport({
+    url: `ws://127.0.0.1:${wsPort}/rt?board=${encodeURIComponent(board)}`,
+    token: async () => {
+      const response = await fetch(
+        `http://127.0.0.1:${String(tokenPort)}/dev-token?board=${encodeURIComponent(board)}&sub=usr_${name}`,
+      );
+      if (!response.ok) throw new Error(`توکن گرفته نشد: ${String(response.status)}`);
+      return response.text();
+    },
+  });
+}
 
 /**
  * ★ یک انبارِ **مشترک** — جای Object Storage.
@@ -163,7 +222,7 @@ function Pane({ name, label }: PaneProps) {
     //    می‌سازد که آداپتور باید تاب بیاورد (نگهبانِ نسل در `connect`).
     const assets = createLocalAssetTransport(assetStore, { uploadedBy: `u_${name}` });
     const adapter = new YjsSyncAdapter({
-      transport: new LocalTransport(hub),
+      transport: paneTransport(name),
       assets,
       user: {
         id: `u_${name}`,
@@ -253,6 +312,7 @@ function Pane({ name, label }: PaneProps) {
             commitLocal,
             peers: () => peersRef.current,
             docBytes: () => Y.encodeStateAsUpdate(adapter.document).byteLength,
+            stateVector: () => [...Y.encodeStateVector(adapter.document)],
             ingestImage: (file) => imageTool!.ingestFile(file),
             assets: () => readDocument(adapter.document).assets,
             engineFiles: () => Object.keys(api.getFiles() ?? {}),
