@@ -1,9 +1,19 @@
 import type { HbElement } from "@hamboom/shared-types";
-import { boardRoots, createBoardDoc, readDocument, writeElement } from "@hamboom/ydoc-schema";
+import {
+  boardRoots,
+  createBoardDoc,
+  encodeMessage,
+  MSG_TYPES,
+  readDocument,
+  writeElement,
+} from "@hamboom/ydoc-schema";
+import * as encoding from "lib0/encoding";
+import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 import { describe, expect, it, vi } from "vitest";
 
 import { createLogger } from "./log.ts";
+import { BUS_KINDS, MemoryBoardBus } from "./pubsub/board-bus.ts";
 import { createRoomManager, type RoomLimits } from "./room.ts";
 import type { RtSession } from "./server.ts";
 import { MemoryBoardStore } from "./store/board-store.ts";
@@ -36,20 +46,33 @@ const LIMITS: RoomLimits = {
  */
 function fakeSocket() {
   const handlers = new Map<string, () => void>();
+  // ★ شنونده‌ی پیام جدا نگه داشته می‌شود تا تستِ F-2 بتواند مسیرِ **واقعیِ
+  //   کلاینت** را براند، نه اینکه مستقیم روی سند بنویسد. نوشتنِ مستقیم
+  //   `ClientOrigin` ندارد و اصلاً روی گذرگاه نمی‌رود — یعنی چیزی را می‌سنجید
+  //   که در تولید وجود ندارد.
+  let onMessage: ((data: Uint8Array) => void) | null = null;
   return {
     socket: {
       once: (event: string, cb: () => void) => handlers.set(event, cb),
-      on: () => {},
+      on: (event: string, cb: (data: Uint8Array) => void) => {
+        if (event === "message") onMessage = cb;
+      },
       send: () => {},
     },
     /** شبیه‌سازیِ بسته‌شدنِ اتصال. */
     close: () => handlers.get("close")?.(),
+    /** پیامی که «کلاینت» فرستاده. */
+    receive: (data: Uint8Array) => onMessage?.(data),
   };
 }
 
-function session(sub = "usr_1", boardId = BOARD): { session: RtSession; close: () => void } {
+function session(
+  sub = "usr_1",
+  boardId = BOARD,
+): { session: RtSession; close: () => void; receive: (data: Uint8Array) => void } {
   const fake = fakeSocket();
   return {
+    receive: fake.receive,
     session: {
       socket: fake.socket as unknown as RtSession["socket"],
       boardId,
@@ -359,5 +382,95 @@ describe("★★ معیارِ پذیرش — سه کلاینت، تخلیه، و
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * تست‌های **یافته‌ی F-2** — گام ۶٫۱، [ADR-041](../../../ARCHITECTURE_DECISIONS.md#adr-041).
+ *
+ * ⚠️ سناریو دقیقاً همان چیزی است که سنجه‌ی G-1ب گرفت: نودِ صاحب مرده، اجاره‌ی
+ * قفل هنوز منقضی نشده، پس **هیچ نودی صاحب نیست**. در آن پنجره هیچ updateی
+ * پایدار نمی‌شود و تنها نسخه‌اش حافظه‌ی نودی است که گرفتتش.
+ */
+describe("★★ F-2 — نودی که دیرتر اتاق را باز می‌کند حالتِ تازه‌تر را می‌گیرد", () => {
+  /** یک نود با گذرگاهِ مشترک و **بدونِ صاحب** — قفل هرگز داده نمی‌شود. */
+  function ownerlessNode(bus: MemoryBoardBus, store: MemoryBoardStore, id: string) {
+    return createRoomManager({
+      store,
+      bus,
+      // ⚠️ قفلی که همیشه `false` می‌دهد = همان پنجره‌ی «صاحبِ مرده، اجاره زنده».
+      ownerLock: {
+        acquire: () => Promise.resolve(false),
+        renew: () => Promise.resolve(false),
+        release: () => Promise.resolve(),
+        close: () => Promise.resolve(),
+      },
+      nodeId: id,
+      limits: LIMITS,
+      logger: createLogger({ level: "error", write: () => {} }),
+    });
+  }
+
+  /** یک ژستِ کلاینت روی سیم — همان مسیری که `handleMessage` می‌شناسد. */
+  function clientGesture(id: string): Uint8Array {
+    const doc = createBoardDoc();
+    doc.transact(() => {
+      writeElement(boardRoots(doc).elements as BoardElements, element(id));
+    });
+    const inner = encoding.createEncoder();
+    syncProtocol.writeUpdate(inner, Y.encodeStateAsUpdate(doc));
+    return encodeMessage({ type: MSG_TYPES.SYNC, payload: encoding.toUint8Array(inner) });
+  }
+
+  it("★★★ کارِ نودِ اول به نودی که بعداً بالا می‌آید می‌رسد", async () => {
+    const bus = new MemoryBoardBus();
+    const store = new MemoryBoardStore();
+
+    const first = ownerlessNode(bus, store, "node-1");
+    const clientA = session("usr_1");
+    const roomA = await first.join(clientA.session);
+
+    // ★ کارِ کلاینت از راهِ **سیم**. هیچ صاحبی نیست، پس هیچ‌جا پایدار نمی‌شود:
+    //   تنها نسخه‌اش حافظه‌ی همین نود است.
+    clientA.receive(clientGesture("stk_lost"));
+    await vi.waitFor(() =>
+      expect(readDocument(roomA.doc).elements.map((item) => item.id)).toEqual(["stk_lost"]),
+    );
+    // و دیتابیس واقعاً خالی است — وگرنه این تست چیزی ثابت نمی‌کرد.
+    expect((await store.load(BOARD)).snapshot).toBeNull();
+
+    // و حالا نودِ دوم همان اتاق را باز می‌کند.
+    const second = ownerlessNode(bus, store, "node-2");
+    const roomB = await second.join(session("usr_2").session);
+
+    // ★ بدونِ تبادلِ حالت، این برای همیشه خالی می‌مانْد: نه گذرگاه گذشته را نگه
+    //   می‌دارد و نه دیتابیس چیزی دارد.
+    await vi.waitFor(() =>
+      expect(readDocument(roomB.doc).elements.map((item) => item.id)).toEqual(["stk_lost"]),
+    );
+
+    await first.close();
+    await second.close();
+  });
+
+  it("جوابِ حالت دوباره پرسش تولید نمی‌کند — حلقه ساختاراً ممکن نیست", async () => {
+    const bus = new MemoryBoardBus();
+    const seen: number[] = [];
+    await bus.subscribe(BOARD, (envelope) => seen.push(envelope.kind));
+
+    const first = ownerlessNode(bus, new MemoryBoardStore(), "node-1");
+    await first.join(session("usr_1").session);
+    const second = ownerlessNode(bus, new MemoryBoardStore(), "node-2");
+    await second.join(session("usr_2").session);
+    await vi.waitFor(() => expect(seen).toContain(BUS_KINDS.UPDATE));
+
+    // دو پرسش (یکی به‌ازای هر نود) و بس — نه رشدِ بی‌پایان.
+    const requests = seen.filter((kind) => kind === BUS_KINDS.STATE_REQUEST).length;
+    expect(requests).toBe(2);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(seen.filter((kind) => kind === BUS_KINDS.STATE_REQUEST).length).toBe(requests);
+
+    await first.close();
+    await second.close();
   });
 });

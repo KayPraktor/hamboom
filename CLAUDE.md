@@ -169,50 +169,15 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 ## وضعیت فعلی
 
 - **ماژول فعال:** M2 — `realtime-sync` (**فاز ۵ کامل** — فاز ۶ بعدی است)
-- **گام بعدی:** ⚠️ **تصمیمِ مالک درباره‌ی F-2** (پایین)، بعد گام ۶٫۲.
-  ⚠️ **گام ۶٫۱ نیمه‌تمام است:** کلِ سناریوی G-1 روی سرورِ **واقعی** و روی **دو نودِ
-  جدا** سبز است (sync · حضور · re-project · follow، با همان harnessِ ۳٫۷ و بدونِ
-  یک خط بازنویسی)، ولی **همگرایی بعد از قطعی** به یک باگِ واقعیِ خوشه خورد:
-  بینِ مرگِ صاحب و انقضای اجاره هیچ نودی صاحب نیست، پس updateِ کلاینت هیچ‌جا
-  پایدار نمی‌شود و می‌تواند **بی‌صدا** گم شود. سه گزینه با هزینه در
-  [PROGRESS.md](PROGRESS.md) («F-2») ثبت شد. **تستش عمداً قرمز مانده** —
-  
-> @hamboom/canvas-sync@0.0.0 test:e2e:server G:\hamboom\packages\canvas-sync
-> playwright test -c playwright.server.config.ts
-
-
-Running 1 test using 1 worker
-
-  x  1 [chromium] › e2e\g1-server.spec.ts:131:1 › ★★★ G-1ب — کلِ سناریو روی سرورِ واقعی، و همگرایی بعد از قطعیِ ۱۰ثانیه‌ای (1.7m)
-
-
-  1) [chromium] › e2e\g1-server.spec.ts:131:1 › ★★★ G-1ب — کلِ سناریو روی سرورِ واقعی، و همگرایی بعد از قطعیِ ۱۰ثانیه‌ای › ۵) ★★ قطعیِ ۱۰ثانیه‌ای وسطِ کار، و همگرایی 
-
-    Error: expect(received).toBe(expected) // Object.is equality
-
-    Expected: true
-    Received: false
-
-    Call Log:
-    - Timeout 90000ms exceeded while waiting on the predicate
-
-      245 |         { timeout: 90_000 },
-      246 |       )
-    > 247 |       .toBe(true);
-          |        ^
-      248 |
-      249 |     // و کارِ هر دو طرف سرِ جایش است: دو استیکیِ تازه (هر کدام ظرف + متن).
-      250 |     const merged = await elementIds(page, "a");
-        at G:\hamboom\packages\canvas-sync\e2e\g1-server.spec.ts:247:8
-        at G:\hamboom\packages\canvas-sync\e2e\g1-server.spec.ts:206:3
-
-    Error Context: test-results\g1-server-★★★-G-1ب-—-کلِ-س-cac03-ایی-بعد-از-قطعیِ-۱۰ثانیه‌ای-chromium\error-context.md
-
-  1 failed
-    [chromium] › e2e\g1-server.spec.ts:131:1 › ★★★ G-1ب — کلِ سناریو روی سرورِ واقعی، و همگرایی بعد از قطعیِ ۱۰ثانیه‌ای 
-G:\hamboom\packages\canvas-sync:
- ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @hamboom/canvas-sync@0.0.0 test:e2e:server: `playwright test -c playwright.server.config.ts`
-Exit status 1.
+- **گام بعدی:** گام ۶٫۲ — تست‌های همزمانی و تعارض.
+  ★★ **گام ۶٫۱ تمام است و گپِ G-1 — ارثِ M1 — بسته شد:** کلِ سناریو (sync · حضور ·
+  re-project · follow) روی سرورِ **واقعی** و روی **دو نودِ جدا** سبز است، و بعد از
+  قطعیِ ۱۰ثانیه‌ای هر دو کلاینت به **بردارِ وضعیتِ یکسان** می‌رسند. همان harnessِ
+  ۳٫۷ بدونِ یک خط بازنویسی.
+  ★ **و همین معیار یک باگِ واقعیِ خوشه گرفت** که هر هفت سنجه از رویش رد شده بودند
+  (**F-2** → [ADR-041](ARCHITECTURE_DECISIONS.md#adr-041)): بینِ مرگِ صاحب و انقضای
+  اجاره هیچ نودی صاحب نیست، پس updateِ کلاینت هیچ‌جا پایدار نمی‌شد و می‌توانست
+  **بی‌صدا** گم شود. حالا اتاق هنگام باز شدن حالتِ تازه‌تر را از نودهای دیگر می‌پرسد.
   ★ **گام ۵٫۳ تمام است:** نقش وسطِ کار عوض می‌شود و بوم **بدونِ رفرش** فقط-خواندنی
   می‌شود (`viewModeEnabled`ِ خودِ موتور، آزموده در مرورگر)، اتصال **باز می‌مانَد**
   (ADR-038)، و updateِ بعدی `FORBIDDEN` می‌گیرد. کلاینتِ عقب‌تر پیامِ فارسی می‌گیرد و

@@ -281,6 +281,19 @@ export function createRoomManager({
         broadcast(room, encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, "saved") }));
         return;
 
+      case BUS_KINDS.STATE_REQUEST:
+        // ★★ نودی تازه این اتاق را باز کرده — حالتِ کاملمان را بده (F-2،
+        //    [ADR-041](../../../ARCHITECTURE_DECISIONS.md#adr-041)).
+        //
+        // ⚠️ **حالتِ کامل، نه دیف.** پرسنده بردارِ وضعیتش را نفرستاده و ما هم
+        //    نمی‌دانیم چه چیزی کم دارد؛ Yjs opهای تکراری را دور می‌ریزد، پس
+        //    بدترین هزینه‌اش پهنای باند است — در برابرِ گم‌شدنِ کارِ کاربر.
+        //
+        // ★ و **جواب دوباره جواب نمی‌گیرد**: پاسخ از نوعِ `UPDATE` است و
+        //   `UPDATE` هیچ‌وقت پرسش تولید نمی‌کند. حلقه ساختاراً ممکن نیست.
+        publishToBus(room, BUS_KINDS.UPDATE, Y.encodeStateAsUpdate(room.doc), 0);
+        return;
+
       default:
         return;
     }
@@ -483,6 +496,20 @@ export function createRoomManager({
       handleBus(room, envelope);
     };
     for (const envelope of buffered) handleBus(room, envelope);
+
+    /**
+     * ★★ **و از بقیه‌ی نودها بپرس حالتِ تازه‌تری دارند یا نه** — یافته‌ی F-2،
+     * [ADR-041](../../../ARCHITECTURE_DECISIONS.md#adr-041).
+     *
+     * ⚠️ خواندن از دیتابیس فقط چیزی را می‌آورد که **پایدار شده**. اگر بینِ مرگِ
+     * صاحبِ قبلی و انقضای اجاره، کلاینتی روی نودِ دیگری نوشته باشد، آن update
+     * **هیچ‌جا پایدار نشده** و تنها نسخه‌اش حافظه‌ی همان نود است. بدونِ این
+     * پرسش، این اتاق برای همیشه ناقص بالا می‌آمد — بی‌خطا، و شبیهِ درست.
+     *
+     * ★ جایش عمداً **بعد از** تخلیه‌ی بافر است: تا اینجا `handleBus` زنده است،
+     * پس جوابی که برمی‌گردد جایی برای نشستن دارد.
+     */
+    publishToBus(room, BUS_KINDS.STATE_REQUEST, EMPTY, 0);
 
     await refreshOwnership(room, true);
     if (ownerLock) {
