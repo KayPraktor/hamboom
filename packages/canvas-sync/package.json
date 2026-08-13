@@ -41,6 +41,7 @@
     "@hamboom/shared-types": "workspace:*",
     "@hamboom/ydoc-schema": "workspace:*",
     "lib0": "0.2.117",
+    "y-indexeddb": "9.0.12",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.20"
   }

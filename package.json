@@ -35,7 +35,8 @@
     "rt:presence": "node --env-file-if-exists=.env scripts/rt-presence.ts",
     "rt:cluster": "node --env-file-if-exists=.env scripts/rt-cluster.ts",
     "rt:shutdown": "node --env-file-if-exists=.env scripts/rt-shutdown.ts",
-    "rt:reconnect": "node --env-file-if-exists=.env scripts/rt-reconnect.ts"
+    "rt:reconnect": "node --env-file-if-exists=.env scripts/rt-reconnect.ts",
+    "rt:dev": "node scripts/rt-dev-server.ts"
   },
   "devDependencies": {
     "@hamboom/canvas-sync": "workspace:*",

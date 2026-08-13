@@ -39,6 +39,7 @@ import {
   type EmitSchedulerOptions,
 } from "./emit-local.ts";
 import type { SyncTransport, TransportStatus } from "./transport.ts";
+import type { LocalDocStore } from "./local-store.ts";
 import { createUndoScope, type UndoScope } from "./undo.ts";
 
 /**
@@ -100,6 +101,14 @@ export interface YjsSyncAdapterOptions {
   assets?: AssetTransport;
   /** بازنویسیِ اعدادِ جدولِ throttle — **فقط برای تست**. */
   throttle?: EmitSchedulerOptions & PresenceThrottleOptions;
+  /**
+   * پایداریِ **محلیِ** سند (گام ۵٫۲) — [`local-store.ts`](./local-store.ts).
+   *
+   * نبودش یعنی سند فقط در حافظه است: بستنِ تب کارِ نرسیده به سرور را می‌بَرد.
+   * ⚠️ چرخه‌ی عمرش مالِ **صداکننده** است، نه آداپتور: `disconnect` آن را
+   * `destroy` نمی‌کند، چون زیر StrictMode هر mount یک بار باز و بسته‌اش می‌کرد.
+   */
+  localStore?: LocalDocStore;
 }
 
 /** رویدادِ `observeDeep` — تایپِ خودِ Yjs `any` است و اینجا مهارش می‌کنیم. */
@@ -171,13 +180,30 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
    */
   private linkUp = true;
   /**
-   * تغییرِ محلی‌ای که هنوز روی سیم نرفته — ورودیِ `offline{pendingChanges}`.
+   * ★★ شناسه‌ی **عناصری** که وقتی سیم قطع بود محلی عوض شدند — ورودیِ
+   * `offline{pendingChanges}`.
    *
-   * ★ عمداً «ذخیره‌نشده» نیست: آن را سرور با `HB_ROOM_INFO` می‌گوید و
-   * [`SaveState`](../../canvas-core/src/sync/contract.ts) جای خودش را دارد.
-   * این یکی جوابِ سوالِ دیگری است — «چند تا از کارهایم اصلاً به سرور نرسیده؟»
+   * ⚠️ **مجموعه است، نه شمارنده، و این عمدی است.** در گام ۵٫۱ اینجا تعدادِ
+   * updateهای نرفته شمرده می‌شد؛ عددش درست بود ولی به کاربر دروغ می‌گفت: یک
+   * درگِ ده‌ثانیه‌ای روی **یک** استیکی حدودِ ۲۰۰ update می‌سازد و نوارِ وضعیت
+   * «آفلاین — ۲۰۰ تغییرِ معلق» نشان می‌داد. رشته‌ی فارسیِ M1
+   * (`connection.offline`) این عدد را **به کاربر نشان می‌دهد**، پس واحدش باید
+   * چیزی باشد که کاربر می‌شناسد: عنصر، نه پیامِ پروتکل.
+   *
+   * ⚠️ **و محدودیتش را بدان:** این «از ابتدای تاریخ» نیست، از لحظه‌ی قطعِ سیم
+   * در **همین نشست** است. تبی که آفلاین باز شود کارِ ذخیره‌شده‌ی قبلی را صفر
+   * می‌شمارد — چون نمی‌داند آن کار قبلاً به سرور رسیده بود یا نه. جبرانش در
+   * `SaveState` است: تا وقتی سیم قطع است **هیچ‌وقت** `saved` گفته نمی‌شود.
    */
-  private pendingChanges = 0;
+  private readonly offlineTouched = new Set<string>();
+  /**
+   * آخرین وضعیتی که به بوم گفته شد — تا `collectOffline` بداند آیا عددِ
+   * `offline{pendingChanges}` روی صفحه هست یا نه.
+   */
+  private lastConnection: "connecting" | "connected" | "reconnecting" | "offline" | "error" | null =
+    null;
+  /** پایداریِ محلی (گام ۵٫۲). نبودش یعنی سند فقط در حافظه است. */
+  private readonly localStore: LocalDocStore | null;
 
   constructor(options: YjsSyncAdapterOptions = {}) {
     this.doc = options.doc ?? createBoardDoc();
@@ -186,6 +212,7 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     this.user = options.user ?? DEFAULT_PEER_USER;
     this.assets = options.assets ?? null;
     this.throttle = options.throttle ?? {};
+    this.localStore = options.localStore ?? null;
   }
 
   /** سندِ زیرین — برای تست و برای دموی دو-نمونه‌ای (گام ۳٫۷). */
@@ -245,11 +272,26 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
 
     const token = ++this.epoch;
     this.inbound = inbound;
-    this.pendingChanges = 0;
+    this.offlineTouched.clear();
     // ★ ترابریِ دارای کانالِ وضعیت هنوز باز نیست — تا رویدادِ `open` نرسیده،
     //   هر تغییرِ محلی یک `pendingChange` است، نه چیزی که رفته باشد.
     this.linkUp = !this.transport?.onStatus;
     inbound.setConnectionState({ status: "connecting" });
+
+    // ★★ **اول حافظه‌ی محلی، بعد شبکه** — گام ۵٫۲.
+    //
+    // ⚠️ ترتیبش اجباری است، نه ترجیحی. اگر بعد از دست‌دادن بیاید: (۱) `step2`ِ
+    //    ما بدونِ کارِ آفلاین می‌رود و سرور هرگز آن را نمی‌بیند، و (۲) بوم یک
+    //    لحظه بوردِ خالی رندر می‌کند و بعد کارِ ذخیره‌شده به‌صورت «تغییرِ remote»
+    //    رویش می‌ریزد.
+    //
+    // ★ و چون observerها **بعد از** این نقطه سوار می‌شوند، بازیابیِ محلی به
+    //   شمارنده‌ی `pendingChanges` نمی‌افتد — کارِ ذخیره‌شده «تغییرِ تازه» نیست.
+    if (this.localStore) {
+      await this.localStore.whenReady;
+      // ★ همان قاعده‌ی همیشگی: بعد از هر `await` بررسی کن هنوز همان اتصالیم.
+      if (this.epoch !== token) throw new ConnectionCancelledError();
+    }
 
     await this.transport?.connect?.();
     // ★ بعد از **هر** await باید بررسی شود که هنوز همان اتصالیم — StrictMode
@@ -330,10 +372,14 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     this.teardown = [];
     this.pendingRemote.clear();
     this.transport?.disconnect?.();
-    this.inbound?.setConnectionState({ status: "offline", pendingChanges: this.pendingChanges });
+    this.inbound?.setConnectionState({
+      status: "offline",
+      pendingChanges: this.offlineTouched.size,
+    });
     this.inbound = null;
     this.linkUp = true;
-    this.pendingChanges = 0;
+    this.lastConnection = null;
+    this.offlineTouched.clear();
   }
 
   // ── سیم‌کشی ──────────────────────────────────────────────────
@@ -354,10 +400,6 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
       // ★ آنچه از همتا رسیده دوباره فرستاده نمی‌شود. بدونِ این، دو کلاینت تا
       //   ابد یک update را به هم پاس می‌دهند — همان حلقه‌ای که هیچ خطایی نمی‌دهد.
       if (origin === REMOTE_ORIGIN) return;
-      // ⚠️ **قبل از فرستادن شمرده می‌شود، نه بعدش.** ترابریِ بسته پیام را
-      //    بی‌صدا دور می‌ریزد (عمدی — دست‌دادنِ بعدی کلِ حالت را می‌برد)، پس
-      //    تنها جایی که می‌شود فهمید کاربر چند کار کرده همین‌جاست.
-      if (!this.linkUp) this.pendingChanges++;
       const encoder = encoding.createEncoder();
       syncProtocol.writeUpdate(encoder, update);
       this.sendSync(encoding.toUint8Array(encoder));
@@ -377,26 +419,39 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     const inbound = this.inbound;
     if (!inbound) return;
 
+    // ★★ سیم که قطع شد، **هیچ ادعایی درباره‌ی ذخیره‌شدن نمی‌شود کرد** (گام ۵٫۲).
+    //    تنها منبعِ «ذخیره شد» پیامِ سرور است؛ وقتی سرور نیست، بدبینی تنها
+    //    حالتِ صادق است.
+    if (status.phase !== "open" && this.linkUp) {
+      this.linkUp = false;
+      this.reportUnsaved();
+    }
+    this.linkUp = status.phase === "open";
+
     switch (status.phase) {
       case "connecting":
-        this.linkUp = false;
+        this.lastConnection = "connecting";
         // ⚠️ فقط تلاشِ **اول** «در حالِ اتصال» است. تلاش‌های بعدی وسطِ یک
         //    سریِ اتصالِ مجددند و پرش به `connecting` فقط شماره‌ی تلاش و
         //    زمان‌سنجِ روی صفحه را پاک می‌کند.
         if (status.attempt === 1) inbound.setConnectionState({ status: "connecting" });
+        else this.lastConnection = "reconnecting";
         return;
 
       case "open":
-        this.linkUp = true;
         // ★★ **دست‌دادن روی هر بار باز شدن، نه فقط اولی.** سرور هیچ حافظه‌ای
         //    از نشستِ قبلی ندارد: نه بردارِ وضعیتِ ما را دارد و نه حضورمان را.
         this.resumeSession();
-        this.pendingChanges = 0;
+        this.offlineTouched.clear();
+        this.lastConnection = "connected";
         inbound.setConnectionState({ status: "connected", peers: this.peerCount });
+        // ★ «در حالِ ذخیره»، نه «ذخیره شد»: دست‌دادن همین الان رفت ولی تاییدِ
+        //   سرور (`HB_ROOM_INFO`) هنوز نرسیده.
+        inbound.setSaveState({ status: "saving" });
         return;
 
       case "retrying":
-        this.linkUp = false;
+        this.lastConnection = "reconnecting";
         inbound.setConnectionState({
           status: "reconnecting",
           attempt: status.attempt,
@@ -405,10 +460,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
         return;
 
       case "stopped":
-        this.linkUp = false;
+        this.lastConnection = status.reason === "offline" ? "offline" : "error";
         inbound.setConnectionState(
           status.reason === "offline"
-            ? { status: "offline", pendingChanges: this.pendingChanges }
+            ? { status: "offline", pendingChanges: this.offlineTouched.size }
             : { status: "error", code: status.code, message: status.message },
         );
         return;
@@ -522,6 +577,9 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   private wireDocument(): void {
     const elements = boardRoots(this.doc).elements;
     const observer = (events: DeepEvent[], transaction: Y.Transaction): void => {
+      // ★ هرچه از همتا نیامده، **کارِ ماست** — چه از بوم (`LocalOrigin`) و چه از
+      //   undo. اگر سیم قطع باشد، هنوز به سرور نرسیده و باید شمرده شود.
+      if (transaction.origin !== REMOTE_ORIGIN && !this.linkUp) this.collectOffline(events);
       // تغییرِ خودمان است — بوم از قبل نشانش می‌دهد و برگرداندنش یعنی حلقه.
       if (transaction.origin instanceof LocalOrigin) return;
       this.collectRemote(events);
@@ -599,6 +657,44 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
    * `keysChanged`. هر دو باید به شناسه‌ی همان عنصر برسند، وگرنه تغییرِ همتا
    * می‌رسد ولی بوم چیزی نشان نمی‌دهد.
    */
+  /**
+   * ★ شناسه‌ی عناصری که آفلاین دست‌خورده‌اند — همان استخراجِ `collectRemote`،
+   * مقصدِ متفاوت.
+   *
+   * و اگر عدد عوض شد و کاربر در حالتِ `offline` است، **دوباره گزارش می‌شود**:
+   * آن حالت تنها جایی است که این عدد به کاربر نشان داده می‌شود
+   * (`connection.offline` در [`fa.ts`](../../i18n/src/strings/fa.ts))، و عددِ
+   * یخ‌زده بدتر از نبودنش است.
+   */
+  private collectOffline(events: DeepEvent[]): void {
+    const before = this.offlineTouched.size;
+    for (const event of events) {
+      if (event.path.length > 0) {
+        this.offlineTouched.add(String(event.path[0]));
+      } else if (event instanceof Y.YMapEvent) {
+        for (const key of event.keysChanged) this.offlineTouched.add(key);
+      }
+    }
+    if (this.offlineTouched.size === before) return;
+    this.reportUnsaved();
+  }
+
+  /**
+   * ★★ «هنوز ذخیره نشده» — و تا وقتی سیم قطع است، **هیچ‌وقت** چیزِ دیگری.
+   *
+   * ⚠️ این بدبینی عمدی است و قراردادِ M1 صریحاً می‌خواهدش: تنها منبعِ «ذخیره شد»
+   * پیامِ `HB_ROOM_INFO`ِ سرور است (گام ۴٫۳)، و وقتی سرور در دسترس نیست هیچ
+   * ادعایی درباره‌ی دیسک نمی‌شود کرد. اگر «ذخیره شد» نشان بدهیم و کاربر تب را
+   * ببندد، کارش رفته است.
+   */
+  private reportUnsaved(): void {
+    const pendingChanges = this.offlineTouched.size;
+    this.inbound?.setSaveState({ status: "unsaved", pendingChanges });
+    if (this.lastConnection === "offline") {
+      this.inbound?.setConnectionState({ status: "offline", pendingChanges });
+    }
+  }
+
   private collectRemote(events: DeepEvent[]): void {
     for (const event of events) {
       if (event.path.length > 0) {

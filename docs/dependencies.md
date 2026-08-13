@@ -17,11 +17,13 @@
 | `yjs` | 13.6.32 | MIT | CRDTِ سند — [ADR-004](../ARCHITECTURE_DECISIONS.md#adr-004). مصرف‌کننده‌ها: `ydoc-schema`، `canvas-sync`، `apps/realtime` |
 | `lib0` | 0.2.117 | MIT | encode/decodeِ پیام‌های پروتکل — [`ydoc-schema/src/protocol.ts`](../packages/ydoc-schema/src/protocol.ts) (گام ۲٫۴) و قاب‌بندیِ sync در [`canvas-sync/src/adapter.ts`](../packages/canvas-sync/src/adapter.ts) (گام ۳٫۱). ⚠️ **در هر پکیجِ مصرف‌کننده باید صریحاً اعلام شود**: زیر pnpm گرافِ node_modules تخت نیست، پس «وابستگیِ Yjs است» یعنی `import "lib0/encoding"` با `ERR_MODULE_NOT_FOUND` می‌افتد |
 | `y-protocols` | 1.0.7 | MIT | پروتکلِ sync و awareness — [PLAN بخش ۵٫۳](../PLAN.md). فقط در `canvas-sync` و `apps/realtime` |
+| `y-indexeddb` | 9.0.12 | MIT | پایداریِ **محلیِ** سند در مرورگر — گام ۵٫۲. فقط در `canvas-sync`، و پشتِ پورتِ [`LocalDocStore`](../packages/canvas-sync/src/local-store.ts) تا هم تست بتواند جایگزینش کند و هم سرور هرگز آن را نبیند. تنها وابستگی‌اش `lib0` است که از قبل هست |
 
 **ماژول M2 (گام ۰٫۲):** سه پکیجِ بالا افزوده شدند و `pnpm license:check` سبز ماند
 (۶۸۵ پکیج). **`uWebSockets.js` عمداً افزوده نشد** — از تارِبالِ گیت‌هاب نصب می‌شود و
 از زیرِ همین گیت رد می‌شود؛ ترابری `ws` است
 ([ADR-030](../ARCHITECTURE_DECISIONS.md#adr-030)، نصب در گام ۴٫۱).
+**گام ۵٫۲:** `y-indexeddb` افزوده شد — گیت روی **۷۳۲ پکیج** سبز ماند.
 
 **چرا نسخه pin شده (`0.18.1` نه `^0.18.1`):** طبق [ADR-003](../ARCHITECTURE_DECISIONS.md#adr-003)
 ممکن است لازم شود با `pnpm patch` اصلاحات جراحی روی این پکیج بزنیم. patch ها به

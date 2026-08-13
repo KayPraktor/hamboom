@@ -83,6 +83,12 @@ export {
 } from "./backoff.ts";
 
 export {
+  createIndexeddbDocStore,
+  type IndexeddbDocStoreOptions,
+  type LocalDocStore,
+} from "./local-store.ts";
+
+export {
   closeReaction,
   createWebSocketTransport,
   type CloseReaction,
