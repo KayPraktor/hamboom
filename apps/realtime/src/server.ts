@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { Duplex } from "node:stream";
 
-import { encodeMessage, MSG_TYPES, type BoardRole } from "@hamboom/ydoc-schema";
+import { decodeMessage, encodeMessage, MSG_TYPES, type BoardRole } from "@hamboom/ydoc-schema";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { assertAuthorityUsable, type BoardAuthority } from "./auth/index.ts";
@@ -326,15 +326,19 @@ async function authenticate(
       ...(role === claims.role ? {} : { tokenRole: claims.role }),
     });
 
-    // ★ `await` عمدی: اگر اتاق **رد** کند (سقفِ نود، سندِ بزرگ) باید همین‌جا
-    //   گرفته شود و از همان مسیرِ رد برود، نه به‌صورت یک rejectionِ بی‌صاحب.
-    await onJoin({
+    const session: RtSession = {
       socket,
       boardId: claims.boardId,
       sub: claims.sub,
       role,
       exp: claims.exp,
-    });
+    };
+
+    // ★ `await` عمدی: اگر اتاق **رد** کند (سقفِ نود، سندِ بزرگ) باید همین‌جا
+    //   گرفته شود و از همان مسیرِ رد برود، نه به‌صورت یک rejectionِ بی‌صاحب.
+    await onJoin(session);
+
+    wireAuthRefresh(session, { authority, logger });
 
     // ★ حالا اتاق شنونده دارد؛ هرچه در این فاصله رسیده بود تحویل می‌شود.
     socket.resume();
@@ -389,6 +393,93 @@ async function effectiveRole(
     );
   }
   return current;
+}
+
+/**
+ * ★★ `0x10 HB_AUTH_REFRESH` — توکنِ تازه روی اتصالِ **باز** (گام ۵٫۱).
+ *
+ * ⚠️ **تا این گام، این پیام بی‌صدا نادیده گرفته می‌شد.** از گام ۲٫۴ در پروتکل
+ * تعریف شده بود ولی `handleMessage`ِ اتاق فقط SYNC/AWARENESS/EPHEMERAL را
+ * می‌شناسد و بقیه را `return` می‌کند. یعنی کلاینت می‌توانست بفرستد و هیچ اتفاقی
+ * نیفتد — بدترین حالت، چون **شبیهِ کارکردن** است.
+ *
+ * ── ★ چرا اینجا و نه در `room.ts` ─────────────────────────────────────
+ *
+ * اتاق `BoardAuthority` را **ندارد و نباید داشته باشد**: کارش سند است، نه
+ * هویت. پس این شنونده مستقلاً روی همان سوکت می‌نشیند (`ws` چند شنونده را
+ * می‌پذیرد) و اتاق همان‌طور که بود این نوع را نادیده می‌گیرد. مرزِ گام ۴٫۱
+ * دست‌نخورده می‌مانَد: احراز هویت یک جاست.
+ *
+ * ── ★★ سه قیدِ امنیتی ─────────────────────────────────────────────────
+ *
+ * ۱. **هویت نباید عوض شود.** توکنِ معتبرِ کاربرِ دیگر نباید نشستِ این یکی را
+ *    تصاحب کند؛ وگرنه «تازه‌سازی» به یک ارتقای رایگانِ دسترسی تبدیل می‌شود.
+ * ۲. **نقش از `effectiveRole` می‌آید، نه از claimِ توکن** ([ADR-012](../../../ARCHITECTURE_DECISIONS.md#adr-012)) —
+ *    همان مسیرِ دست‌دادن. وگرنه کاربرِ تنزل‌داده‌شده با یک توکنِ قدیمیِ هنوز
+ *    معتبر نقشش را پس می‌گرفت؛ دقیقاً حفره‌ای که گام ۴٫۵ بست.
+ * ۳. **ردِ تازه‌سازی اتصال را نمی‌بندد** ([ADR-038](../../../ARCHITECTURE_DECISIONS.md#adr-038)).
+ *    نشستِ فعلی از قبل معتبر است و سرور وسطِ کار انقضا را دوباره نمی‌سنجد؛
+ *    کشتنِ آن یعنی یک تپقِ گذرای سرویسِ احراز هویت همه را بیرون بیندازد.
+ */
+type AuthDeps = Pick<HandshakeDeps, "authority" | "logger">;
+
+function wireAuthRefresh(session: RtSession, { authority, logger }: AuthDeps): void {
+  session.socket.on("message", (data: ArrayLike<number> | ArrayBuffer) => {
+    const bytes = new Uint8Array(data as ArrayBuffer);
+    // ⚠️ میان‌برِ تک‌بایتی: `0x10` کمتر از ۱۲۸ است، پس `varUint`ش دقیقاً یک بایت
+    //    است. مسیرِ داغِ هر update نباید برای این یک پیام دوباره decode شود.
+    if (bytes[0] !== MSG_TYPES.HB_AUTH_REFRESH) return;
+    const message = decodeMessage(bytes);
+    if (message?.type !== MSG_TYPES.HB_AUTH_REFRESH) return;
+    void refreshAuth(session, message.token, { authority, logger });
+  });
+}
+
+async function refreshAuth(
+  session: RtSession,
+  token: string,
+  { authority, logger }: AuthDeps,
+): Promise<void> {
+  try {
+    const claims = await authority.verify(token, session.boardId);
+    if (claims.sub !== session.sub) {
+      throw new RtProtocolError(
+        "FORBIDDEN",
+        "توکنِ تازه مالِ این نشست نیست.",
+        "sub در توکنِ تازه با نشستِ جاری نمی‌خواند",
+      );
+    }
+
+    const role = await effectiveRole(authority, claims);
+    session.exp = claims.exp;
+    if (role === session.role) return;
+
+    // ★ همان قاعده‌ی `applyRoleChange`: **خودِ نشست** عوض می‌شود، چون
+    //   `handleMessage`ِ اتاق روی `session.role` قضاوت می‌کند.
+    session.role = role;
+    logger.info("نقش با تازه‌سازیِ توکن عوض شد", {
+      boardId: session.boardId,
+      sub: maskSubject(session.sub),
+      role,
+    });
+    session.socket.send(encodeMessage({ type: MSG_TYPES.HB_PERMISSION, role }));
+  } catch (cause) {
+    const error =
+      cause instanceof RtProtocolError
+        ? cause
+        : new RtProtocolError("TOKEN_INVALID", "توکنِ تازه پذیرفته نشد.", String(cause));
+
+    logger.warn("تازه‌سازیِ توکن رد شد", {
+      boardId: session.boardId,
+      sub: maskSubject(session.sub),
+      code: error.code,
+      detail: error.detail,
+    });
+    // ⚠️ **بدونِ بستن** — قیدِ ۳ بالا.
+    session.socket.send(
+      encodeMessage({ type: MSG_TYPES.HB_ERROR, code: error.code, message: error.message }),
+    );
+  }
 }
 
 /**

@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@hamboom/canvas-sync':
+        specifier: workspace:*
+        version: link:packages/canvas-sync
       '@hamboom/config':
         specifier: workspace:*
         version: link:packages/config

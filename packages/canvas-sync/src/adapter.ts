@@ -38,7 +38,7 @@ import {
   type EmitScheduler,
   type EmitSchedulerOptions,
 } from "./emit-local.ts";
-import type { SyncTransport } from "./transport.ts";
+import type { SyncTransport, TransportStatus } from "./transport.ts";
 import { createUndoScope, type UndoScope } from "./undo.ts";
 
 /**
@@ -162,6 +162,22 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
    * [`awareness.ts`](./awareness.ts) روی گزینه‌ی `clock`.
    */
   private presenceClock = 0;
+  /**
+   * آیا ترابری همین الان باز است؟
+   *
+   * ⚠️ **ترابریِ بدونِ کانالِ وضعیت همیشه «باز» است** — یعنی `LocalTransport`ِ
+   * فاز ۳، که اصلاً قطع نمی‌شود. بدونِ این پیش‌فرض، همه‌ی تست‌های فاز ۳ به یک
+   * کلاینتِ همیشه-آفلاین تبدیل می‌شدند.
+   */
+  private linkUp = true;
+  /**
+   * تغییرِ محلی‌ای که هنوز روی سیم نرفته — ورودیِ `offline{pendingChanges}`.
+   *
+   * ★ عمداً «ذخیره‌نشده» نیست: آن را سرور با `HB_ROOM_INFO` می‌گوید و
+   * [`SaveState`](../../canvas-core/src/sync/contract.ts) جای خودش را دارد.
+   * این یکی جوابِ سوالِ دیگری است — «چند تا از کارهایم اصلاً به سرور نرسیده؟»
+   */
+  private pendingChanges = 0;
 
   constructor(options: YjsSyncAdapterOptions = {}) {
     this.doc = options.doc ?? createBoardDoc();
@@ -229,6 +245,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
 
     const token = ++this.epoch;
     this.inbound = inbound;
+    this.pendingChanges = 0;
+    // ★ ترابریِ دارای کانالِ وضعیت هنوز باز نیست — تا رویدادِ `open` نرسیده،
+    //   هر تغییرِ محلی یک `pendingChange` است، نه چیزی که رفته باشد.
+    this.linkUp = !this.transport?.onStatus;
     inbound.setConnectionState({ status: "connecting" });
 
     await this.transport?.connect?.();
@@ -262,9 +282,18 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     this.wirePresence();
 
     inbound.setPermissions(this.permissions);
-    // همتاها هنوز نرسیده‌اند — معرفیِ awareness همین الان رفت و پاسخشان یک
-    // رفت‌وبرگشت بعد می‌آید، از راهِ `publishPeers`.
-    inbound.setConnectionState({ status: "connected", peers: this.peerCount });
+    // ★★ **«وصل شدم» را فقط وقتی می‌گوییم که کسی خبرِ دقیق‌تری ندارد.**
+    //
+    // ⚠️ با ترابریِ WebSocket (گام ۵٫۱) سوکت در این لحظه هنوز باز **نشده** —
+    //    `connect` عمداً منتظرش نمی‌مانَد. ادعای «connected» اینجا یعنی نوارِ
+    //    وضعیت سبز شود در حالی که هیچ بایتی رد و بدل نشده؛ همان دروغِ
+    //    خوش‌بینانه‌ای که قراردادِ M1 درباره‌ی `SaveState` منع کرده، یک ردیف
+    //    بالاتر. با کانالِ وضعیت، حقیقت از `handleStatus` می‌آید.
+    if (!this.transport?.onStatus) {
+      // همتاها هنوز نرسیده‌اند — معرفیِ awareness همین الان رفت و پاسخشان یک
+      // رفت‌وبرگشت بعد می‌آید، از راهِ `publishPeers`.
+      inbound.setConnectionState({ status: "connected", peers: this.peerCount });
+    }
     // ★★ **هنوز چیزی تایید نشده** (گام ۴٫۳). سرور بلافاصله بعد از join یک
     //    `HB_ROOM_INFO` می‌فرستد و همان این را به `saved` می‌بَرد. تا آن لحظه —
     //    و برای همیشه اگر سروری در کار نباشد — ادعای «ذخیره شد» دروغ است.
@@ -301,8 +330,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     this.teardown = [];
     this.pendingRemote.clear();
     this.transport?.disconnect?.();
-    this.inbound?.setConnectionState({ status: "offline", pendingChanges: 0 });
+    this.inbound?.setConnectionState({ status: "offline", pendingChanges: this.pendingChanges });
     this.inbound = null;
+    this.linkUp = true;
+    this.pendingChanges = 0;
   }
 
   // ── سیم‌کشی ──────────────────────────────────────────────────
@@ -311,18 +342,96 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     const transport = this.transport;
     if (!transport) return;
 
+    // ★ **گیرنده قبل از کانالِ وضعیت.** رویدادِ `open` بلافاصله دست‌دادن را
+    //   راه می‌اندازد و پاسخِ سرور در همان رفت‌وبرگشت برمی‌گردد؛ اگر شنونده‌ی
+    //   پیام هنوز سوار نبود، step2ِ سرور بی‌صدا گم می‌شد.
     this.teardown.push(transport.onMessage((data) => this.handleMessage(data)));
+    if (transport.onStatus) {
+      this.teardown.push(transport.onStatus((status) => this.handleStatus(status)));
+    }
 
     const onUpdate = (update: Uint8Array, origin: unknown): void => {
       // ★ آنچه از همتا رسیده دوباره فرستاده نمی‌شود. بدونِ این، دو کلاینت تا
       //   ابد یک update را به هم پاس می‌دهند — همان حلقه‌ای که هیچ خطایی نمی‌دهد.
       if (origin === REMOTE_ORIGIN) return;
+      // ⚠️ **قبل از فرستادن شمرده می‌شود، نه بعدش.** ترابریِ بسته پیام را
+      //    بی‌صدا دور می‌ریزد (عمدی — دست‌دادنِ بعدی کلِ حالت را می‌برد)، پس
+      //    تنها جایی که می‌شود فهمید کاربر چند کار کرده همین‌جاست.
+      if (!this.linkUp) this.pendingChanges++;
       const encoder = encoding.createEncoder();
       syncProtocol.writeUpdate(encoder, update);
       this.sendSync(encoding.toUint8Array(encoder));
     };
     this.doc.on("update", onUpdate);
     this.teardown.push(() => this.doc.off("update", onUpdate));
+  }
+
+  /**
+   * ★★ نگاشتِ وضعیتِ ترابری به `ConnectionState`ِ قرارداد — **گام ۵٫۱**.
+   *
+   * تنها جایی است که این ترجمه انجام می‌شود. نوارِ وضعیتِ M1 از قبل هر پنج
+   * حالت را رندر می‌کند، پس هر دروغِ خوش‌بینانه‌ای اینجا **روی صفحه** دیده
+   * می‌شود — که دقیقاً چیزی است که از این نگاشت می‌خواهیم.
+   */
+  private handleStatus(status: TransportStatus): void {
+    const inbound = this.inbound;
+    if (!inbound) return;
+
+    switch (status.phase) {
+      case "connecting":
+        this.linkUp = false;
+        // ⚠️ فقط تلاشِ **اول** «در حالِ اتصال» است. تلاش‌های بعدی وسطِ یک
+        //    سریِ اتصالِ مجددند و پرش به `connecting` فقط شماره‌ی تلاش و
+        //    زمان‌سنجِ روی صفحه را پاک می‌کند.
+        if (status.attempt === 1) inbound.setConnectionState({ status: "connecting" });
+        return;
+
+      case "open":
+        this.linkUp = true;
+        // ★★ **دست‌دادن روی هر بار باز شدن، نه فقط اولی.** سرور هیچ حافظه‌ای
+        //    از نشستِ قبلی ندارد: نه بردارِ وضعیتِ ما را دارد و نه حضورمان را.
+        this.resumeSession();
+        this.pendingChanges = 0;
+        inbound.setConnectionState({ status: "connected", peers: this.peerCount });
+        return;
+
+      case "retrying":
+        this.linkUp = false;
+        inbound.setConnectionState({
+          status: "reconnecting",
+          attempt: status.attempt,
+          nextRetryMs: status.nextRetryMs,
+        });
+        return;
+
+      case "stopped":
+        this.linkUp = false;
+        inbound.setConnectionState(
+          status.reason === "offline"
+            ? { status: "offline", pendingChanges: this.pendingChanges }
+            : { status: "error", code: status.code, message: status.message },
+        );
+        return;
+    }
+  }
+
+  /**
+   * ★★ از سر گرفتنِ نشست بعد از باز شدنِ سوکت.
+   *
+   * دو کارِ لازم، و هیچ‌کدام اختیاری نیست:
+   *
+   * ۱. **دست‌دادنِ sync** — سرورِ تازه (یا همان سرور با نشستِ تازه) بردارِ
+   *    وضعیتِ ما را نمی‌داند. بدونِ step1/step2 هرچه آفلاین ساخته‌ایم پیشِ
+   *    خودمان می‌مانَد و هرچه آن‌ها ساخته‌اند به ما نمی‌رسد — **بی‌صدا**، چون
+   *    updateِ افزایشیِ بی‌پیشینه در `pendingStructs` بایگانی می‌شود و خطا نمی‌دهد.
+   * ۲. ★ **معرفیِ دوباره‌ی حضور با شمارنده‌ی جلورفته.** سرور با قطعِ سوکت
+   *    حذفِ ما را پخش کرده و همتاها آن را با همان clock ثبت کرده‌اند؛ پیامی با
+   *    clockِ **مساوی** بی‌صدا دور ریخته می‌شود. یعنی بدونِ این، برگشتنِ ما برای
+   *    همه **نامرئی** است — همان تله‌ی گام ۳٫۵، این‌بار از سمتِ شبکه.
+   */
+  private resumeSession(): void {
+    this.requestInitialSync();
+    this.presence?.reannounce();
   }
 
   /**
@@ -475,7 +584,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     inbound.applyPeers(peers);
     if (peers.length !== this.peerCount) {
       this.peerCount = peers.length;
-      inbound.setConnectionState({ status: "connected", peers: peers.length });
+      // ⚠️ وقتی سیم قطع است این را **نگو**: آخرین کارِ کانالِ حضور هنگام قطع
+      //    پاک‌کردنِ همتاهاست، و آن تغییرِ عدد وضعیتِ `reconnecting` را با یک
+      //    `connected`ِ دروغین بازمی‌نوشت.
+      if (this.linkUp) inbound.setConnectionState({ status: "connected", peers: peers.length });
     }
   }
 

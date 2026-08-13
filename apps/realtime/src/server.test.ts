@@ -344,3 +344,107 @@ describe("★★ نقشِ جاری بر نقشِ توکن مقدم است — گ
     expect(joined).toHaveLength(0);
   });
 });
+
+/**
+ * تست‌های گام ۵٫۱ — `0x10 HB_AUTH_REFRESH`.
+ *
+ * ⚠️ **تا این گام سرور این پیام را بی‌صدا نادیده می‌گرفت.** پس اولین ادعا این
+ * است که اصلاً *اتفاقی* می‌افتد؛ بقیه درباره‌ی این‌اند که اتفاقِ **درست** باشد.
+ */
+describe("★★ تازه‌سازیِ توکن روی اتصالِ باز", () => {
+  async function openSession(port: number, token = validToken()) {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/rt?board=${BOARD}&token=${token}`);
+    const messages: ReturnType<typeof decodeMessage>[] = [];
+    socket.on("message", (data) => {
+      const message = decodeMessage(new Uint8Array(data as Buffer));
+      if (message) messages.push(message);
+    });
+    await new Promise((resolve) => socket.on("open", resolve));
+    await vi.waitFor(() => expect(joined).toHaveLength(1));
+    return {
+      socket,
+      messages,
+      refresh: (fresh: string) =>
+        socket.send(encodeMessage({ type: MSG_TYPES.HB_AUTH_REFRESH, token: fresh })),
+    };
+  }
+
+  it("★ نقشِ عوض‌شده به نشست و به کلاینت می‌رسد", async () => {
+    const demoting = createDevBoardAuthority({ secret: SECRET });
+    const server = await startServer({ authority: demoting });
+    const session = await openSession(server.port);
+    expect(joined[0]?.role).toBe("editor");
+
+    // بینِ دو توکن، دسترسی تنزل داده شده.
+    demoting.roles.set("usr_9f3c1a", BOARD, "viewer");
+    session.refresh(validToken());
+
+    await vi.waitFor(() =>
+      expect(session.messages).toContainEqual({
+        type: MSG_TYPES.HB_PERMISSION,
+        role: "viewer",
+      }),
+    );
+    // ★★ و مهم‌تر: **خودِ نشست** عوض شده — `handleMessage`ِ اتاق روی همین
+    //    قضاوت می‌کند، پس بدونِ این، پیامِ مجوز فقط یک تزئینِ رابط بود.
+    expect(joined[0]?.role).toBe("viewer");
+    session.socket.close();
+  });
+
+  it("★★ توکنِ کاربرِ دیگر نشست را تصاحب نمی‌کند", async () => {
+    const server = await startServer();
+    const session = await openSession(server.port);
+
+    session.refresh(validToken({ sub: "usr_other" }));
+
+    await vi.waitFor(() =>
+      expect(session.messages).toContainEqual(
+        expect.objectContaining({ type: MSG_TYPES.HB_ERROR, code: "FORBIDDEN" }),
+      ),
+    );
+    expect(joined[0]?.sub).toBe("usr_9f3c1a");
+    session.socket.close();
+  });
+
+  it("★ ردِ تازه‌سازی اتصال را **نمی‌بندد** (ADR-038)", async () => {
+    const server = await startServer();
+    const session = await openSession(server.port);
+
+    session.refresh("این.یک.توکن.نیست");
+
+    await vi.waitFor(() =>
+      expect(session.messages).toContainEqual(
+        expect.objectContaining({ type: MSG_TYPES.HB_ERROR, code: "TOKEN_INVALID" }),
+      ),
+    );
+    expect(session.socket.readyState).toBe(WebSocket.OPEN);
+    session.socket.close();
+  });
+
+  it("توکنِ منقضی کدِ خودش را می‌گیرد، نه `TOKEN_INVALID`", async () => {
+    const server = await startServer();
+    const session = await openSession(server.port);
+
+    session.refresh(validToken({ exp: Math.floor(Date.now() / 1000) - 1 }));
+
+    await vi.waitFor(() =>
+      expect(session.messages).toContainEqual(
+        expect.objectContaining({ type: MSG_TYPES.HB_ERROR, code: "TOKEN_EXPIRED" }),
+      ),
+    );
+    session.socket.close();
+  });
+
+  it("نقشِ بدونِ تغییر ساکت است، ولی انقضا جلو می‌رود", async () => {
+    const server = await startServer();
+    const session = await openSession(server.port);
+    const before = joined[0]?.exp ?? 0;
+
+    session.refresh(validToken({ exp: before + 600 }));
+
+    await vi.waitFor(() => expect(joined[0]?.exp).toBe(before + 600));
+    // ★ سکوت درست است: پیامِ مجوزِ بی‌تغییر فقط سر و صداست.
+    expect(session.messages).toHaveLength(0);
+    session.socket.close();
+  });
+});

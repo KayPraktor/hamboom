@@ -111,6 +111,20 @@ export interface PresenceScope {
    * **بعد** `announce()` بزند.
    */
   announce(): void;
+  /**
+   * ★★ معرفیِ دوباره بعد از اتصالِ مجدد — **حالتِ فعلی را پاک نمی‌کند** (گام ۵٫۱).
+   *
+   * ⚠️ `announce()` جایش را نمی‌گیرد: آن مکان‌نما و انتخاب و نما را به `null`
+   * برمی‌گرداند، یعنی هر اتصالِ مجدد کاربر را برای همتاها به یک آدمِ تازه‌رسیده
+   * تبدیل می‌کند.
+   *
+   * ★ و صرفِ **فرستادنِ دوباره** هم کافی نیست: هنگام قطع، سرور حذفِ ما را پخش
+   * کرده و هر همتا آن را با **همان** clock ثبت کرده. `applyAwarenessUpdate`
+   * پیامی با clockِ مساوی را بی‌صدا دور می‌ریزد، پس معرفیِ تکراری هیچ اثری
+   * ندارد و ما برای همیشه نامرئی می‌مانیم. `setLocalState` شمارنده را
+   * **بی‌قید و شرط** یکی جلو می‌برد — و همان تنها چیزی است که این را رفع می‌کند.
+   */
+  reannounce(): void;
   setPointer(pointer: PointerState | null): void;
   setSelection(ids: string[]): void;
   setViewport(viewport: Viewport): void;
@@ -304,18 +318,31 @@ export function createPresenceScope({
 
   awareness.on("update", onUpdate);
 
+  function announce(): void {
+    // از همین مسیرِ `onUpdate` پخش می‌شود — observer از قبل سوار است.
+    awareness.setLocalState({
+      user,
+      pointer: null,
+      selectedIds: [],
+      viewport: null,
+      activeTool: null,
+    } satisfies AwarenessFields);
+  }
+
   return {
     clientId: awareness.clientID,
 
-    announce() {
-      // از همین مسیرِ `onUpdate` پخش می‌شود — observer از قبل سوار است.
-      awareness.setLocalState({
-        user,
-        pointer: null,
-        selectedIds: [],
-        viewport: null,
-        activeTool: null,
-      } satisfies AwarenessFields);
+    announce,
+
+    reannounce() {
+      const current = awareness.getLocalState();
+      // هنوز چیزی نگفته‌ایم (یا `destroy` پاکش کرده) → معرفیِ کامل.
+      if (!current) {
+        announce();
+        return;
+      }
+      // همان حالت، ولی با شمارنده‌ی یکی جلوتر — چراییِ کامل بالای `reannounce`.
+      awareness.setLocalState(current);
     },
 
     setPointer(pointer) {

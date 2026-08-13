@@ -14,11 +14,46 @@
  * قاب در فاز ۴ روی WebSocket هم می‌رود، پس آداپتور عوض نمی‌شود.
  */
 
+/**
+ * ★★ وضعیتِ ترابری — ورودیِ `ConnectionState`ِ قراردادِ M1 (گام ۵٫۱).
+ *
+ * ⚠️ **این همان `ConnectionState` نیست، و عمداً.** ترابری از `pendingChanges`
+ * چیزی نمی‌داند (آن را آداپتور می‌شمارد) و از `peers` هم نه (آن از کانالِ حضور
+ * می‌آید). اینجا فقط چیزی است که **خودِ سوکت** می‌داند. نگاشتش به پنج حالتِ
+ * قرارداد در [`adapter.ts`](./adapter.ts) است — یک‌جا، نه پخش‌شده.
+ */
+export type TransportStatus =
+  /** در حالِ تلاش. `attempt` از ۱ شروع می‌شود. */
+  | { phase: "connecting"; attempt: number }
+  /**
+   * سوکت باز است.
+   *
+   * ★ `resumed` یعنی این **اتصالِ دوباره** است، نه اولی — و برای آداپتور یعنی
+   * «دست‌دادنِ sync را از نو بزن». سرور هیچ حافظه‌ای از نشستِ قبلی ندارد.
+   */
+  | { phase: "open"; resumed: boolean }
+  /** قطع شد و تلاشِ بعدی زمان‌بندی شده. `nextRetryMs` **اندازه‌گیری‌پذیر** است. */
+  | { phase: "retrying"; attempt: number; nextRetryMs: number }
+  /**
+   * تلاش **متوقف** شد.
+   *
+   * - `fatal` — سرور ما را رد کرد (کدِ ۱۰۰۸). تلاشِ دوباره فقط حلقه می‌سازد.
+   * - `offline` — خودِ مرورگر می‌گوید شبکه نیست. تلاش بی‌فایده است تا `online`.
+   */
+  | { phase: "stopped"; reason: "fatal" | "offline"; code: string; message: string };
+
 export interface SyncTransport {
   /** فرستادنِ یک پیامِ قاب‌بندی‌شده به بقیه. */
   send(message: Uint8Array): void;
   /** ثبتِ گیرنده. **تابعِ لغو برمی‌گرداند** — بدونش هر reconnect یک نشتی است. */
   onMessage(handler: (message: Uint8Array) => void): () => void;
+  /**
+   * اختیاری: گزارشِ وضعیت (گام ۵٫۱).
+   *
+   * ★ **نبودنش یعنی «من هیچ‌وقت قطع نمی‌شوم»** — دقیقاً حالتِ `LocalTransport`.
+   * آداپتور در آن حالت مثلِ فاز ۳ رفتار می‌کند: یک‌بار دست می‌دهد و تمام.
+   */
+  onStatus?(handler: (status: TransportStatus) => void): () => void;
   /** اختیاری: برقراری و قطعِ اتصال (فاز ۴). */
   connect?(): Promise<void>;
   disconnect?(): void;

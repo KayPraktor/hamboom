@@ -68,7 +68,29 @@ export {
   type EmitSink,
 } from "./emit-local.ts";
 
-export { LocalTransport, LocalTransportHub, type SyncTransport } from "./transport.ts";
+export {
+  LocalTransport,
+  LocalTransportHub,
+  type SyncTransport,
+  type TransportStatus,
+} from "./transport.ts";
+
+export {
+  backoffCeilingMs,
+  backoffDelayMs,
+  RECONNECT_BACKOFF,
+  type BackoffOptions,
+} from "./backoff.ts";
+
+export {
+  closeReaction,
+  createWebSocketTransport,
+  type CloseReaction,
+  type TransportTimers,
+  type WebSocketLike,
+  type WebSocketTransport,
+  type WebSocketTransportOptions,
+} from "./websocket-transport.ts";
 
 export {
   bindUndoShortcuts,

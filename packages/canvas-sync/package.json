@@ -6,7 +6,8 @@
   "license": "MIT",
   "description": "binder سمتِ کلاینت — پیاده‌سازیِ CanvasSyncAdapter روی Yjs. تنها پلِ بینِ canvas-core و ydoc-schema.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./transport": "./src/websocket-transport.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
