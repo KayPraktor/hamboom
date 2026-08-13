@@ -54,6 +54,8 @@ const TOKEN_TTL_SECONDS = 60;
 const port = Number(process.argv[2] ?? DEFAULT_PORT);
 const tokenPort = port + 1;
 
+const authority = createDevBoardAuthority({ secret: SECRET });
+
 const rooms = createRoomManager({
   store: new MemoryBoardStore(),
   log: new MemoryUpdateLog(),
@@ -64,7 +66,7 @@ const rooms = createRoomManager({
 });
 
 const server = await createRtServer({
-  authority: createDevBoardAuthority({ secret: SECRET }),
+  authority,
   appEnv: "local",
   port,
   onJoin: (session) => rooms.join(session),
@@ -75,14 +77,40 @@ const tokens = createServer((request, response) => {
   // ⚠️ فقط برای توسعه: صفحه‌ی دمو روی پورتِ دیگری سرو می‌شود.
   response.setHeader("access-control-allow-origin", "*");
 
-  if (url.pathname !== "/dev-token") {
-    response.writeHead(404).end();
-    return;
-  }
-
   const boardId = url.searchParams.get("board");
   if (!boardId) {
     response.writeHead(400).end("board لازم است");
+    return;
+  }
+
+  /**
+   * ★★ تغییرِ نقش **وسطِ کار** — گام ۵٫۳.
+   *
+   * دو کار می‌کند و هر دو لازم است، چون دو سوالِ متفاوت‌اند:
+   *
+   * ۱. `roles.set` → نقشِ **ماندگار**. بدونش کاربر با اتصالِ مجدد نقشِ داخلِ
+   *    توکن را پس می‌گیرد — همان حفره‌ای که گام ۴٫۵ بست.
+   * ۲. `applyRoleChange` → **هُل دادن** به نشست‌های باز (`HB_PERMISSION`).
+   *    بدونش کاربر تا وقتی تب را نبندد چیزی نمی‌فهمد.
+   *
+   * در M3 این کار endpointِ واقعیِ مدیریتِ دسترسی است؛ اینجا کوچک‌ترین شکلِ
+   * ممکنش تا E2E بتواند سناریو را بسازد.
+   */
+  if (url.pathname === "/dev-role") {
+    const sub = url.searchParams.get("sub");
+    const role = url.searchParams.get("role");
+    if (!sub || !role) {
+      response.writeHead(400).end("sub و role لازم‌اند");
+      return;
+    }
+    authority.roles.set(sub, boardId, role as "viewer");
+    const pushed = rooms.applyRoleChange(boardId, sub, role as "viewer");
+    response.writeHead(200, { "content-type": "text/plain" }).end(String(pushed));
+    return;
+  }
+
+  if (url.pathname !== "/dev-token") {
+    response.writeHead(404).end();
     return;
   }
 

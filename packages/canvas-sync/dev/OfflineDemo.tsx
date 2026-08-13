@@ -5,9 +5,14 @@ import {
   toExcalidraw,
   type HamboomCanvasProps,
 } from "@hamboom/canvas-core";
-import type { ConnectionState, SaveState } from "@hamboom/canvas-core/sync";
+import type { CanvasPermissions, ConnectionState, SaveState } from "@hamboom/canvas-core/sync";
 import type { HbElement } from "@hamboom/shared-types";
-import { createBoardDoc, getSchemaVersion, readDocument } from "@hamboom/ydoc-schema";
+import {
+  createBoardDoc,
+  getSchemaVersion,
+  readDocument,
+  SCHEMA_VERSION,
+} from "@hamboom/ydoc-schema";
 import { useEffect, useRef, useState } from "react";
 
 import { YjsSyncAdapter } from "../src/adapter";
@@ -16,17 +21,22 @@ import { createIndexeddbDocStore } from "../src/local-store";
 import { createWebSocketTransport } from "../src/websocket-transport";
 
 /**
- * دموی **آفلاین** — گام ۵٫۲.
+ * دموی **یک بوم روی سرورِ واقعی** — گام‌های ۵٫۲ و ۵٫۳.
  *
- * یک بومِ واقعی، ترابریِ WebSocketِ واقعی، و پایداریِ محلیِ واقعی. تنها صفحه‌ای
- * که ادعای «کار از بستنِ تب هم جان به در می‌برد» را می‌شود رویش آزمود: IndexedDB
- * **فقط** در مرورگر وجود دارد، پس نه تستِ واحد به آن می‌رسد و نه سنجه‌ی Nodeی.
+ * بومِ واقعی، ترابریِ WebSocketِ واقعی، پایداریِ محلیِ واقعی. تنها صفحه‌ای که
+ * این دو ادعا را می‌شود رویش آزمود:
+ *
+ * - **۵٫۲** «کار از بستنِ تب هم جان به در می‌برد» — IndexedDB فقط در مرورگر
+ *   وجود دارد، پس نه تستِ واحد به آن می‌رسد و نه سنجه‌ی Nodeی.
+ * - **۵٫۳** «تنزلِ نقش بوم را فقط-خواندنی می‌کند» — `viewModeEnabled` را باید
+ *   خودِ موتور اعمال کند؛ در jsdom چیزی برای دیدن نیست.
  *
  * پارامترها در هش می‌آیند تا E2E بتواند چند نقش بسازد:
- * `#offline?board=<id>&client=<name>&local=0|1&ws=<port>&token=<port>`
+ * `#offline?board=<id>&client=<name>&local=0|1&ws=<port>&token=<port>&schema=<n>`
  *
- * ★ `local=0` یعنی **بدونِ** انبارِ محلی. تستِ پذیرش به آن نیاز دارد: کلاینتِ دوم
- * باید چیزی را ببیند که از **سرور** آمده، نه از IndexedDBِ مشترکِ همان مرورگر.
+ * ★ `local=0` یعنی **بدونِ** انبارِ محلی. تستِ پذیرشِ ۵٫۲ به آن نیاز دارد: کلاینتِ
+ * دوم باید چیزی را ببیند که از **سرور** آمده، نه از IndexedDBِ مشترکِ همان مرورگر.
+ * ★ `schema=<n>` یک کلاینتِ **عقب‌تر** می‌سازد — ورودیِ تستِ پذیرشِ ۵٫۳.
  */
 
 type CanvasApi = Parameters<NonNullable<HamboomCanvasProps["onReady"]>>[0];
@@ -40,6 +50,12 @@ declare global {
       schemaVersion: () => number | undefined;
       connection: () => ConnectionState | null;
       save: () => SaveState | null;
+      /** مجوزهای **اعلام‌شده‌ی** رابط (گام ۵٫۳). */
+      permissions: () => CanvasPermissions | null;
+      /** ★ حالتِ واقعیِ **موتور**، نه فقط ادعای ما. */
+      viewMode: () => boolean;
+      /** آخرین `HB_ERROR`ِ غیرمرگبار — مثلاً ردِ نوشتنِ یک `viewer`. */
+      lastError: () => { code: string; message: string } | null;
     };
   }
 }
@@ -52,7 +68,11 @@ export function OfflineDemo() {
   const [api, setApi] = useState<CanvasApi | null>(null);
   const [connection, setConnection] = useState<ConnectionState | null>(null);
   const [save, setSave] = useState<SaveState | null>(null);
+  const [permissions, setPermissions] = useState<CanvasPermissions | null>(null);
   const [ready, setReady] = useState(false);
+  const errorRef = useRef<{ code: string; message: string } | null>(null);
+  const permissionsRef = useRef(permissions);
+  permissionsRef.current = permissions;
   // ★ `window.__hbOffline` یک‌بار در افکت ساخته می‌شود، پس closureـش مقدارِ
   //   کهنه می‌گرفت. مثلِ `viewportRef` در دموی جفتی، مقدارِ زنده از ref می‌آید.
   const connectionRef = useRef(connection);
@@ -96,6 +116,10 @@ export function OfflineDemo() {
       doc,
       transport,
       localStore,
+      // ★ گام ۵٫۳: با `&schema=<n>` می‌شود یک کلاینتِ **عقب‌تر** را شبیه‌سازی کرد.
+      supportedSchemaVersion: query.get("schema") ? Number(query.get("schema")) : SCHEMA_VERSION,
+      // ⚠️ بدونِ این، ردِ نوشتنِ یک `viewer` بی‌صدا دور ریخته می‌شود.
+      onProtocolError: (error) => (errorRef.current = error),
       user: {
         id: `usr_${client}`,
         displayName: `کاربر ${client}`,
@@ -114,6 +138,7 @@ export function OfflineDemo() {
           ui: {
             setConnectionState: setConnection,
             setSaveState: setSave,
+            setPermissions,
           },
         }),
       )
@@ -145,6 +170,11 @@ export function OfflineDemo() {
           schemaVersion: () => getSchemaVersion(adapter.document),
           connection: () => connectionRef.current,
           save: () => saveRef.current,
+          permissions: () => permissionsRef.current,
+          // ★ از خودِ موتور خوانده می‌شود، نه از stateِ ما — وگرنه فقط ادعایمان
+          //   را با ادعایمان می‌سنجیدیم.
+          viewMode: () => api.getAppState().viewModeEnabled === true,
+          lastError: () => errorRef.current,
         };
         setReady(true);
       })
@@ -169,9 +199,13 @@ export function OfflineDemo() {
         <span data-role="connection">{connection?.status ?? "—"}</span>
         <span data-role="save">{save?.status ?? "—"}</span>
         <span data-role="ready">{ready ? "ready" : "…"}</span>
+        <span data-role="can-edit">{permissions?.canEdit === false ? "readonly" : "edit"}</span>
       </header>
       <div className="pane-canvas">
-        <HamboomCanvas onReady={setApi} />
+        {/* ★★ گام ۵٫۳: فقط-خواندنی از **مجوز** می‌آید، نه از یک پرچمِ محلی.
+            `HamboomCanvas` این prop را از M1 دارد و کامنتش هم همین را
+            پیش‌بینی کرده بود: «به `CanvasPermissions.canEdit` وصل می‌شود». */}
+        <HamboomCanvas onReady={setApi} viewModeEnabled={permissions?.canEdit === false} />
       </div>
     </main>
   );

@@ -82,6 +82,8 @@ export {
   type BackoffOptions,
 } from "./backoff.ts";
 
+export { permissionsForRole, READ_ONLY_PERMISSIONS, WRITER_ROLES } from "./permissions.ts";
+
 export {
   createIndexeddbDocStore,
   type IndexeddbDocStoreOptions,

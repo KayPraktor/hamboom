@@ -12,14 +12,19 @@ import {
 import type { HbAsset, HbElement } from "@hamboom/shared-types";
 import {
   boardRoots,
+  checkClientVersion,
   createBoardDoc,
   decodeMessage,
   encodeMessage,
+  getSchemaVersion,
+  HB_ERROR_CODES,
   MSG_TYPES,
   readDocument,
   readElement,
+  SCHEMA_VERSION,
   writeAsset,
   writeElement,
+  type BoardRole,
 } from "@hamboom/ydoc-schema";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
@@ -40,6 +45,7 @@ import {
 } from "./emit-local.ts";
 import type { SyncTransport, TransportStatus } from "./transport.ts";
 import type { LocalDocStore } from "./local-store.ts";
+import { permissionsForRole, READ_ONLY_PERMISSIONS } from "./permissions.ts";
 import { createUndoScope, type UndoScope } from "./undo.ts";
 
 /**
@@ -109,6 +115,23 @@ export interface YjsSyncAdapterOptions {
    * `destroy` نمی‌کند، چون زیر StrictMode هر mount یک بار باز و بسته‌اش می‌کرد.
    */
   localStore?: LocalDocStore;
+  /**
+   * بالاترین نسخه‌ی schemaی که این کلاینت می‌فهمد (گام ۵٫۳).
+   *
+   * پیش‌فرض `SCHEMA_VERSION`ِ همین بیلد است. **پارامتر شدنش برای تست نیست فقط**
+   * — یک اپِ واقعی هم می‌تواند عمداً محافظه‌کارتر اعلام کند.
+   */
+  supportedSchemaVersion?: number;
+  /**
+   * ★ `HB_ERROR`ِ **غیرمرگبار** — مثلاً ردِ نوشتنِ یک `viewer`
+   * ([ADR-038](../../../ARCHITECTURE_DECISIONS.md#adr-038)).
+   *
+   * ⚠️ قراردادِ M1 برای این کانالی ندارد و بدونِ این callback، پیام **بی‌صدا دور
+   * ریخته می‌شد** — کاربر می‌نوشت و هر بار بی‌دلیل شکست می‌خورد. مرگبارها
+   * (کدِ ۱۰۰۸) از این مسیر نمی‌آیند؛ آن‌ها را ترابری به `ConnectionState.error`
+   * تبدیل می‌کند.
+   */
+  onProtocolError?: (error: { code: string; message: string }) => void;
 }
 
 /** رویدادِ `observeDeep` — تایپِ خودِ Yjs `any` است و اینجا مهارش می‌کنیم. */
@@ -137,10 +160,27 @@ const FULL_PERMISSIONS: CanvasPermissions = {
   canManageAccess: true,
 };
 
+/**
+ * ⚠️ **این پیام مستقیماً به کاربر نشان داده می‌شود.**
+ *
+ * `StatusBar`ِ M1 برای حالتِ `error` متنِ `connection.message` را همان‌طور که
+ * هست چاپ می‌کند («پیامِ خطا از سرور می‌آید — از قبل فارسی»). پس وقتی خودِ
+ * کلاینت این حالت را می‌سازد، **خودش هم باید فارسی بدهد**.
+ *
+ * ⚠️ و عمداً اینجاست نه در `packages/i18n`: آن پکیج دامنه‌ی M2 نیست
+ * (قاعده‌ی ۵ در TODO). سرور هم دقیقاً همین کار را می‌کند — پیام‌های
+ * `RtProtocolError` رشته‌ی فارسیِ درون‌خطی‌اند.
+ */
+const TOO_OLD_MESSAGE = "این بورد با نسخه‌ی جدیدتری از هم‌بوم ساخته شده. لطفاً صفحه را تازه کنید.";
+
 export class YjsSyncAdapter implements CanvasSyncAdapter {
   private readonly doc: Y.Doc;
   private readonly transport: SyncTransport | null;
-  private readonly permissions: CanvasPermissions;
+  /**
+   * ⚠️ **دیگر `readonly` نیست** (گام ۵٫۳): `HB_PERMISSION` وسطِ کار می‌رسد و
+   * نقش عوض می‌شود. مقدارِ سازنده فقط **حدسِ اولیه** است تا اولین پیامِ سرور.
+   */
+  private permissions: CanvasPermissions;
   private readonly user: PeerUser;
   private readonly assets: AssetTransport | null;
   private readonly throttle: EmitSchedulerOptions & PresenceThrottleOptions;
@@ -204,6 +244,17 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     null;
   /** پایداریِ محلی (گام ۵٫۲). نبودش یعنی سند فقط در حافظه است. */
   private readonly localStore: LocalDocStore | null;
+  /** بالاترین نسخه‌ی schemaی که این بیلد می‌فهمد (گام ۵٫۳). */
+  private readonly supportedSchemaVersion: number;
+  private readonly onProtocolError:
+    ((error: { code: string; message: string }) => void) | undefined;
+  /**
+   * نقشِ فعلی از دیدِ سرور. `null` یعنی هنوز `HB_PERMISSION`ی نرسیده و مقدارِ
+   * سازنده برقرار است.
+   */
+  private role: BoardRole | null = null;
+  /** یک‌بار و برای همیشه: این کلاینت خودش را کنار کشیده (`CLIENT_TOO_OLD`). */
+  private refused = false;
 
   constructor(options: YjsSyncAdapterOptions = {}) {
     this.doc = options.doc ?? createBoardDoc();
@@ -213,6 +264,8 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     this.assets = options.assets ?? null;
     this.throttle = options.throttle ?? {};
     this.localStore = options.localStore ?? null;
+    this.supportedSchemaVersion = options.supportedSchemaVersion ?? SCHEMA_VERSION;
+    this.onProtocolError = options.onProtocolError;
   }
 
   /** سندِ زیرین — برای تست و برای دموی دو-نمونه‌ای (گام ۳٫۷). */
@@ -319,6 +372,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
     );
     this.wireTransport();
     this.requestInitialSync();
+    // ★ سندِ بازیابی‌شده از IndexedDB هم می‌تواند از فهمِ ما جلوتر باشد — مثلاً
+    //   تبِ دیگری با بیلدِ جدیدتر رویش کار کرده. اینجا **قبل از** رندر گرفته
+    //   می‌شود، نه بعدش. (این حالت اصلاً به سرور ربطی ندارد؛ ADR-040.)
+    this.refuseIfTooOld();
     inbound.replaceDocument(readDocument(this.doc) satisfies CanvasDocument);
     this.wireDocument();
     this.wirePresence();
@@ -418,6 +475,9 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
   private handleStatus(status: TransportStatus): void {
     const inbound = this.inbound;
     if (!inbound) return;
+    // ★ کلاینتی که خودش را کنار کشیده دیگر برنمی‌گردد. ترابری از قبل قطع شده،
+    //   ولی این نگهبان تضمین می‌کند هیچ رویدادِ دیرهنگامی «متصل» را احیا نکند.
+    if (this.refused) return;
 
     // ★★ سیم که قطع شد، **هیچ ادعایی درباره‌ی ذخیره‌شدن نمی‌شود کرد** (گام ۵٫۲).
     //    تنها منبعِ «ذخیره شد» پیامِ سرور است؛ وقتی سرور نیست، بدبینی تنها
@@ -548,10 +608,91 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
         );
         this.inbound?.setConnectionState({ status: "connected", peers: this.peerCount });
         return;
+      case MSG_TYPES.HB_PERMISSION:
+        // ★★ **نقش وسطِ کار عوض شد** (گام ۵٫۳) — بدونِ رفرش.
+        this.applyRole(message.role);
+        return;
+      case MSG_TYPES.HB_ERROR:
+        this.handleProtocolError(message.code, message.message);
+        return;
       default:
-        // بقیه‌ی کدها (مجوز، اطلاعاتِ اتاق، خطا) کارِ سرورِ فاز ۴ اند.
+        // ⚠️ `HB_AUTH_REFRESH` تنها کدِ باقی‌مانده است و **client→server** است؛
+        //    رسیدنش یعنی طرفِ مقابل اشتباه کرده، نه ما.
         return;
     }
+  }
+
+  /**
+   * ★★ نقشِ تازه از سرور — تنها منبعِ حقیقتِ مجوز روی این کلاینت.
+   *
+   * سه مسیر به اینجا می‌رسند و هر سه در فاز ۴ و ۵ ساخته شدند: ردِ یک نوشتنِ
+   * بی‌مجوز (گام ۴٫۵)، تغییرِ واقعیِ نقش از راهِ `applyRoleChange`، و تازه‌سازیِ
+   * توکن (گام ۵٫۱). تا این گام، آداپتور **هر سه را می‌گرفت و دور می‌ریخت**.
+   *
+   * ⚠️ **اتصال بسته نمی‌شود** ([ADR-038](../../../ARCHITECTURE_DECISIONS.md#adr-038)):
+   * کسی که همین الان `viewer` شده حقِ **دیدنِ** بورد را دارد.
+   */
+  private applyRole(role: BoardRole): void {
+    if (this.role === role) return;
+    this.role = role;
+    this.permissions = permissionsForRole(role);
+    this.inbound?.setPermissions(this.permissions);
+  }
+
+  /**
+   * ★★ `HB_ERROR` — و **کد** تعیین می‌کند چه اتفاقی بیفتد، نه خودِ رسیدنش.
+   *
+   * ⚠️ این تفکیک کلِ [ADR-038](../../../ARCHITECTURE_DECISIONS.md#adr-038) است:
+   * ردِ **یک پیام** (مثلاً updateِ یک `viewer`) اتصال را باز می‌گذارد و همراهش
+   * `HB_PERMISSION` می‌آید؛ ردِ **دستِ‌دادن** با کدِ ۱۰۰۸ بسته می‌شود و آن را
+   * ترابری می‌فهمد، نه اینجا. پس هر چیزی که به این تابع برسد **غیرمرگبار** است
+   * — با یک استثنا که پایین می‌آید.
+   */
+  private handleProtocolError(code: string, message: string): void {
+    if (code === HB_ERROR_CODES.CLIENT_TOO_OLD) {
+      // ⚠️ تنها کدی که روی مسیرِ **پیام** هم مرگبار است: ادامه دادن یعنی
+      //    نوشتن روی ساختاری که نمی‌فهمیم.
+      this.refuse(message);
+      return;
+    }
+    this.onProtocolError?.({ code, message });
+  }
+
+  /**
+   * ★★ سند از فهمِ ما جلوتر است؟ — **خودِ کلاینت می‌سنجد**
+   * ([ADR-040](../../../ARCHITECTURE_DECISIONS.md#adr-040)).
+   *
+   * ⚠️ کلاینتِ **جلوتر** مشکلی نیست؛ فقط عقب‌تر. دلیلش در خودِ
+   * `checkClientVersion` نوشته شده و ملایم نیست: کلاینتِ عقب‌تر ساختاری را که
+   * نمی‌فهمد **بازنویسی می‌کند و برای بقیه هم خرابش می‌کند**.
+   */
+  private refuseIfTooOld(): void {
+    const documentVersion = getSchemaVersion(this.doc);
+    if (documentVersion === undefined) return;
+    if (checkClientVersion(documentVersion, this.supportedSchemaVersion).ok) return;
+    this.refuse(TOO_OLD_MESSAGE);
+  }
+
+  /**
+   * ★★ دست نگه دار — **اول قطع، بعد خبر**.
+   *
+   * ترتیبش عمدی است: تا وقتی سیم وصل است هر تغییرِ محلی می‌تواند به سرور برود،
+   * و کلِ خطر همان است. بعدش رابط فقط-خواندنی می‌شود و پیام روی نوارِ وضعیت
+   * می‌نشیند (`ConnectionState.error` — قراردادِ M1 پیامش را همان‌طور که هست
+   * نشان می‌دهد، پس **باید فارسی باشد**).
+   */
+  private refuse(message: string): void {
+    if (this.refused) return;
+    this.refused = true;
+    this.transport?.disconnect?.();
+    this.linkUp = false;
+    this.permissions = READ_ONLY_PERMISSIONS;
+    this.inbound?.setPermissions(this.permissions);
+    this.inbound?.setConnectionState({
+      status: "error",
+      code: HB_ERROR_CODES.CLIENT_TOO_OLD,
+      message,
+    });
   }
 
   private handleSync(payload: Uint8Array): void {
@@ -572,6 +713,10 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
 
     // ★★ **تحویل به بوم بیرونِ تراکنش** — دلیلش پایین، `flushRemote`.
     this.flushRemote();
+    // ★ و همین‌جا، **بعد از** تراکنش: سندی که تازه رسید می‌تواند از فهمِ ما
+    //   جلوتر باشد. داخلِ observer نمی‌شود، چون y-protocols خطاهای آنجا را
+    //   می‌بلعد و یک ردِ نسخه‌ی بی‌صدا بدترین حالتِ ممکن است.
+    this.refuseIfTooOld();
   }
 
   private wireDocument(): void {
