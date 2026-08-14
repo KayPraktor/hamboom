@@ -8,7 +8,7 @@
 | فایل | چه چیزی دارد |
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
-| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۳۶ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
+| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۴۱ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
 | [TODO.md](TODO.md) | گام‌های ماژول فعال (الان: `realtime-sync`) با معیار پذیرش |
 | [TODO-M1-canvas-core.md](TODO-M1-canvas-core.md) · [PROGRESS-M1-canvas-core.md](PROGRESS-M1-canvas-core.md) | بایگانیِ M1 (تمام‌شده) — مرجعِ تاریخی |
 | [docs/iranian-miro-spec.md](docs/iranian-miro-spec.md) | سند محصول |
@@ -63,7 +63,12 @@ pnpm rt:cluster       # گام ۴٫۷: دو پروسه‌ی واقعی روی ی
 pnpm rt:shutdown      # گام ۴٫۸: خاموشیِ مودبانه → کدِ ۱۰۰۱ + snapshot + هیچ updateِ گم‌شده
 pnpm rt:reconnect     # گام ۵٫۱: قطعِ سرور → فاصله‌های اندازه‌گیری‌شده + jitter → بازگشت بدونِ رفرش
 
-pnpm rt:dev           # سرورِ realtimeِ حافظه‌ای — بدونِ داکر، برای دمو و E2Eِ گام ۵٫۲
+pnpm rt:dev           # سرورِ realtimeِ حافظه‌ای — بدونِ داکر، برای دمو و E2Eِ گام‌های ۵٫۲/۵٫۳
+node scripts/rt-dev-server.ts <port> --pg   # همان نود، این‌بار با Postgres + Redisِ واقعی (گام ۶٫۱)
+
+# ★ E2Eِ مرورگر (بیرون از pnpm verify — مرورگر لازم دارند)
+pnpm --filter @hamboom/canvas-sync test:e2e          # ۲۸ تست، بدونِ داکر
+pnpm --filter @hamboom/canvas-sync test:e2e:server   # گام ۶٫۱ — ★ داکر لازم دارد
 ```
 
 ⚠️ **این هفت `skip` نمی‌شوند و نباید بشوند.** هر کدام باگی گرفتند که همه‌ی
