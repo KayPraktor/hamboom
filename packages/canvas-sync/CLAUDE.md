@@ -2,6 +2,9 @@
 
 binder سمتِ کلاینت — پیاده‌سازیِ `CanvasSyncAdapter` روی Yjs. **قلبِ ماژول M2.**
 
+> این فایل برای کار کردن **روی** این پکیج است. برای **وصل کردنش به یک اپ**
+> (کارِ `apps/web` در M3) [`README.md`](README.md) را بخوان.
+
 **قبل از کار بخوان:** [TODO.md](../../TODO.md) (فاز ۳)، ★
 [`canvas-core/src/sync/README.md`](../canvas-core/src/sync/README.md) (سندِ تحویلِ M1 —
 جریانِ داده، چرخه‌ی عمر، جدولِ throttle)، و

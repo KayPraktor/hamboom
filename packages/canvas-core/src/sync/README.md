@@ -90,21 +90,37 @@ emitElementChanges(changes) {
 | استروک قلم | فقط **یک** commit در `pointerup` |
 | ساخت/حذف/تغییر استایل | فوری |
 
-## آنچه M2 باید پیاده کند
+## آنچه M2 باید پیاده کند — ✅ **همه انجام شد (M2 تحویل شد، ۱۴۰۵/۰۵/۲۳)**
 
-- [ ] `CanvasSyncAdapter` روی Yjs + y-protocols
-- [ ] `assertEmittable` در `emitElementChanges` — غیرقابل‌حذف
-- [ ] نگاشت `ElementChangeSet` ↔ ساختار `Y.Doc` ([PLAN بخش ۷٫۱](../../../../PLAN.md))
-- [ ] `origin` گذاری روی تراکنش‌های Yjs تا `Y.UndoManager` کار دیگران را برنگرداند
-- [ ] awareness → `PeerState[]`
-- [ ] `EphemeralPayload` روی کانال awareness — **هرگز داخل `Y.Doc`** ([ADR-022](../../../../ARCHITECTURE_DECISIONS.md#adr-022))
-- [ ] `requestAssetUpload` → presigned URL (باینری هرگز در سند)
-- [ ] `SaveState` که **حقیقت** را بگوید، نه خوش‌بینی
-- [ ] اعمال `CanvasPermissions` — **در سرور هم**، نه فقط UI ([ADR-012](../../../../ARCHITECTURE_DECISIONS.md#adr-012))
-- [ ] ★ **`applyRemoteChanges` باید صحنه را با `captureUpdate: "NEVER"` بنویسد**
-      ([ADR-026](../../../../ARCHITECTURE_DECISIONS.md#adr-026)). وگرنه تغییری که از
-      کاربر دیگر می‌رسد در undo stack محلی این کاربر می‌نشیند و `Ctrl+Z` او کار
-      دیگری را برمی‌گرداند — همان چیزی که ADR-012 منع کرده. مکمل نگهبان echo.
+پیاده‌سازی در [`packages/canvas-sync`](../../../canvas-sync/) است؛ شرحِ کاملش در
+[`canvas-sync/README.md`](../../../canvas-sync/README.md).
+
+- [x] `CanvasSyncAdapter` روی Yjs + y-protocols — `YjsSyncAdapter`
+- [x] `assertEmittable` در `emitElementChanges` — **اولین خط**، از همین پکیج قرض گرفته شد
+- [x] نگاشت `ElementChangeSet` ↔ ساختار `Y.Doc` — در
+      [`ydoc-schema`](../../../ydoc-schema/)، **per-property** (ADR-007/ADR-033)
+- [x] `origin` گذاری روی تراکنش‌های Yjs — `LocalOrigin`ِ کلاس‌دار، حاملِ `gestureId`.
+      ⚠️ پیش‌فرضِ `Y.UndoManager` **فقط `null` را ردیابی می‌کند**، پس `trackedOrigins`
+      اجباری است (ADR-035)
+- [x] awareness → `PeerState[]`
+- [x] `EphemeralPayload` روی کانالِ **جدا**، نه داخلِ stateِ awareness
+      ([ADR-036](../../../../ARCHITECTURE_DECISIONS.md#adr-036)) — و هرگز داخلِ `Y.Doc`
+      ([ADR-022](../../../../ARCHITECTURE_DECISIONS.md#adr-022))
+- [x] ⚠️ `requestAssetUpload` — **پورت ساخته شد، نه presigned URLِ واقعی.**
+      `AssetTransport` + پیاده‌سازیِ توسعه؛ مسیرِ واقعی به `apps/api` و
+      `packages/storage` نیاز دارد که کارِ **M3** است (P4،
+      [ADR-031](../../../../ARCHITECTURE_DECISIONS.md#adr-031)). باینری هرگز در سند نرفت.
+- [x] `SaveState` که حقیقت را بگوید — update **قبل از** ack در Postgres می‌نشیند
+      ([ADR-009](../../../../ARCHITECTURE_DECISIONS.md#adr-009)، ۳۰–۳۵ms اندازه‌گیری‌شده)،
+      و تا وقتی سیم قطع است **هیچ‌وقت** `saved` نمی‌گوید
+- [x] اعمالِ `CanvasPermissions` **در سرور** روی **هر** update
+      ([ADR-012](../../../../ARCHITECTURE_DECISIONS.md#adr-012)) — تصمیمش فقط در
+      `apps/realtime/src/permission.ts`. سمتِ کلاینت (`permissions.ts`) عمداً
+      **advisory** است، نه گیت
+- [x] ★ `applyRemoteChanges` با `captureUpdate: "NEVER"` — از راهِ
+      `commitSystemUpdate` ([ADR-026](../../../../ARCHITECTURE_DECISIONS.md#adr-026)).
+      ⚠️ **دو سدِ مستقل‌اند و هر دو لازم:** `trackedOrigins` تاریخچه‌ی Yjs را
+      می‌بندد، `NEVER` تاریخچه‌ی **موتور** را
 
 ## گپ‌های شناخته‌شده که M2 باید پر کند
 

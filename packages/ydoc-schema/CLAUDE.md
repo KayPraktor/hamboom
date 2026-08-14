@@ -2,6 +2,9 @@
 
 مدلِ سندِ Yjs یک بورد. **پایین‌ترین لایه‌ی ماژول M2.**
 
+> این فایل برای کار کردن **روی** این پکیج است. برای **مصرف کردنش**
+> [`README.md`](README.md) را بخوان.
+
 **قبل از کار بخوان:** [TODO.md](../../TODO.md) (فاز ۲) و
 [ARCHITECTURE_DECISIONS.md](../../ARCHITECTURE_DECISIONS.md) — به‌ویژه
 ADR-004، ADR-007، ADR-008، ADR-009، ADR-022، ADR-029 — و
