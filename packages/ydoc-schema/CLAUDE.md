@@ -120,9 +120,19 @@ ADR-004، ADR-007، ADR-008، ADR-009، ADR-022، ADR-029 — و
 
 ```bash
 pnpm --filter @hamboom/ydoc-schema test
+pnpm --filter @hamboom/ydoc-schema test:coverage   # گیتِ ۶۰٪ (گام ۶٫۲)
 pnpm --filter @hamboom/ydoc-schema typecheck
 pnpm --filter @hamboom/ydoc-schema lint
 ```
+
+⚠️ **پوششِ این پکیج بالاست (۹۸٫۶۱٪ خط)، ولی threshold عمداً ۶۰٪ است** — کف است
+نه هدف. و `test-fixtures.ts` از **مخرج** بیرون است: داربستِ تست که در پوشش
+شمرده شود، عدد را بدونِ یک خطِ محصولیِ بیشتر بالا می‌برد.
+
+★ **و ادعاهای تعارضِ این پکیج در `canvas-sync` هم آزموده می‌شوند** — probeهای
+اینجا روی Yjsِ خالص‌اند و ثابت می‌کنند CRDT درست است؛ اینکه **codec** درست از آن
+استفاده می‌کند را `canvas-sync/src/conflict.test.ts` می‌سنجد. سنجیده شد: با
+برداشتنِ نوشتنِ افتراقی از `value-codec` هر ۱۵۵ تستِ اینجا سبز ماندند.
 
 ## چیزهایی که اینجا انجام نمی‌شوند
 

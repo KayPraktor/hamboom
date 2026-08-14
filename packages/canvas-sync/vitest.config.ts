@@ -28,6 +28,18 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     restoreMocks: true,
     clearMocks: true,
+    // پوشش فقط با `pnpm test:coverage` اجرا می‌شود (نه در حلقه‌ی معمولِ تست).
+    // ★ گیتِ گام ۶٫۲ — همان الگوی `canvas-core`: عدد **ادعا** نمی‌شود، اجرا را
+    //   می‌شکند. با یک اجرای عمداً شکست‌خورده آزموده شد.
+    coverage: {
+      provider: "v8",
+      include: ["src/**"],
+      // ⚠️ داربستِ تست از مخرج بیرون است — وگرنه عدد بالا می‌رود بدونِ اینکه یک
+      //   خطِ محصولی بیشتر آزموده شده باشد.
+      exclude: ["src/**/*.test.ts", "src/test-harness.ts"],
+      reporter: ["text", "json-summary"],
+      thresholds: { lines: 60, functions: 60, statements: 60, branches: 60 },
+    },
     server: {
       deps: {
         // ⚠️ تله‌ی ثبت‌شده‌ی M1 (`canvas-core/vitest.config.ts`): Excalidraw یک فایل
