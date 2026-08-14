@@ -37,6 +37,7 @@
     "rt:cluster": "node --env-file-if-exists=.env scripts/rt-cluster.ts",
     "rt:shutdown": "node --env-file-if-exists=.env scripts/rt-shutdown.ts",
     "rt:reconnect": "node --env-file-if-exists=.env scripts/rt-reconnect.ts",
+    "rt:bench": "node --expose-gc --env-file-if-exists=.env scripts/rt-bench.ts",
     "rt:dev": "node scripts/rt-dev-server.ts"
   },
   "devDependencies": {
