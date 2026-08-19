@@ -273,19 +273,26 @@ Chromium، thumbnail) = **بعد از M3**.
 
 ## فاز ۳ — `packages/storage` (P4) (تخمین: ۱٫۵–۲ روز)
 
-### گام ۳٫۰ — ★ probe رفت‌وبرگشتِ S3 روی MinIO — **قبل از نوشتنِ interface** (منتقل‌شده از ۱٫۲)
+### گام ۳٫۰ — ★ probe رفت‌وبرگشتِ S3 روی MinIO — **[!] بلوکه‌ی محیط (OD-2)** (منتقل‌شده از ۱٫۲)
 > «اول probe»: این باید **قبل از** گام ۳٫۱ (امضای `storage`) اجرا شود، چون رفتارِ presign
 > می‌تواند امضای `presignPut` را عوض کند ([ADR-013](ARCHITECTURE_DECISIONS.md#adr-013): رفتارِ
 > presign بین سرویس‌های S3 فرق می‌کند). اینجا `@aws-sdk/client-s3` **افزوده** می‌شود (P1:
 > `license:check` باید سبز بدهد — Apache-2.0 ولی transitiveهایش هم بررسی شوند) و MinIO به compose.
-- [ ] **MinIO + minio-init به `infra/docker/docker-compose.yml`** (YAMLش در [PLAN §۳](PLAN.md) هست) —
-      با `docker compose config` اعتبارسنجی؛ باکت‌های assets/exports/snapshots ساخته شوند.
-- [ ] رفت‌وبرگشت: `putObject` → `getObject` بیت‌به‌بیت سالم؛ `presignPut` → آپلودِ مستقیم با
-      `fetch` → `headObject`؛ `presignGet` → دانلود. `S3_FORCE_PATH_STYLE`، عددِ TTL و شکلِ URL ثبت شود.
-- [ ] ★★ **بیازما که سقفِ اندازه/نوع در امضا/policy اعمال می‌شود** (نکته‌ی مالک): آپلودِ **بزرگ‌تر**
-      از `Content-Length`ِ امضاشده و `Content-Type`ِ ناهمخوان باید **خودِ MinIO** ردشان کند، نه
-      `commit`. تصمیمِ **PUTِ `Content-Length`-امضاشده** در برابر **POST-policyِ `content-length-range`**
-      همین‌جا با عدد گرفته شود — این امضای `presignPut`ِ گام ۳٫۱ را قفل می‌کند.
+>
+> **[!] بلوکه (محیط، نه کد) — OD-2 (۱۴۰۵/۰۵/۲۴):** اسکلتِ `storage` + `@aws-sdk` (license:check سبز، ۷۵۸ پکیج) +
+> MinIO در compose + `s3-probe.ts` نوشته شد، ولی **probe هرگز روی MinIOِ واقعی اجرا نشد** — imageِ `minio/minio`
+> **pull نمی‌شود** (Docker Desktop فقط HTTP proxy دارد، HTTPS ندارد → DNS می‌افتد). پس **هیچ‌یک از دو حالت آزموده
+> نشد** (زیرِ سقف **پذیرفته** / بالای سقف **توسط خودِ MinIO رد**). ★ **جهتِ مالک (این session):** مکانیزم =
+> **POST-policy با `content-length-range`** که خودِ MinIO اعمالش می‌کند — نه `Content-Length`ِ امضاشده که کلاینت
+> **دورش می‌زند** (خاصیتِ طراحیِ S3، نه یافته‌ی probe). این **قبل از AssetTransportِ گام ۳٫۳** باید حل شود.
+> **رفعِ بلوکه = کارِ مالک** (HTTPS proxy یا mirror). **دو کارِ باقی:** probe به `createPresignedPost` بسط یابد
+> (پکیجِ `@aws-sdk/s3-presigned-post`، `license:check`)، سپس روی MinIO **هر دو حالت** را نشان دهد. جزئیات در PROGRESS §OD-2.
+- [!] **MinIO به `infra/docker/docker-compose.yml` افزوده شد؛ minio-init + باکت‌ها (assets/exports/snapshots)
+      به گام ۳٫۳** — و به **اجرای** image وابسته‌اند که الان بلوکه است.
+- [!] رفت‌وبرگشت: `putObject` → `getObject` بیت‌به‌بیت؛ `presignPut` → آپلودِ مستقیم با `fetch` → `headObject`؛
+      `presignGet` → دانلود — **در `s3-probe.ts` نوشته، اجرا بلوکه** (image نیست؛ `S3_FORCE_PATH_STYLE`/TTL/شکلِ URL هنوز ثبت‌نشده).
+- [!] ★★ **سقفِ اندازه/نوع در امضا/policy** (نکته‌ی مالک): probeِ فعلی `Content-Length`ِ امضاشده را می‌سنجد؛
+      طبق جهتِ مالک باید **POST-policyِ `content-length-range`** را هم بیازماید و بر آن قفل شود — **اجرا بلوکه**.
 - **معیار پذیرش:** اسکریپتِ probe (مثلِ `db:smoke`) رفت‌وبرگشت + presign را ثابت می‌کند **و**
       نشان می‌دهد MinIO آپلودِ بزرگ‌تر از سقف/نوعِ غلط را رد می‌کند؛ `license:check` بعد از افزودنِ
       `@aws-sdk` سبز؛ نتیجه + تصمیمِ مکانیزم در PROGRESS.
