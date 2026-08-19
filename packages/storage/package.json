@@ -1,24 +1,23 @@
 {
-  "name": "@hamboom/shared-types",
+  "name": "@hamboom/storage",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "قرارداد مشترک بین ماژول‌ها — schema های zod، انواع عنصر، نرمال‌سازی متن (ADR-021)",
+  "description": "abstraction روی Object Storage سازگار با S3 — تنها جای مجاز @aws-sdk (P4، ADR-013)",
   "exports": {
-    ".": "./src/index.ts",
-    "./canvas": "./src/canvas/index.ts",
-    "./text": "./src/text/index.ts",
-    "./api": "./src/api/index.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "zod": "^4.4.3"
+    "@hamboom/config": "workspace:*",
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/s3-request-presigner": "^3.0.0"
   },
   "devDependencies": {
     "@hamboom/eslint-config": "workspace:*",

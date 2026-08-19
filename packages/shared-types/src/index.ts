@@ -11,3 +11,4 @@
 
 export * from "./canvas/index.ts";
 export * from "./text/index.ts";
+export * from "./api/index.ts";

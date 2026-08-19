@@ -31,12 +31,14 @@
 | `src/canvas/element.ts` | انواع عنصر بوم — PLAN بخش ۷ |
 | `src/canvas/asset.ts` | متادیتای فایل. **باینری هرگز اینجا نیست.** |
 | `src/text/normalize.ts` | نرمال‌سازی فارسی — مصرف‌کننده: بوم، API، realtime |
+| `src/api/roles.ts` | ★ نقش‌ها — **منبعِ حقیقتِ `BoardRole`** ([ADR-043](../../ARCHITECTURE_DECISIONS.md#adr-043))، `teamRole`، `boardAccessMode`، `assignableBoardRole` |
+| `src/api/{primitives,user,team,board,error,rt-token}.ts` | DTOهای API — گام ۲٫۲/۲٫۳ی M3 (PLAN §۵٫۱، ADR-042) |
 
 ## آنچه هنوز اینجا نیست (به ترتیب نیاز)
 
-- DTO های API (`User`, `Team`, `Board`, `Template`, …) — با شروع M3
-- کدهای خطا و قالب پاسخ — با شروع M3
-- پیام‌های WebSocket — با شروع M2
+- DTOهای `Template`/`Comment`/`Plan`/`Subscription`/`Invoice` و فیلدهای مالیِ `Team` — فاز ۱۰/M4
+  (طبق اصلِ «چیزی بدونِ مصرف‌کننده اضافه نکن»)
+- ✅ `User`/`Team`/`Board` + کدهای خطا + `rtTokenClaims`: گام ۲٫۲/۲٫۳ی M3
 
 ## دستورات
 

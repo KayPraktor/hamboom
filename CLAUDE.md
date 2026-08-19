@@ -8,9 +8,10 @@
 | فایل | چه چیزی دارد |
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
-| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۴۱ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| [TODO.md](TODO.md) | گام‌های M2 با معیار پذیرش — ✅ **تمام؛ از حالا بایگانی** |
+| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۴۳ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
+| ★ [TODO-M3-backend-api.md](TODO-M3-backend-api.md) | **TODOی فعالِ M3** — ۱۲ فاز با معیار پذیرش؛ تصمیم‌های مرزی بسته (فاز ۱۰ به تعویق) |
 | ★ [docs/m3-handoff.md](docs/m3-handoff.md) | **نقطه‌ی ورودِ M3** — پورت‌ها، موارد به‌ارث‌رسیده، سقف‌ها، و درسِ روشی |
+| [TODO.md](TODO.md) · [PROGRESS.md](PROGRESS.md) | بایگانیِ M2 (`realtime-sync`، تمام‌شده) — مرجعِ تاریخی |
 | [TODO-M1-canvas-core.md](TODO-M1-canvas-core.md) · [PROGRESS-M1-canvas-core.md](PROGRESS-M1-canvas-core.md) | بایگانیِ M1 (تمام‌شده) — مرجعِ تاریخی |
 | [docs/iranian-miro-spec.md](docs/iranian-miro-spec.md) | سند محصول |
 
@@ -195,11 +196,21 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
+- **★ M3 (`backend-api`) آغاز شد** (۱۴۰۵/۰۵/۲۴) — TODO در
+  [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md) نوشته و **تصمیم‌های مرزی بسته شد**:
+  - **دامنه:** فازهای ۰–۹ + ۱۱ (config+قرارداد → `storage` → `auth-core` → `apps/api` →
+    `sdk` → اتصالِ `apps/realtime` → `apps/web` → نوار ابزار → ظرفیت/تحویل). ⛔ **فاز ۱۰
+    (قالب/کامنت/نسخه/خروجی) و `apps/worker` به تعویق افتادند** (ارثیه‌ی m4).
+  - **چهار پورتِ M2 پیاده می‌شوند:** `BoardAuthority`→`auth-core` · `SnapshotStore`+
+    `AssetTransport`→`storage` · `rt-token`→`apps/api` · تزریقِ واقعی + اجرای دوباره‌ی هر ۷ سنجه.
+  - **`shared-types`:** claimهای `rtToken` → به `shared-types` (تاییدِ ADR-021، ۱۴۰۵/۰۵/۲۴)؛
+    `CommentPin` عمداً در `ydoc-schema` مانْد؛ فقط DTOهای **مصرف‌کننده‌دار** اضافه می‌شوند، نه کلِ §۵٫۱.
+  - ⚠️ **رفعِ سه یافته‌ی M2 که به `canvas-core`/`canvas-sync` دست می‌زند تک‌تک تاییدِ مالک می‌خواهد** (گام ۸٫۵).
+  - **وضعیت الان:** فاز ۰/۱/۲ کامل ✅ (تصمیم‌های مرزی · سه probe · قراردادِ `shared-types` +
+    ADR-042/043). `pnpm verify` سبز. قدمِ بعد: فاز ۳ (`storage`، از گام ۳٫۰ = probeِ S3 روی MinIO).
 - **★★★ M2 (`realtime-sync`) تمام و تحویل شد** (۱۴۰۵/۰۵/۲۳) — هر ۳۰ گامِ
-  [TODO.md](TODO.md) تیک خورده.
-  **ماژول بعدی: M3.** نقطه‌ی ورودش [`docs/m3-handoff.md`](docs/m3-handoff.md) است،
-  نه این فایل — آنجا چهار پورتِ پیاده‌نشده، دو موردِ به‌ارث‌رسیده، چهار یافته‌ی M2،
-  و سقف‌های اندازه‌گیری‌شده فهرست شده‌اند.
+  [TODO.md](TODO.md) تیک خورده. نقطه‌ی ورودِ M3: [`docs/m3-handoff.md`](docs/m3-handoff.md)
+  (چهار پورت، دو موردِ به‌ارث‌رسیده، چهار یافته‌ی M2، سقف‌های اندازه‌گیری‌شده).
 - **M1 (`canvas-core`) هم تمام و تحویل‌شده** — و تنها گپِ بازش (**G-1**) در M2
   گام‌های ۳٫۷ و ۶٫۱ بسته شد.
 

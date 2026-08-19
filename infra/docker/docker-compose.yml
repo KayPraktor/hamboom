@@ -68,6 +68,27 @@ services:
       timeout: 5s
       retries: 20
 
+  # ── Object Storage سازگار با S3 — افزوده‌ی M3 گام ۳٫۰ (probe/storage) ──────
+  # PLAN §۳ این را برای M5 گذاشته بود، ولی M3 برای `packages/storage` زودتر لازمش
+  # دارد. ⚠️ عمداً **بدونِ healthcheck**: تصویرِ minio ابزارِ سلامتِ داخلِ کانتینر را
+  # تضمین نمی‌کند؛ خودِ probe/کلاینت آمادگی را با retry می‌سنجد. **minio-init (۳ باکت)
+  # به گام ۳٫۳ (assets) موکول شد** — probeِ ۳٫۰ باکتِ خودش را می‌سازد.
+  minio:
+    image: minio/minio:latest
+    container_name: hamboom-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-hamboom_minio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-hamboom_minio_dev_pw}
+      MINIO_REGION: ${S3_REGION:-ir-thr-at1}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - miniodata:/data
+
 volumes:
   pgdata:
   redisdata:
+  miniodata:

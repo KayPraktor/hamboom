@@ -1,3 +1,4 @@
+import { boardRoles, type BoardRole as SharedBoardRole } from "@hamboom/shared-types";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 
@@ -52,18 +53,17 @@ export const MSG_TYPES = {
 export type MsgType = (typeof MSG_TYPES)[keyof typeof MSG_TYPES];
 
 /**
- * نقشِ کاربر روی یک بورد — [PLAN بخش ۴](../../../PLAN.md) (`BoardRole`).
+ * نقشِ کاربر روی یک بورد — منبعِ حقیقتش حالا در `shared-types` است
+ * ([ADR-043](../../../ARCHITECTURE_DECISIONS.md#adr-043)، تاییدِ مالک ۱۴۰۵/۰۵/۲۴): قراردادِ
+ * APIِ M3 هم `BoardRole` را می‌خواهد و `shared-types` نمی‌تواند این پکیج را import کند، پس enum
+ * به پایین‌ترین لایه رفت. اینجا فقط **وارد و re-export** می‌شود تا APIِ عمومیِ این پکیج
+ * (پروتکلِ سیم، `permission.ts`) دست‌نخورده بماند.
  *
- * ⚠️ عمداً اینجاست نه در `shared-types`: قیدِ فعالِ M2 این است که این ماژول بدونِ
- * تغییر در آن تمام شود، و M3 هنوز قراردادِ نقش را ننوشته. اگر M3 لازمش داشت،
- * بردنش تاییدِ مالک می‌خواهد — در فهرستِ گام ۶٫۴ ثبت است.
- *
- * ★ **ترتیب معنا دارد:** روی سیم با **ایندکس** فرستاده می‌شود، پس فقط می‌شود به
- * **انتهای** این آرایه اضافه کرد. جابه‌جا کردنشان یعنی کلاینتِ قدیمی نقشِ اشتباه
- * می‌فهمد — بدترین نوعِ باگِ مجوز.
+ * ★ **ترتیب معنا دارد:** روی سیم با **ایندکس** فرستاده می‌شود، پس فقط می‌شود به **انتهای**
+ * آرایه (در `shared-types`) اضافه کرد — جابه‌جایی یعنی کلاینتِ قدیمی نقشِ اشتباه، بدترین باگِ مجوز.
  */
-export const BOARD_ROLES = ["owner", "editor", "commenter", "viewer"] as const;
-export type BoardRole = (typeof BOARD_ROLES)[number];
+export const BOARD_ROLES = boardRoles;
+export type BoardRole = SharedBoardRole;
 
 /**
  * وضعیتِ ذخیره — همان سه حالتِ `SaveState`ِ قراردادِ M1.

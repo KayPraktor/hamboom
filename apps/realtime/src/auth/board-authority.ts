@@ -1,3 +1,4 @@
+import { type RtTokenClaims } from "@hamboom/shared-types";
 import { BOARD_ROLES, HB_ERROR_CODES, type BoardRole } from "@hamboom/ydoc-schema";
 
 import { RtProtocolError } from "../protocol-error.ts";
@@ -6,36 +7,17 @@ import { RtProtocolError } from "../protocol-error.ts";
  * پورتِ احراز هویتِ بورد — [ADR-031](../../../../ARCHITECTURE_DECISIONS.md#adr-031)،
  * تصمیمِ **D-2**.
  *
- * ── چرا پورت، و چرا claimها **اینجا** ────────────────────────────────
+ * ── claimها حالا در `shared-types` اند (به‌روزرسانیِ گام ۲٫۳) ──────────
  *
- * صادرکننده‌ی واقعیِ `rtToken` سرویسِ احراز هویتِ M3 است که هنوز وجود ندارد
- * (`packages/auth-core`). دو راه بود: صبر تا M3، یا تعریفِ همین شکل در
- * `shared-types` تا بعداً مشترک شود.
- *
- * ★ **هیچ‌کدام.** قیدِ صریحِ D-2: شکلِ claimها **داخلِ همین پورت** می‌مانَد تا M2
- * بدونِ یک خط تغییر در `shared-types` تمام شود. وقتی M3 `auth-core` را ساخت،
- * آن‌وقت **با تاییدِ مالک** تصمیم گرفته می‌شود که این تایپ بیرون برود یا نه —
- * الان بردنش یعنی قفل‌کردنِ قراردادی که هنوز مصرف‌کننده‌ی دومی ندارد.
- *
- * ⚠️ `BoardRole` عمداً از [`ydoc-schema`](../../../../packages/ydoc-schema/src/protocol.ts)
- * می‌آید و اینجا **تکرار نمی‌شود**: همان نقشی که روی سیم می‌رود باید همان نقشی
- * باشد که توکن حمل می‌کند. دو تعریف یعنی دو چیزی که واگرا می‌شوند (ADR-024).
+ * قیدِ D-2 (شکلِ claimها **داخلِ همین پورت**) برای M2 بود تا `shared-types` دست‌نخورده
+ * بماند. حالا که M3 هم صادرکننده (`apps/api` endpointِ rt-token) و هم مصرف‌کننده
+ * (`auth-core`) را می‌سازد، `RtTokenClaims` به `shared-types` رفت
+ * ([ADR-042](../../../../ARCHITECTURE_DECISIONS.md#adr-042)، تاییدِ مالک ۱۴۰۵/۰۵/۲۴)؛ این پورت
+ * واردش می‌کند و re-export. (`exp` ثانیه است و `sub` **PII** — جزئیات آنجا.) `BoardRole` هم
+ * از `ydoc-schema` می‌آید که منبعش را از همان `shared-types` می‌گیرد ([ADR-043](../../../../ARCHITECTURE_DECISIONS.md#adr-043)) — یک تعریف.
  */
 
-/**
- * claimهایی که سرور از `rtToken` بیرون می‌کشد.
- *
- * ⚠️ `exp` **ثانیه** است نه میلی‌ثانیه — قراردادِ JWT (RFC 7519). این تنها جای
- * پروژه است که زمان بر حسبِ ثانیه است، پس تبدیل باید صریح باشد.
- */
-export interface RtTokenClaims {
-  /** شناسه‌ی کاربر. ⚠️ **PII است** — خام لاگ نشود (P7، `maskSubject`). */
-  sub: string;
-  boardId: string;
-  role: BoardRole;
-  /** انقضا، **ثانیه**ی یونیکس. */
-  exp: number;
-}
+export type { RtTokenClaims };
 
 /**
  * خطای احراز هویت — همیشه با یک کدِ **پروتکلی**، نه یک رشته‌ی آزاد.
