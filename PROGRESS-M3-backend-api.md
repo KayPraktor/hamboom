@@ -1,10 +1,11 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
-تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۲۴ (2026-08-15)
-**فاز ۰ + ۱ + ۲ کامل ✅؛ فاز ۳ آغاز شد ولی گام ۳٫۰ بلوکه است.** قراردادِ `shared-types` + پکیجِ
-`storage` + `@aws-sdk` (P1 سبز) ساخته شد و `pnpm verify` سبز — ولی ★ **probeِ S3 هرگز روی MinIOِ
-واقعی اجرا نشد** (imageِ minio pull نمی‌شود، پایین). پس گام ۳٫۰ **تمام نیست**؛ هیچ یافته‌ی تجربی
-درباره‌ی اعمالِ سقفِ presign وجود ندارد. **قدمِ بعد: رفعِ بلوکه‌ی داکر، سپس اجرای probe.**
+تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۲۸ (2026-08-19)
+**فاز ۰ + ۱ + ۲ کامل ✅؛ گام ۳٫۰ هم کامل شد ✅ (۱۴۰۵/۰۵/۲۸).** بلوکه‌ی داکر رفع شد (مالک HTTPS proxy
+را تنظیم کرد)، MinIO بالا آمد، و probe **واقعاً روی MinIOِ واقعی اجرا شد**. ★ **یافته‌ی تجربی (OD-2
+بسته):** مکانیزمِ سقف = **presigned POST با `content-length-range` + `eq $Content-Type`** — هر دو حالت
+روی خودِ MinIO تایید شد: زیرِ سقف ۲۰۴، **بالای سقف ۴۰۰ (ردِ MinIO)**، نوعِ غلط ۴۰۳. presigned PUT
+مکانیزمِ سقف نیست (اثباتِ عددی پایین). **قدمِ بعد: گام ۳٫۱ (abstractionِ S3).**
 
 TODOی این ماژول: [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md). نقطه‌ی ورود:
 [`docs/m3-handoff.md`](docs/m3-handoff.md). ماژول‌های تمام‌شده: M1
@@ -102,17 +103,22 @@ TODOی این ماژول: [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md). ن
 **گِیت** شود (بوردِ `private` → عضویتِ تیم به‌تنهایی هیچ نقشی نمی‌دهد)، و امضای تابع به `access_mode`
 نیاز دارد — که probe ۱٫۱ نداشت. **گِیتِ گام ۴٫۲**، مؤثر بر گام ۵٫۴. تا جواب، ۴٫۲ قفل نمی‌شود.
 
-**OD-2 — مکانیزمِ اعمالِ سقفِ اندازه/نوع در presign (باز، بلوکه‌ی محیط).** probeِ گام ۳٫۰ **هرگز روی
-MinIOِ واقعی اجرا نشد** (image pull نمی‌شود)، پس **هیچ‌یک** از دو حالت آزموده نشد: نه آپلودِ **زیرِ سقف**
-که باید **پذیرفته** شود، نه آپلودِ **بالای سقف** که **خودِ MinIO** باید ردش کند.
-★ **جهتِ انتخاب‌شده (مالک، این session):** مکانیزمِ واقعی **POST-policy با `content-length-range`** است که
-**خودِ MinIO** اعمالش می‌کند — چون `Content-Length`ِ امضاشده روی presigned PUT را کلاینت می‌تواند **دور
-بزند** (خاصیتِ طراحیِ S3، **نه** یافته‌ی probe؛ probe هنوز نرفته). این POST-policy را از «جایگزینِ نیازموده»
-به **مکانیزمِ موردِنظر** ارتقا می‌دهد، ولی **تاییدِ تجربی هنوز معلق است**. ⚠️ **دو کارِ باقی‌مانده‌ی گام ۳٫۰:**
-(۱) probeِ فعلی `Content-Length`ِ امضاشده را می‌سنجد؛ باید به **`createPresignedPost` + `content-length-range`**
-بسط یابد (پکیجِ `@aws-sdk/s3-presigned-post`، `license:check`). (۲) روی MinIOِ واقعی اجرا شود و **هر دو حالت**
-را نشان دهد. **گِیتِ امضای `presignPut`ِ گام ۳٫۱ و ساختِ AssetTransportِ گام ۳٫۳** — تا این نشود هر دو روی
-فرض ساخته می‌شوند. سوالِ اصلیِ [ADR-013](ARCHITECTURE_DECISIONS.md#adr-013).
+**OD-2 — مکانیزمِ اعمالِ سقفِ اندازه/نوع در presign — ✅ بسته با شواهد (۱۴۰۵/۰۵/۲۸).** probe روی MinIOِ
+واقعی اجرا شد و **هر دو حالت** را با عدد نشان داد. **تصمیم: presigned POST با `content-length-range` +
+`eq $Content-Type`** — نه presigned PUT.
+- **POST-policy (مکانیزمِ منتخب):** زیرِ سقف (۵۰۰ ≤ ۱۰۲۴) → **۲۰۴ پذیرفته**؛ بالای سقف (۵۰۰۰) →
+  **۴۰۰، ردِ خودِ MinIO**؛ Content-Typeِ ناهمخوان → **۴۰۳**. سقف یک **بازه** [۰..MAX] است که policy
+  سمتِ سرور اعمالش می‌کند، مستقلِ از هدرِ کلاینت.
+- **چرا PUT نه (تصحیحِ دقیقِ «بایپسبل»):** ادعای اولیه «Content-Lengthِ امضاشده دورزدنی است» با عدد
+  **دقیق‌تر** شد و **درست از آب درآمد**. signed PUT اندازه را فقط **پینِ دقیق** می‌کند (نه بازه) و **فقط
+  اگر** content-length امضا شود — تغییرِ هر هدرِ امضاشده امضا را می‌شکند (۴۰۳). ولی PUTِ **بدونِ** امضای
+  content-length، بدنه‌ی ۵۰۰۰بایتی را **۲۰۰ پذیرفت — هیچ سقفی نیست**. پس PUT نمی‌تواند سقف/بازه را
+  قابل‌اتکا اعمال کند؛ POST-policy مکانیزمِ استانداردِ همین کار است.
+- ⚠️ **قیدِ [ADR-013](ARCHITECTURE_DECISIONS.md#adr-013) هنوز برقرار:** این روی **MinIO** است؛ آروان
+  (production) اینجا آزموده‌ناپذیر است. `content-length-range` استانداردِ S3 است و محتمل‌ترین گزینه‌ی
+  قابل‌حمل، ولی رفتارِ دقیقِ آروان در گام ۳٫۳/سختی‌سنجیِ M5 باید تایید شود.
+- **پیامد:** امضای `presignPut`ِ گام ۳٫۱ و AssetTransportِ گام ۳٫۳ روی **POST-policy** بسته می‌شوند
+  (نه Content-Lengthِ امضاشده). این تصمیم در گام ۳٫۳ یک **ADR** می‌شود (نه حالا — الگوی «ADRِ مؤخر»).
 
 ### فاز ۲ — قراردادِ `shared-types` (گام ۲٫۲ + ۲٫۳) — ✅ (۱۴۰۵/۰۵/۲۴)
 
@@ -137,38 +143,34 @@ API عمومی‌اش دست‌نخورده. verify سبز، پس تست‌ها�
 
 **گام ۲٫۴ (`CommentPin`)** از قبل به تعویق (M3-D2b) — کاری نشد.
 
-### فاز ۳ — گام ۳٫۰ در جریان (۱۴۰۵/۰۵/۲۴)
+### فاز ۳ — گام ۳٫۰ ✅ کامل (۱۴۰۵/۰۵/۲۸)
 
-**انجام‌شده (قطعی):**
-- `packages/storage` ساخته شد (package.json + tsconfig + eslint + `src/index.ts`ِ اسکلت + CLAUDE
-  بعداً). eslintش عمداً `@aws-sdk` را منع نمی‌کند — تنها پکیجِ مجاز (P4/ADR-013). ⚠️ تستش
-  `--passWithNoTests` است تا گام ۳٫۱ — بدونش `vitest run` روی صفرْفایل exit 1 می‌داد و **verify را
-  قرمز کرده بود** (این turn پیدا و رفع شد؛ پس ادعای «verify سبز»ِ قبلیِ گام ۳٫۰ اشتباه بود — حالا واقعاً سبز است).
-- ★ **`@aws-sdk/client-s3` + `s3-request-presigner` افزوده و `license:check` سبز: ۷۵۸ پکیج، همه
-  مجاز.** بزرگ‌ترین ریسکِ P1ِ گام ۳٫۰ برطرف شد.
-- MinIO به `infra/docker/docker-compose.yml` (بدونِ healthcheck؛ minio-init به ۳٫۳).
-- probeِ `packages/storage/probe/s3-probe.ts` نوشته و **آماده** است: رفت‌وبرگشتِ باینری + presignGet +
-  ★ آزمونِ اینکه MinIO یک `Content-Length`/`Content-Type`ِ **امضاشده** را اعمال می‌کند (قیدِ مالک).
+**زیرساخت + P1:**
+- `packages/storage` (package.json + tsconfig + eslint + `src/index.ts`ِ اسکلت). eslint عمداً
+  `@aws-sdk` را منع نمی‌کند — تنها پکیجِ مجاز (P4/ADR-013). تستش `--passWithNoTests` تا گام ۳٫۱.
+- `@aws-sdk/client-s3` + `s3-request-presigner` + **`s3-presigned-post`** افزوده؛ `license:check` سبز:
+  **۷۵۹ پکیج، همه مجاز**.
+- MinIO در `infra/docker/docker-compose.yml` (بدونِ healthcheck؛ minio-init به ۳٫۳). ⚠️ بلوکه‌ی pull
+  که در نسخه‌ی قبلیِ این سند ثبت بود (Docker Desktop بدونِ HTTPS proxy → DNS می‌افتاد) **رفع شد** —
+  مالک HTTPS proxy را تنظیم کرد، `docker compose up -d minio` بالا آمد.
 
-**[!] بلوکه — محیط، نه کد:** اجرای probe به imageِ `minio/minio` نیاز دارد و **pullش شکست می‌خورد**.
-هر دو pull (Docker Hub و quay.io) با exit 1 افتادند؛ خطای دقیقِ quay: `lookup quay.io: no such host` +
-«Docker Desktop **HTTPS proxy ندارد**، پس اتصالِ مستقیم». یعنی داکر **HTTP** proxy دارد ولی **HTTPS**
-proxy **ندارد** (`http.docker.internal:3128` فقط HTTP)، پس دانلودِ بلابِ HTTPS مستقیم می‌رود و DNS
-می‌افتد. imageهای کَش‌شده‌ی M2 و `public.ecr.aws` کار می‌کنند. **رفع: تنظیمِ HTTPS proxy در Docker
-Desktop یا یک mirror — کارِ مالک، نه کد.**
+**★ probe اجرا شد — `packages/storage/probe/s3-probe.ts` (۷ سبز، exit 0):**
+- رفت‌وبرگشتِ باینریِ بیت‌به‌بیت + `headObject` اندازه‌ی واقعی + presignGet (۲۰۰).
+- **presigned PUT (مشاهده‌ای):** آپلودِ درست ۲۰۰؛ تغییرِ هدرِ امضاشده (۲۰۰۰بایت یا نوعِ غلط) → ۴۰۳
+  (شکستِ امضا، نه اعمالِ سقف)؛ **PUTِ بدونِ امضای content-length، بدنه‌ی ۵۰۰۰بایت → ۲۰۰ (هیچ سقفی نیست)**.
+- **★ presigned POST (مکانیزمِ منتخب):** زیرِ سقف ۲۰۴ · **بالای سقف ۴۰۰ (ردِ خودِ MinIO)** · نوعِ غلط ۴۰۳.
 
-**★ سوالِ باز (OD-2) — که probe باید جواب دهد ولی هنوز نداده:** آیا **هر دو حالت روی MinIOِ واقعی**
-رخ می‌دهد — آپلودِ **زیرِ سقف پذیرفته** و آپلودِ **بالای سقف توسط خودِ MinIO رد**؟ **هنوز نامعلوم**،
-چون probe **صفر بار** اجرا شده (image نیست). و یک نکته‌ی مکانیزم که نباید گم شود: probeِ فعلی
-**`Content-Length`ِ امضاشده روی presigned PUT** را می‌سنجد؛ **POST-policy با `content-length-range`**
-فقط به‌عنوان **جایگزین** در پیامِ کد یادداشت شده، **نه آزموده**. پس نه Content-Length تایید شده نه
-POST-policy — تا probe اجرا نشود، مکانیزمِ اعمالِ سقف **تصمیم‌گرفته‌نشده** است (سوالِ اصلیِ
-[ADR-013](ARCHITECTURE_DECISIONS.md#adr-013)). ⚠️ **پیگیری:** وقتی داکر باز شد، اگر
-`Content-Length`ِ امضاشده اعمال نشد، probe باید مسیرِ POST-policy را هم اضافه کند و **هر دو** را مقایسه کند.
+**نتیجه:** مکانیزمِ سقف = **POST-policy `content-length-range` + `eq $Content-Type`** (جزئیات و تصحیحِ
+«بایپسبل» در §OD-2 بالا). معیارِ پذیرشِ گام ۳٫۰ محقق شد: رفت‌وبرگشت + presign اثبات شد، MinIO آپلودِ
+بالای سقف/نوعِ غلط را **خودش** رد کرد، `license:check` سبز، تصمیمِ مکانیزم ثبت شد.
 
 ## قدم بعد
 
-**تصمیمِ مالک برای رفعِ بلوکه:** یک mirrorِ ایرانیِ Docker Hub (تنظیم در Docker Desktop) یا pullِ
-یک‌بارِ `minio/minio` با VPN؛ سپس `node packages/storage/probe/s3-probe.ts`. جایگزین: probe را به یک
-endpointِ S3ِ موجود بزنیم (`S3_ENDPOINT`/کلیدها را از env می‌خواند). گزینه‌ی نامطلوب: رفتن به ۳٫۱ با
-پیش‌فرضِ «Content-Length امضاشده» و تاییدِ تجربیِ معوق (نقضِ سبکِ «اول probe»).
+**گام ۳٫۱ — abstractionِ S3** ([ADR-013](ARCHITECTURE_DECISIONS.md#adr-013)): رابطِ
+`putObject`/`getObject`/`deleteObject`/`presignPut`/`presignGet`/`headObject`/`listPrefix` **بدونِ نامِ
+سرویس** در امضا؛ گیتِ ESLintِ P4 (RuleTester خودآزمون) که فقط `storage` حق `@aws-sdk` دارد؛ و
+`presignPut` بر پایه‌ی **POST-policy** (یافته‌ی گام ۳٫۰)، نه Content-Lengthِ امضاشده. سپس گام ۳٫۲
+(`StorageSnapshotStore`) و ۳٫۳ (`AssetTransport` + ADRِ مکانیزمِ POST-policy).
+
+⚠️ **probeِ `probe/s3-probe.ts`** طبق کامنتِ eslintش «بعد از گرفتنِ عدد پاک می‌شود» — عدد گرفته شد؛
+حذفش هنگامِ بستنِ فاز ۳ (یا زودتر، به‌صلاحِ مالک).

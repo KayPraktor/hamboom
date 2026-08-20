@@ -273,26 +273,23 @@ Chromium، thumbnail) = **بعد از M3**.
 
 ## فاز ۳ — `packages/storage` (P4) (تخمین: ۱٫۵–۲ روز)
 
-### گام ۳٫۰ — ★ probe رفت‌وبرگشتِ S3 روی MinIO — **[!] بلوکه‌ی محیط (OD-2)** (منتقل‌شده از ۱٫۲)
+### گام ۳٫۰ — ★ probe رفت‌وبرگشتِ S3 روی MinIO — **✅ کامل (۱۴۰۵/۰۵/۲۸)** (منتقل‌شده از ۱٫۲)
 > «اول probe»: این باید **قبل از** گام ۳٫۱ (امضای `storage`) اجرا شود، چون رفتارِ presign
 > می‌تواند امضای `presignPut` را عوض کند ([ADR-013](ARCHITECTURE_DECISIONS.md#adr-013): رفتارِ
 > presign بین سرویس‌های S3 فرق می‌کند). اینجا `@aws-sdk/client-s3` **افزوده** می‌شود (P1:
 > `license:check` باید سبز بدهد — Apache-2.0 ولی transitiveهایش هم بررسی شوند) و MinIO به compose.
 >
-> **[!] بلوکه (محیط، نه کد) — OD-2 (۱۴۰۵/۰۵/۲۴):** اسکلتِ `storage` + `@aws-sdk` (license:check سبز، ۷۵۸ پکیج) +
-> MinIO در compose + `s3-probe.ts` نوشته شد، ولی **probe هرگز روی MinIOِ واقعی اجرا نشد** — imageِ `minio/minio`
-> **pull نمی‌شود** (Docker Desktop فقط HTTP proxy دارد، HTTPS ندارد → DNS می‌افتد). پس **هیچ‌یک از دو حالت آزموده
-> نشد** (زیرِ سقف **پذیرفته** / بالای سقف **توسط خودِ MinIO رد**). ★ **جهتِ مالک (این session):** مکانیزم =
-> **POST-policy با `content-length-range`** که خودِ MinIO اعمالش می‌کند — نه `Content-Length`ِ امضاشده که کلاینت
-> **دورش می‌زند** (خاصیتِ طراحیِ S3، نه یافته‌ی probe). این **قبل از AssetTransportِ گام ۳٫۳** باید حل شود.
-> **رفعِ بلوکه = کارِ مالک** (HTTPS proxy یا mirror). **دو کارِ باقی:** probe به `createPresignedPost` بسط یابد
-> (پکیجِ `@aws-sdk/s3-presigned-post`، `license:check`)، سپس روی MinIO **هر دو حالت** را نشان دهد. جزئیات در PROGRESS §OD-2.
-- [!] **MinIO به `infra/docker/docker-compose.yml` افزوده شد؛ minio-init + باکت‌ها (assets/exports/snapshots)
-      به گام ۳٫۳** — و به **اجرای** image وابسته‌اند که الان بلوکه است.
-- [!] رفت‌وبرگشت: `putObject` → `getObject` بیت‌به‌بیت؛ `presignPut` → آپلودِ مستقیم با `fetch` → `headObject`؛
-      `presignGet` → دانلود — **در `s3-probe.ts` نوشته، اجرا بلوکه** (image نیست؛ `S3_FORCE_PATH_STYLE`/TTL/شکلِ URL هنوز ثبت‌نشده).
-- [!] ★★ **سقفِ اندازه/نوع در امضا/policy** (نکته‌ی مالک): probeِ فعلی `Content-Length`ِ امضاشده را می‌سنجد؛
-      طبق جهتِ مالک باید **POST-policyِ `content-length-range`** را هم بیازماید و بر آن قفل شود — **اجرا بلوکه**.
+> **✅ اجرا شد (۱۴۰۵/۰۵/۲۸) — OD-2 بسته:** بلوکه‌ی داکر رفع شد (مالک HTTPS proxy را تنظیم کرد)، MinIO بالا آمد،
+> probe به **POST-policy** (`createPresignedPost` + `content-length-range`) بسط یافت و **روی MinIOِ واقعی، هر دو
+> حالت** با عدد اثبات شد: زیرِ سقف **۲۰۴**، بالای سقف **۴۰۰ (ردِ خودِ MinIO)**، نوعِ غلط **۴۰۳**. ★ **یافته:**
+> presigned PUT مکانیزمِ سقف نیست — PUTِ بدونِ امضای content-length، ۵۰۰۰بایت را **۲۰۰ پذیرفت**. پس مکانیزمِ
+> گام ۳٫۱/۳٫۳ = **POST-policy `content-length-range` + `eq $Content-Type`**. جزئیات در PROGRESS §OD-2. `license:check`
+> سبز (۷۵۹ پکیج). ⚠️ قیدِ ADR-013: این MinIO است؛ رفتارِ آروان در ۳٫۳/M5 تایید شود.
+- [x] **MinIO به `infra/docker/docker-compose.yml` افزوده و بالا آمد** (minio-init + باکت‌ها به گام ۳٫۳؛ probe
+      باکتِ `hamboom-probe`ِ خودش را ساخت). `forcePathStyle: true` لازم بود و کار کرد.
+- [x] رفت‌وبرگشت: `putObject`→`getObject` بیت‌به‌بیت + `headObject` اندازه‌ی واقعی + `presignGet` (۲۰۰) روی MinIOِ واقعی.
+- [x] ★★ **سقفِ اندازه/نوع** (نکته‌ی مالک): با **presigned POST + `content-length-range` + `eq $Content-Type`**
+      اثبات شد که **خودِ MinIO** آپلودِ بالای سقف (۴۰۰) و نوعِ غلط (۴۰۳) را رد می‌کند؛ PUTِ بدونِ امضا سقف ندارد.
 - **معیار پذیرش:** اسکریپتِ probe (مثلِ `db:smoke`) رفت‌وبرگشت + presign را ثابت می‌کند **و**
       نشان می‌دهد MinIO آپلودِ بزرگ‌تر از سقف/نوعِ غلط را رد می‌کند؛ `license:check` بعد از افزودنِ
       `@aws-sdk` سبز؛ نتیجه + تصمیمِ مکانیزم در PROGRESS.

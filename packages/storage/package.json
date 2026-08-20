@@ -15,9 +15,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@hamboom/config": "workspace:*",
     "@aws-sdk/client-s3": "^3.0.0",
-    "@aws-sdk/s3-request-presigner": "^3.0.0"
+    "@aws-sdk/s3-presigned-post": "^3.1114.0",
+    "@aws-sdk/s3-request-presigner": "^3.0.0",
+    "@hamboom/config": "workspace:*"
   },
   "devDependencies": {
     "@hamboom/eslint-config": "workspace:*",

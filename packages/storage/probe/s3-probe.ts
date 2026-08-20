@@ -1,12 +1,17 @@
 /**
  * ★ probe گام ۳٫۰ (M3) — رفتارِ واقعیِ S3/presign روی MinIO، **قبل از** نوشتنِ interfaceِ storage.
  *
- * پرسشِ اصلی (قیدِ مالک): آیا محدودیتِ اندازه/نوع را می‌شود در **خودِ امضای presign** گذاشت،
- * تا آپلودِ مستقیمِ کلاینت که دورِ سرور را می‌زند، در لایه‌ی storage رد شود — نه فقط در `commit`؟
- * یعنی: آیا MinIO یک `Content-Length`/`Content-Type`ِ **امضاشده** را اعمال می‌کند؟
+ * پرسشِ اصلی (قیدِ مالک): محدودیتِ اندازه/نوع باید در **خودِ امضا/policyِ presign** اعمال شود، تا
+ * آپلودِ مستقیمِ کلاینت که دورِ سرور را می‌زند در لایه‌ی storage رد شود — نه فقط در `commit`.
  *
- * ⚠️ اسکریپتِ شواهد (خارج از verify). نتیجه در PROGRESS؛ امضای `presignPut`ِ گام ۳٫۱ را قفل می‌کند.
- * اجرا: `docker compose ... up -d minio` سپس `node packages/storage/probe/s3-probe.ts`.
+ * دو مکانیزم **با عدد** مقایسه می‌شوند (تصمیمِ OD-2):
+ *   ۳) presigned **PUT** با `Content-Length`/`Content-Type`ِ امضاشده — مشاهده‌ای: MinIO چه می‌کند؟
+ *   ۴) presigned **POST** با `content-length-range` + `eq $Content-Type` — مکانیزمِ موردِنظرِ مالک،
+ *      روی **هر دو حالت**: آپلودِ زیرِ سقف باید **پذیرفته**، آپلودِ بالای سقف باید **توسط خودِ MinIO رد** شود.
+ *
+ * ⚠️ اسکریپتِ شواهد (خارج از verify؛ `probe/` در tsconfig و eslint نادیده است، بعد از ثبتِ عدد پاک می‌شود).
+ * اجرا: `docker compose -f infra/docker/docker-compose.yml --env-file .env up -d minio` سپس
+ *        `node packages/storage/probe/s3-probe.ts`.
  */
 import {
   CreateBucketCommand,
@@ -16,6 +21,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
 const ENDPOINT = process.env.S3_ENDPOINT ?? "http://localhost:9000";
 const REGION = process.env.S3_REGION ?? "ir-thr-at1";
@@ -34,7 +40,8 @@ let pass = 0;
 let fail = 0;
 const ok = (cond: boolean, label: string): void => {
   console.log(`  ${cond ? "✓" : "✗"} ${label}`);
-  cond ? pass++ : fail++;
+  if (cond) pass++;
+  else fail++;
 };
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -52,7 +59,7 @@ async function waitReady(): Promise<void> {
   throw new Error("MinIO در ۲۰ثانیه آماده نشد — آیا `docker compose up -d minio` اجرا شده؟");
 }
 
-/** آپلودِ خام با fetch روی یک presigned URL؛ status و پیام را برمی‌گرداند. */
+/** آپلودِ خام با fetch روی یک presigned PUT URL؛ فقط status را برمی‌گرداند. */
 async function put(url: string, body: Uint8Array, headers: Record<string, string>): Promise<number> {
   const res = await fetch(url, { method: "PUT", body, headers });
   if (!res.ok) await res.text().catch(() => "");
@@ -66,7 +73,9 @@ console.log("MinIO آماده است؛ باکتِ probe ساخته شد.\n");
 // ── ۱) رفت‌وبرگشتِ باینری بیت‌به‌بیت ──
 console.log("۱) رفت‌وبرگشتِ باینری (put → get):");
 const bytes = new Uint8Array([0x00, 0xff, 0x80, 0x01, 0x7f, 0xfe]);
-await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: "rt/bin", Body: bytes, ContentType: "application/octet-stream" }));
+await s3.send(
+  new PutObjectCommand({ Bucket: BUCKET, Key: "rt/bin", Body: bytes, ContentType: "application/octet-stream" }),
+);
 const got = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: "rt/bin" }));
 const back = new Uint8Array(await got.Body!.transformToByteArray());
 ok(back.length === bytes.length && back.every((b, i) => b === bytes[i]), "بایت‌ها بیت‌به‌بیت سالم برگشتند");
@@ -79,35 +88,86 @@ const getUrl = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key
 const dl = await fetch(getUrl);
 ok(dl.ok, `presignGet دانلود شد (status ${dl.status})`);
 
-// ── ۳) ★ presignPut با Content-Length و Content-Type امضاشده ──
-console.log("\n۳) ★ presignPut — آیا سقفِ اندازه/نوعِ امضاشده اعمال می‌شود؟");
+// ── ۳) presigned PUT با Content-Length/Content-Type امضاشده — مشاهده‌ای ──
+console.log("\n۳) presigned PUT با `Content-Length`/`Content-Type`ِ امضاشده — MinIO چه می‌کند؟");
 const good = new Uint8Array(10).fill(0x41); // دقیقاً ۱۰ بایت
-const putCmd = new PutObjectCommand({
-  Bucket: BUCKET,
-  Key: "rt/limited",
-  ContentLength: good.length,
-  ContentType: "text/plain",
-});
-const putUrl = await getSignedUrl(s3, putCmd, {
-  expiresIn: 900,
-  signableHeaders: new Set(["content-length", "content-type"]),
-});
-
-// آپلودِ درست (همان اندازه/نوع)
-const s1 = await put(putUrl, good, { "content-type": "text/plain", "content-length": String(good.length) });
-ok(s1 >= 200 && s1 < 300, `آپلودِ درست (۱۰ بایت، text/plain) پذیرفته شد (status ${s1})`);
-
-// آپلودِ بزرگ‌تر روی همان URL — MinIO باید ردش کند اگر Content-Length امضا اعمال شود
+const putUrl = await getSignedUrl(
+  s3,
+  new PutObjectCommand({ Bucket: BUCKET, Key: "rt/put-limited", ContentLength: good.length, ContentType: "text/plain" }),
+  { expiresIn: 900, signableHeaders: new Set(["content-length", "content-type"]) },
+);
+const putGood = await put(putUrl, good, { "content-type": "text/plain", "content-length": String(good.length) });
+ok(putGood >= 200 && putGood < 300, `آپلودِ درست (۱۰ بایت، text/plain) پذیرفته شد (status ${putGood})`);
+// همان امضا، ولی بدنه‌ی بزرگ‌تر و نوعِ غلط — آیا MinIO ردشان می‌کند؟ (یافته، نه pass/fail)
 const big = new Uint8Array(2000).fill(0x42);
-const s2 = await put(putUrl, big, { "content-type": "text/plain", "content-length": String(big.length) });
-console.log(`     آپلودِ بزرگ‌تر (۲۰۰۰ بایت) روی همان امضا → status ${s2}`);
-ok(s2 >= 400, s2 >= 400 ? "★ MinIO سقفِ Content-Lengthِ امضاشده را **اعمال کرد** (رد شد)" : "⚠️ MinIO سقفِ امضا را اعمال **نکرد** — باید POST-policy سنجید");
+const putBig = await put(putUrl, big, { "content-type": "text/plain", "content-length": String(big.length) });
+const putWrongType = await put(putUrl, good, { "content-type": "image/png", "content-length": String(good.length) });
+const putSizeEnforced = putBig >= 400;
+const putTypeEnforced = putWrongType >= 400;
+console.log(`     · ۲۰۰۰ بایت روی همان امضا → status ${putBig}   ⇒ ${putSizeEnforced ? "رد" : "پذیرفته"} (تغییرِ هدرِ امضاشده امضا را می‌شکند)`);
+console.log(`     · Content-Typeِ غلط روی همان امضا → status ${putWrongType}   ⇒ ${putTypeEnforced ? "رد" : "پذیرفته"}`);
+// ★ سوالِ کلیدی: آن ۴۰۳ «سقفِ اندازه» است یا فقط «امضا شکست»؟ اگر content-length را **اصلاً امضا نکنیم**،
+//   آیا کلاینت هر اندازه‌ای می‌فرستد؟ این دقیقاً همان «دورزدنی‌بودن»ِ ادعاشده است.
+const putUnsignedUrl = await getSignedUrl(
+  s3,
+  new PutObjectCommand({ Bucket: BUCKET, Key: "rt/put-unsigned" }),
+  { expiresIn: 900 }, // بدونِ signableHeaders — content-length امضا نمی‌شود
+);
+const putUnsignedBig = await put(putUnsignedUrl, new Uint8Array(5000).fill(0x43), {});
+const putUnsignedBypasses = putUnsignedBig >= 200 && putUnsignedBig < 300;
+console.log(
+  `     · PUTِ بدونِ امضای content-length، بدنه‌ی ۵۰۰۰ بایت → status ${putUnsignedBig}   ⇒ ${putUnsignedBypasses ? "★ هیچ سقفی نیست — این همان دورزدن است" : "رد"}`,
+);
 
-// آپلود با Content-Typeِ ناهمخوان روی همان URL
-const s3t = await put(putUrl, good, { "content-type": "image/png", "content-length": String(good.length) });
-console.log(`     آپلود با Content-Typeِ غلط (image/png) روی همان امضا → status ${s3t}`);
-ok(s3t >= 400, s3t >= 400 ? "★ MinIO نوعِ امضاشده را **اعمال کرد** (رد شد)" : "⚠️ MinIO نوعِ امضاشده را اعمال **نکرد**");
+// ── ۴) ★ presigned POST با content-length-range + eq Content-Type — مکانیزمِ مالک، هر دو حالت ──
+console.log("\n۴) ★ presigned POST (`content-length-range` + `eq $Content-Type`) — روی خودِ MinIO:");
+const MAX = 1024; // سقفِ ۱کیلوبایت برای این probe
+const { url: postUrl, fields } = await createPresignedPost(s3, {
+  Bucket: BUCKET,
+  Key: "rt/post-limited",
+  Conditions: [
+    ["content-length-range", 0, MAX],
+    ["eq", "$Content-Type", "text/plain"],
+  ],
+  Fields: { "Content-Type": "text/plain" },
+  Expires: 900,
+});
+console.log(`     (postUrl: ${postUrl} · فیلدها: ${Object.keys(fields).join(", ")})`);
+
+/** آپلودِ multipart/form-data روی presigned POST؛ `file` باید **آخرین** فیلد باشد (قاعده‌ی S3). */
+async function postUpload(bodyBytes: Uint8Array, contentTypeOverride?: string): Promise<number> {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) {
+    if (k === "Content-Type" && contentTypeOverride) continue; // زیر جایگزین می‌شود
+    form.append(k, v);
+  }
+  if (contentTypeOverride) form.append("Content-Type", contentTypeOverride);
+  form.append("file", new Blob([bodyBytes]), "f");
+  const res = await fetch(postUrl, { method: "POST", body: form });
+  if (!res.ok) await res.text().catch(() => "");
+  return res.status;
+}
+
+// ۴a) زیرِ سقف + نوعِ درست → باید پذیرفته شود
+const postUnder = await postUpload(new Uint8Array(500).fill(0x41));
+ok(postUnder >= 200 && postUnder < 300, `زیرِ سقف (۵۰۰ ≤ ${MAX} بایت، text/plain) پذیرفته شد (status ${postUnder})`);
+// ۴b) ★ بالای سقف → باید توسط خودِ MinIO رد شود
+const postOver = await postUpload(new Uint8Array(5000).fill(0x42));
+ok(postOver >= 400, `★ بالای سقف (۵۰۰۰ > ${MAX} بایت) توسط خودِ MinIO رد شد (status ${postOver})`);
+// ۴c) ★ نوعِ ناهمخوان → باید توسط خودِ MinIO رد شود
+const postWrongType = await postUpload(new Uint8Array(500).fill(0x41), "image/png");
+ok(postWrongType >= 400, `★ نوعِ ناهمخوان (image/png ≠ text/plain) رد شد (status ${postWrongType})`);
+
+// ── یافته‌ها (برای گام ۳٫۱/۳٫۳ و PROGRESS §OD-2) ──
+console.log("\n── یافته‌ها ──");
+console.log(
+  `  presigned PUT (content-length **امضاشده**): اندازه ${putSizeEnforced ? "✔ پین" : "✘"} · نوع ${putTypeEnforced ? "✔ پین" : "✘"} — ولی **دقیق**، نه بازه؛ و ${putUnsignedBypasses ? "بدونِ امضای content-length ✘ هیچ سقفی نیست" : "بدونِ امضا هم رد شد"}`,
+);
+console.log(
+  `  presigned POST (content-length-range + eq): اندازه ${postOver >= 400 ? "✔ اعمال" : "✘"} · نوع ${postWrongType >= 400 ? "✔ اعمال" : "✘"} — **بازه** [۰..MAX]، مستقل از هدرِ کلاینت`,
+);
 
 console.log(`\nخلاصه: ${pass} سبز، ${fail} قرمز.`);
-console.log("یافته‌ها (برای گام ۳٫۱ و PROGRESS): اعمالِ Content-Length/Type امضاشده روی MinIO بالا چاپ شد.");
-process.exit(0); // probe همیشه ۰ برمی‌گردد؛ یافته در متن است، نه در کدِ خروج
+// ★ برخلافِ نسخه‌ی اول، این‌بار exit با نتیجه گره خورده: بخشِ ۴ مکانیزمی است که به آن **متعهد** می‌شویم،
+//   پس اگر POST-policy هر دو حالت را درست اعمال نکند، باید **قرمز** باشد — نه پنهان در متن.
+process.exit(fail === 0 ? 0 : 1);
