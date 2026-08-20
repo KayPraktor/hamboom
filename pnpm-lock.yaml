@@ -74,6 +74,9 @@ importers:
       '@hamboom/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@hamboom/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@hamboom/ydoc-schema':
         specifier: workspace:*
         version: link:../../packages/ydoc-schema

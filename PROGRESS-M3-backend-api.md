@@ -1,11 +1,12 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۲۸ (2026-08-19)
-**فاز ۰ + ۱ + ۲ کامل ✅؛ گام ۳٫۰ و ۳٫۱ هم کامل ✅ (۱۴۰۵/۰۵/۲۸).** بلوکه‌ی داکر رفع شد، MinIO بالا آمد،
-probe مکانیزمِ سقف را با عدد بست (OD-2)، و ★ **`packages/storage` ساخته شد**: رابطِ `ObjectStore` روی S3 (تنها
-جای `@aws-sdk`، گیتِ P4 خودآزمون)، `s3EnvSchema` در config، و `pnpm storage:smoke` روی MinIOِ واقعی (۱۱ سبز).
-یافته‌ی OD-2: مکانیزمِ سقف = **presigned POST با `content-length-range`** (PUT سقف را اعمال نمی‌کند)؛ پس
-`presignPut`→`presignUpload`ِ `{url, fields}`. `pnpm verify` سبز (۸ گیت). **قدمِ بعد: گام ۳٫۲ (StorageSnapshotStore).**
+**فاز ۰ + ۱ + ۲ کامل ✅؛ گام ۳٫۰/۳٫۱/۳٫۲ هم کامل ✅ (۱۴۰۵/۰۵/۲۸).** بلوکه‌ی داکر رفع شد، MinIO بالا آمد،
+probe مکانیزمِ سقف را با عدد بست (OD-2)، ★ **`packages/storage` ساخته شد** (رابطِ `ObjectStore` روی S3، تنها جای
+`@aws-sdk`، گیتِ P4 خودآزمون، `s3EnvSchema` در config، smoke ۱۱ سبز روی MinIO)، و ★ **`StorageSnapshotStore`**
+پورتِ SnapshotStoreِ realtime را روی storage پیاده کرد (آداپتورِ نازک؛ سدِ putِ دروغین بازخوانیِ compactor است).
+یافته‌ی OD-2: مکانیزمِ سقف = **presigned POST با `content-length-range`**؛ پس `presignPut`→`presignUpload`ِ
+`{url, fields}` (PLAN §۵٫۲ با یادداشت به‌روز شد). `pnpm verify` سبز (۸ گیت). **قدمِ بعد: گام ۳٫۳ (AssetTransport).**
 
 TODOی این ماژول: [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md). نقطه‌ی ورود:
 [`docs/m3-handoff.md`](docs/m3-handoff.md). ماژول‌های تمام‌شده: M1
@@ -183,12 +184,31 @@ API عمومی‌اش دست‌نخورده. verify سبز، پس تست‌ها�
   **۱۱ سبز**: put/get بیت‌به‌بیت، head، list، presignGet، presignUpload (۲۰۴/۴۰۰/۴۰۳ + ذخیره‌ی واقعی)، و
   قراردادِ «کلیدِ غایب = `null`، نه throw». `pnpm verify` سبز (۸ گیت).
 
+### فاز ۳ — گام ۳٫۲ ✅ کامل (۱۴۰۵/۰۵/۲۸)
+
+**`StorageSnapshotStore` — پورتِ ۲ روی storage ([ADR-031](ARCHITECTURE_DECISIONS.md#adr-031)):**
+- `apps/realtime/src/persistence/storage-snapshot-store.ts`: `createStorageSnapshotStore(objectStore)` که پورتِ
+  `SnapshotStore` را می‌دهد. **آداپتورِ نازک:** `put`→`putObject`(octet-stream) · `get`→`getObject`(→`null`) ·
+  `delete`→`deleteObject`. امضای پورت **دست‌نخورده**، پس `compactor.ts` عوض نشد.
+- ★ **یافته‌ی مطالعه‌ی کد — «بازخوانی بعد از put» جای درستش compactor است، نه store.** مرحله‌ی ۴ فشرده‌سازی
+  از **خودِ انبار** بازمی‌خواند و state vector می‌سنجد؛ store-agnostic و از M2 اثبات‌شده (compaction.test.ts).
+  پس `StorageSnapshotStore` مثلِ `FsSnapshotStore` readbackِ داخلی ندارد — دومش فقط کندی بود، نه امنیت.
+- **دامنه:** `@hamboom/storage` به deps‌ِ `apps/realtime` اضافه شد (لمسِ M2، ولی مجازِ `realtimeBoundaries` و
+  همان مسیری که ADR-031 تجویز کرد: «M3 پیاده‌سازیِ دوم را می‌دهد»). **صفر تغییر در منطقِ M2.**
+- **`MemoryObjectStore`** به `packages/storage` افزوده شد (همتای `MemorySnapshotStore`) + خودآزمون (۵ تست)؛
+  storage از `--passWithNoTests` درآمد.
+- **تست‌ها (۵ سبز):** conformance روی `MemoryObjectStore` + ★ integration: compactorِ واقعی روی
+  `StorageSnapshotStore(ObjectStoreِ دروغین)` → `rejects("state vector")` + **صفر prune**. با شکستنِ عمدی
+  (صادق‌کردنِ دروغ) قرمز شد (compact به‌جای reject، resolve کرد)، بعد revert سبز. `pnpm verify` سبز (۸ گیت).
+
 ## قدم بعد
 
-**گام ۳٫۲ — `StorageSnapshotStore`** (پورتِ ۲): پیاده‌سازیِ `SnapshotStore`ِ `apps/realtime`
-(`put`/`get`/`delete`) روی `createS3ObjectStore({..., bucket: S3_BUCKET_SNAPSHOTS})`. ⚠️ **امضای پورت را عوض
-نکن** — فقط پیاده‌سازیِ دوم؛ و **مرحله‌ی بازخوانی بعد از `put`** (handoff) تزئینی نیست. اتصالِ واقعی‌اش در
-فاز ۷. سپس گام ۳٫۳ (`AssetTransport` + ADRِ مکانیزمِ POST-policy).
+**گام ۳٫۳ — `AssetTransport` سمتِ سرور** (پورتِ ۳): `POST /assets/presign` (حالا `{fileId, url, fields}`ِ
+POST-policy)، `.../commit` (اعتبارسنجیِ **واقعیِ** نوع/سایز بعد از آپلود: sniffِ بایت‌ها، `headObject`، `sha256`)،
+`GET /assets/:fileId` (۳۰۲ به presignGet). ⚠️ **`uploadedBy` را کلاینت تعیین نمی‌کند — سرور از توکن**؛ + جدولِ
+`files` + دی‌دوپِ `sha256` + ADRِ مکانیزمِ POST-policy + minio-init (۳ باکت).
+⚠️ **تنشِ ترتیب:** endpointها در `apps/api`اند که **هنوز ساخته نشده** (فاز ۵). گام ۳٫۳ منطقِ storage را طراحی
+می‌کند، ولی سیم‌کشیِ HTTPش به فاز ۵ گره می‌خورد — سرِ ۳٫۳ با مالک روشن شود چه‌قدرش الان و چه‌قدر فاز ۵.
 
-⚠️ **دو اسکریپتِ MinIO:** `probe/s3-probe.ts` دورریختنی است (عدد گرفته شد؛ حذف هنگامِ بستنِ فاز ۳)؛
-`smoke/round-trip.ts` **کِیپر** است (رفت‌وبرگشتِ interface، هر بار storage عوض شد اجرا شود).
+⚠️ **دو اسکریپتِ MinIO:** `probe/s3-probe.ts` دورریختنی (عدد گرفته شد؛ حذف هنگامِ بستنِ فاز ۳)؛
+`smoke/round-trip.ts` **کِیپر** (رفت‌وبرگشتِ interface).

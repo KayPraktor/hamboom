@@ -309,13 +309,18 @@ Chromium، thumbnail) = **بعد از M3**.
       presignUpload (هر سه حالت: زیرِ سقف ۲۰۴/بالای سقف ۴۰۰/نوعِ غلط ۴۰۳) + قراردادِ null؛ گیتِ P4 با شکستنِ
       عمدی **قرمز** شد؛ `license:check` سبز (۷۵۹)؛ `pnpm verify` سبز (۸ گیت).
 
-### گام ۳٫۲ — `StorageSnapshotStore` (جایگزینِ `FsSnapshotStore` — پورتِ ۲)
-- [ ] پیاده‌سازیِ پورتِ `SnapshotStore`ِ `apps/realtime` روی `packages/storage`
-      (bucketِ snapshots). امضای پورت را از realtime **عوض نکن** — فقط پیاده‌سازیِ دوم.
-- [ ] ★ **مرحله‌ی بازخوانی بعد از `put` تزئینی نیست** (handoff): انباری که `put`ش موفق
-      برگردد ولی ناقص بنویسد، بدونِ بازخوانی باعثِ حذفِ updateهای **واقعی** می‌شود.
-- **معیار پذیرش:** تستی که ثابت می‌کند put→readBack→ثبت→prune با ترتیبِ امن کار می‌کند و
-      یک put ناقصِ شبیه‌سازی‌شده باعثِ prune **نمی‌شود**؛ اتصالِ واقعی‌اش در فاز ۷.
+### گام ۳٫۲ — `StorageSnapshotStore` (جایگزینِ `FsSnapshotStore` — پورتِ ۲) — ✅ کامل (۱۴۰۵/۰۵/۲۸)
+- [x] `createStorageSnapshotStore(objectStore)` در `apps/realtime/src/persistence/` — پیاده‌سازیِ پورتِ
+      `SnapshotStore` روی `@hamboom/storage` (bucketِ snapshots). **امضای پورت عوض نشد**؛ آداپتورِ نازک:
+      `put`→`putObject`(octet-stream) · `get`→`getObject` · `delete`→`deleteObject`. `@hamboom/storage` به
+      deps‌ِ realtime اضافه شد (مجازِ `realtimeBoundaries`؛ ممنوعیت روی `@aws-sdk`ِ خام است، نه abstraction).
+- [x] ★ **بازخوانی بعد از `put` جای درستش را دارد — در `compactor.ts` (مرحله‌ی ۴)، نه در store.** یافته‌ی
+      مطالعه‌ی کد: هم `FsSnapshotStore` و هم این آداپتورِ تمیزند؛ سدِ «putِ دروغین» بازخوانیِ compactor است
+      (state vector را می‌سنجد)، store-agnostic و از M2 اثبات‌شده. readbackِ دومِ store فقط کندی بود، نه امنیت.
+- **معیار پذیرش:** ✅ `storage-snapshot-store.test.ts` (۵ سبز): conformance (put→get/null/delete/octet-stream روی
+      `MemoryObjectStore`) + ★ **integration:** compactorِ واقعی روی `StorageSnapshotStore(ObjectStoreِ دروغین)`
+      → بازخوانی می‌گیردش، `rejects` + **صفر prune**. با شکستنِ عمدی (صادق‌کردنِ دروغ) قرمز شد، بعد revert سبز.
+      `MemoryObjectStore` به storage افزوده و خودآزمون شد. اتصالِ end-to-end در فاز ۷. `pnpm verify` سبز.
 
 ### گام ۳٫۳ — سمتِ سرورِ `AssetTransport` (پورتِ ۳)
 - [ ] `POST /api/v1/boards/:boardId/assets/presign` (`{mimeType, sizeBytes, sha256}` →

@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@hamboom/shared-types": "workspace:*",
+    "@hamboom/storage": "workspace:*",
     "@hamboom/ydoc-schema": "workspace:*",
     "ioredis": "^6.0.0",
     "lib0": "0.2.117",
