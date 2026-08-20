@@ -439,3 +439,39 @@ export function realtimeBoundaries() {
       "مشترکِ auth-core حرف می‌زند، نه از راهِ @hamboom/sdk (ADR-012).",
   });
 }
+
+/**
+ * `packages/storage` — abstractionِ Object Storage، افزوده‌ی M3 گام ۳٫۱
+ * ([ADR-013](../../ARCHITECTURE_DECISIONS.md#adr-013)).
+ *
+ * ⚠️ **`@aws-sdk/*` اینجا عمداً مجاز است** — این **تنها** پکیجی است که حق دیدنِ SDKِ
+ * خام را دارد (P4). ممنوعیت روی UI، لایه‌های بالاتر (`sdk`/`auth-core`)، و شبکه/دیتابیسِ
+ * دیگر است: storage فقط با S3 حرف می‌زند، نه با ws/pg/ioredis/axios.
+ *
+ * ★ درست مثلِ نگهبانِ `@hamboom/storage`ِ realtime، تستِ **`allowed`** اینجا نگهبانِ یک
+ *   اشتباهِ محتمل است: کسی که P4 را سرسری بخواند ممکن است `@aws-sdk` را همین‌جا هم ببندد —
+ *   که یعنی بستنِ همان مسیری که P4 تجویزش کرده. آن import باید **مجاز** بماند.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function storageBoundaries() {
+  return packageBoundaries({
+    forbid: [
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/sdk",
+      "@hamboom/auth-core",
+      "react",
+      "react-dom",
+      "@excalidraw/*",
+      "ws",
+      "pg",
+      "ioredis",
+      "axios",
+      "ky",
+    ],
+    reason:
+      "storage فقط abstractionِ Object Storage است (P4): @aws-sdk مجاز است، ولی UI، لایه‌های " +
+      "بالاتر (sdk/auth-core)، و شبکه/دیتابیسِ دیگر (ws/pg/ioredis/axios/ky) اینجا جا ندارند.",
+  });
+}

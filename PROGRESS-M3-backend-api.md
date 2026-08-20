@@ -1,11 +1,11 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۲۸ (2026-08-19)
-**فاز ۰ + ۱ + ۲ کامل ✅؛ گام ۳٫۰ هم کامل شد ✅ (۱۴۰۵/۰۵/۲۸).** بلوکه‌ی داکر رفع شد (مالک HTTPS proxy
-را تنظیم کرد)، MinIO بالا آمد، و probe **واقعاً روی MinIOِ واقعی اجرا شد**. ★ **یافته‌ی تجربی (OD-2
-بسته):** مکانیزمِ سقف = **presigned POST با `content-length-range` + `eq $Content-Type`** — هر دو حالت
-روی خودِ MinIO تایید شد: زیرِ سقف ۲۰۴، **بالای سقف ۴۰۰ (ردِ MinIO)**، نوعِ غلط ۴۰۳. presigned PUT
-مکانیزمِ سقف نیست (اثباتِ عددی پایین). **قدمِ بعد: گام ۳٫۱ (abstractionِ S3).**
+**فاز ۰ + ۱ + ۲ کامل ✅؛ گام ۳٫۰ و ۳٫۱ هم کامل ✅ (۱۴۰۵/۰۵/۲۸).** بلوکه‌ی داکر رفع شد، MinIO بالا آمد،
+probe مکانیزمِ سقف را با عدد بست (OD-2)، و ★ **`packages/storage` ساخته شد**: رابطِ `ObjectStore` روی S3 (تنها
+جای `@aws-sdk`، گیتِ P4 خودآزمون)، `s3EnvSchema` در config، و `pnpm storage:smoke` روی MinIOِ واقعی (۱۱ سبز).
+یافته‌ی OD-2: مکانیزمِ سقف = **presigned POST با `content-length-range`** (PUT سقف را اعمال نمی‌کند)؛ پس
+`presignPut`→`presignUpload`ِ `{url, fields}`. `pnpm verify` سبز (۸ گیت). **قدمِ بعد: گام ۳٫۲ (StorageSnapshotStore).**
 
 TODOی این ماژول: [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md). نقطه‌ی ورود:
 [`docs/m3-handoff.md`](docs/m3-handoff.md). ماژول‌های تمام‌شده: M1
@@ -164,13 +164,31 @@ API عمومی‌اش دست‌نخورده. verify سبز، پس تست‌ها�
 «بایپسبل» در §OD-2 بالا). معیارِ پذیرشِ گام ۳٫۰ محقق شد: رفت‌وبرگشت + presign اثبات شد، MinIO آپلودِ
 بالای سقف/نوعِ غلط را **خودش** رد کرد، `license:check` سبز، تصمیمِ مکانیزم ثبت شد.
 
+### فاز ۳ — گام ۳٫۱ ✅ کامل (۱۴۰۵/۰۵/۲۸)
+
+**`packages/storage` — رابطِ `ObjectStore` روی S3 (P4، [ADR-013](ARCHITECTURE_DECISIONS.md#adr-013)):**
+- `object-store.ts` (پورت + تایپ‌ها: `ObjectHead`/`PresignedUpload`/`PresignUploadOptions`) و
+  `s3-object-store.ts` (`createS3ObjectStore(config)` روی `@aws-sdk`). متدها: `putObject`/`getObject`(→`null`)/
+  `deleteObject`/`headObject`(→`null`)/`listPrefix`/`presignGet`/`presignUpload`.
+- ⚠️ **`presignPut` → `presignUpload`** (`{url, fields}`ِ POST-policy، نه `{headers}`ِ PUT) — یافته‌ی گام ۳٫۰.
+  `presignUpload({key, maxBytes, contentType})` = `createPresignedPost` با `content-length-range` + `eq
+  $Content-Type`. **پیامد بر گام ۳٫۳:** پاسخِ endpointِ presign از `{uploadUrl, headers}` (PLAN §۵٫۲) به
+  `{url, fields}` می‌شود — نکته برای هنگامِ ساختِ AssetTransport.
+- **env:** `s3EnvSchema` در `@hamboom/config` (endpoint/region/کلیدها/`S3_FORCE_PATH_STYLE`/TTL + باکتِ
+  assets/snapshots) + `.env.example`. storage خودش `process.env` نمی‌خواند؛ config می‌سازد، factory می‌گیرد.
+- **گیتِ P4 خودآزمون:** `storageBoundaries()` (eslint-config) — `@aws-sdk` **مجاز**، UI/شبکه/دیتابیسِ دیگر
+  ممنوع؛ وصل به `storage/eslint.config.js`؛ سه‌لایه در `boundaries.test.js`. ★ با شکستنِ عمدی (افزودنِ
+  `@aws-sdk/*` به forbid) **۵ تست قرمز** شد (لایه‌ی ۱ و ۲)، بعد revert سبز — گیتِ واقعی، نه تزئینی.
+- **رفت‌وبرگشتِ واقعی:** `pnpm storage:smoke` (`smoke/round-trip.ts`، بیرونِ verify) روی MinIOِ واقعی
+  **۱۱ سبز**: put/get بیت‌به‌بیت، head، list، presignGet، presignUpload (۲۰۴/۴۰۰/۴۰۳ + ذخیره‌ی واقعی)، و
+  قراردادِ «کلیدِ غایب = `null`، نه throw». `pnpm verify` سبز (۸ گیت).
+
 ## قدم بعد
 
-**گام ۳٫۱ — abstractionِ S3** ([ADR-013](ARCHITECTURE_DECISIONS.md#adr-013)): رابطِ
-`putObject`/`getObject`/`deleteObject`/`presignPut`/`presignGet`/`headObject`/`listPrefix` **بدونِ نامِ
-سرویس** در امضا؛ گیتِ ESLintِ P4 (RuleTester خودآزمون) که فقط `storage` حق `@aws-sdk` دارد؛ و
-`presignPut` بر پایه‌ی **POST-policy** (یافته‌ی گام ۳٫۰)، نه Content-Lengthِ امضاشده. سپس گام ۳٫۲
-(`StorageSnapshotStore`) و ۳٫۳ (`AssetTransport` + ADRِ مکانیزمِ POST-policy).
+**گام ۳٫۲ — `StorageSnapshotStore`** (پورتِ ۲): پیاده‌سازیِ `SnapshotStore`ِ `apps/realtime`
+(`put`/`get`/`delete`) روی `createS3ObjectStore({..., bucket: S3_BUCKET_SNAPSHOTS})`. ⚠️ **امضای پورت را عوض
+نکن** — فقط پیاده‌سازیِ دوم؛ و **مرحله‌ی بازخوانی بعد از `put`** (handoff) تزئینی نیست. اتصالِ واقعی‌اش در
+فاز ۷. سپس گام ۳٫۳ (`AssetTransport` + ADRِ مکانیزمِ POST-policy).
 
-⚠️ **probeِ `probe/s3-probe.ts`** طبق کامنتِ eslintش «بعد از گرفتنِ عدد پاک می‌شود» — عدد گرفته شد؛
-حذفش هنگامِ بستنِ فاز ۳ (یا زودتر، به‌صلاحِ مالک).
+⚠️ **دو اسکریپتِ MinIO:** `probe/s3-probe.ts` دورریختنی است (عدد گرفته شد؛ حذف هنگامِ بستنِ فاز ۳)؛
+`smoke/round-trip.ts` **کِیپر** است (رفت‌وبرگشتِ interface، هر بار storage عوض شد اجرا شود).

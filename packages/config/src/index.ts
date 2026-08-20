@@ -23,5 +23,6 @@ export {
   devAuthEnvSchema,
   realtimeEnvSchema,
   redisEnvSchema,
+  s3EnvSchema,
 } from "./sections.ts";
-export type { AppEnv, DatabaseEnv, DevAuthEnv, RealtimeEnv, RedisEnv } from "./sections.ts";
+export type { AppEnv, DatabaseEnv, DevAuthEnv, RealtimeEnv, RedisEnv, S3Env } from "./sections.ts";

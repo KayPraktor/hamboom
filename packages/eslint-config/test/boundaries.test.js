@@ -9,6 +9,7 @@ import {
   canvasSyncBoundaries,
   processEnvDiscipline,
   realtimeBoundaries,
+  storageBoundaries,
   ydocSchemaBoundaries,
 } from "../boundaries.js";
 
@@ -137,6 +138,42 @@ describe("لایه‌ی ۱ — الگوهای مرزی", () => {
     );
   });
 
+  describe("storageBoundaries — تنها پکیجی که @aws-sdk مجاز است (M3 گام ۳٫۱)", () => {
+    const config = storageBoundaries();
+
+    it.each([
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/sdk",
+      "@hamboom/auth-core",
+      "react",
+      "react-dom",
+      "@excalidraw/excalidraw",
+      "ws",
+      "pg",
+      "ioredis",
+      "axios",
+      "@hamboom/api",
+    ])("می‌گیرد: %s", (specifier) => {
+      expect(isForbidden(config, specifier)).toBe(true);
+    });
+
+    // ★★ مهم‌ترین ادعای این پکیج: `@aws-sdk` **باید مجاز** بماند (P4). اگر روزی کسی
+    //   آن را همین‌جا هم ببندد، خودِ لایه‌ای که P4 تجویزش کرده از کار می‌افتد.
+    //   `@hamboom/config` هم لازم است (خواندنِ `s3EnvSchema`).
+    it.each([
+      "@aws-sdk/client-s3",
+      "@aws-sdk/client-s3/dist/index.js",
+      "@aws-sdk/s3-request-presigner",
+      "@aws-sdk/s3-presigned-post",
+      "@hamboom/config",
+      "@hamboom/shared-types",
+      "node:crypto",
+    ])("مزاحمِ %s نمی‌شود", (specifier) => {
+      expect(isForbidden(config, specifier)).toBe(false);
+    });
+  });
+
   /**
    * تطبیقِ گلاب در `no-restricted-imports` خلافِ شهودِ رایج است: `*` **از `/`
    * عبور می‌کند**. این در گام ۰٫۲ probe شد و اینجا pin می‌شود تا کسی بعداً
@@ -177,6 +214,8 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     ["packages/ydoc-schema", 'import { HamboomCanvas } from "@hamboom/canvas-core";'],
     ["packages/canvas-sync", 'import { WebSocketServer } from "ws";'],
     ["apps/realtime", 'import { S3Client } from "@aws-sdk/client-s3";'],
+    // ★ storage: `@aws-sdk` مجاز است، ولی UI (react) نه — همین سیم‌کشی را می‌سنجد.
+    ["packages/storage", 'import React from "react";'],
   ])("%s نقضِ واقعی را خطا می‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
     expect(messages.some((m) => m.ruleId === "no-restricted-imports")).toBe(true);
@@ -189,6 +228,11 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
       'import { assertEmittable } from "@hamboom/canvas-core/sync";\nexport const g = assertEmittable;',
     ],
     ["apps/realtime", 'import * as Y from "yjs";\nexport const doc = new Y.Doc();'],
+    // ★★ ادعای اصلیِ P4 روی خودِ storage: importِ خامِ `@aws-sdk` **مجاز** است.
+    [
+      "packages/storage",
+      'import { S3Client } from "@aws-sdk/client-s3";\nexport const c = S3Client;',
+    ],
   ])("%s importِ مجاز را خطا نمی‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
     expect(messages.filter((m) => m.ruleId === "no-restricted-imports")).toEqual([]);
@@ -286,6 +330,25 @@ describe("لایه‌ی ۳ — وابستگی‌های اعلام‌شده در 
     expect(deps.filter((d) => d.startsWith("@aws-sdk/"))).toEqual([]);
     expect(deps).not.toContain("@hamboom/canvas-core");
     expect(deps).not.toContain("react");
+  });
+
+  // ★ storage برعکسِ بقیه است: `@aws-sdk` **باید** در manifest باشد (P4)، ولی UI/شبکه نه.
+  it("storage فقط @aws-sdk را اعلام کرده، نه UI یا شبکه/دیتابیسِ دیگر", () => {
+    const deps = declaredDeps("packages/storage");
+    expect(deps.some((d) => d.startsWith("@aws-sdk/"))).toBe(true);
+    const forbidden = [
+      "react",
+      "react-dom",
+      "@excalidraw/excalidraw",
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "ws",
+      "pg",
+      "ioredis",
+      "axios",
+      "ky",
+    ];
+    expect(deps.filter((d) => forbidden.includes(d))).toEqual([]);
   });
 });
 

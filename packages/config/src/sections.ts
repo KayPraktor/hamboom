@@ -91,3 +91,29 @@ export const devAuthEnvSchema = z.object({
   RT_DEV_JWT_SECRET: z.string().min(32, "حداقل ۳۲ کاراکتر لازم است"),
 });
 export type DevAuthEnv = z.infer<typeof devAuthEnvSchema>;
+
+/**
+ * ── Object Storage سازگار با S3 (M3، `packages/storage`) ─────────────────
+ *
+ * سوییچِ MinIO↔آروان **فقط** با همین env (P4، PLAN §۴): endpoint و کلیدها عوض
+ * می‌شوند، ولی `S3_REGION` و `S3_FORCE_PATH_STYLE` روی آروان هم همان می‌مانند.
+ *
+ * ⚠️ **`S3_FORCE_PATH_STYLE` متغیرِ مستقل است، نه ثابت** ([ADR-013](../../../ARCHITECTURE_DECISIONS.md#adr-013)،
+ * probe ۳٫۰): رفتارِ presign بین سرویس‌های S3 فرق می‌کند و MinIO این را لازم دارد.
+ *
+ * فقط بخشِ **دارای مصرف‌کننده در M3** است (خط‌قرمزِ این پکیج): connection + TTL +
+ * دو باکتِ `snapshots` (گام ۳٫۲) و `assets` (گام ۳٫۳). `S3_BUCKET_EXPORTS` و
+ * `S3_PUBLIC_BASE_URL` عمداً نیامده‌اند تا مصرف‌کننده‌شان (worker/CDN، بعد از M3) بیاید.
+ */
+export const s3EnvSchema = z.object({
+  S3_ENDPOINT: z.string().min(1, "endpointِ S3 لازم است (لوکال: http://localhost:9000)"),
+  S3_REGION: z.string().min(1).default("ir-thr-at1"),
+  S3_ACCESS_KEY_ID: z.string().min(1),
+  S3_SECRET_ACCESS_KEY: z.string().min(1),
+  S3_FORCE_PATH_STYLE: envBoolean("true"),
+  /** TTLِ پیش‌فرضِ URLهای امضاشده (presignGet/presignUpload) — ثانیه. */
+  S3_PRESIGN_TTL_SECONDS: envInt(900),
+  S3_BUCKET_ASSETS: z.string().min(1).default("hamboom-assets"),
+  S3_BUCKET_SNAPSHOTS: z.string().min(1).default("hamboom-snapshots"),
+});
+export type S3Env = z.infer<typeof s3EnvSchema>;

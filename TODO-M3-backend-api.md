@@ -294,14 +294,20 @@ Chromium، thumbnail) = **بعد از M3**.
       نشان می‌دهد MinIO آپلودِ بزرگ‌تر از سقف/نوعِ غلط را رد می‌کند؛ `license:check` بعد از افزودنِ
       `@aws-sdk` سبز؛ نتیجه + تصمیمِ مکانیزم در PROGRESS.
 
-### گام ۳٫۱ — abstractionِ S3 ([ADR-013](ARCHITECTURE_DECISIONS.md#adr-013))
-- [ ] رابطِ صادرشده: `putObject`، `getObject`، `deleteObject`، `presignPut`، `presignGet`،
-      `headObject`، `listPrefix` — **بدونِ هیچ نامِ سرویسی** (`minio`/`arvan`) در امضا.
-- [ ] ★ **تنها پکیجی که `@aws-sdk/client-s3` را import می‌کند.** گیتِ ESLintِ خودآزمونِ M2
-      باید این را بپذیرد و بقیه را رد کند — با یک تستِ `allowed`/`forbidden`.
-- [ ] `S3_FORCE_PATH_STYLE` متغیرِ مستقل (درسِ probe ۱٫۲).
-- **معیار پذیرش:** رفت‌وبرگشتِ واقعی روی MinIO (اسکریپت)؛ گیتِ P4 با یک import عمدیِ خام از
-      یک پکیجِ دیگر **قرمز** می‌شود؛ `license:check` سبز بعد از افزودنِ `@aws-sdk/*`.
+### گام ۳٫۱ — abstractionِ S3 ([ADR-013](ARCHITECTURE_DECISIONS.md#adr-013)) — ✅ کامل (۱۴۰۵/۰۵/۲۸)
+- [x] رابطِ `ObjectStore`: `putObject`، `getObject`(→`null` اگر نباشد)، `deleteObject`، `headObject`(→`null`)،
+      `listPrefix`، `presignGet`، و ★ `presignUpload` — **بدونِ نامِ سرویس** در امضا. ⚠️ **`presignPut` شد
+      `presignUpload`** (`{url, fields}`ِ POST-policy، نه `{headers}`ِ PUT): probe ۳٫۰ ثابت کرد PUT سقف را اعمال
+      نمی‌کند. **پیامد بر گام ۳٫۳:** پاسخِ endpointِ presign از `{uploadUrl, headers}` به `{url, fields}` می‌شود.
+- [x] ★ **تنها پکیجی که `@aws-sdk/*` را import می‌کند** — `storageBoundaries()` در eslint-config، وصل به
+      `storage/eslint.config.js`. خودآزمونِ سه‌لایه در `boundaries.test.js` (الگو/سیم‌کشی/manifest). ★ ادعای
+      اصلی «@aws-sdk **مجاز**» با یک شکستنِ عمدی (افزودنِ `@aws-sdk/*` به forbid) **۵ تست قرمز** شد، بعد revert سبز.
+- [x] `S3_FORCE_PATH_STYLE` متغیرِ مستقلِ `s3EnvSchema` در `@hamboom/config` (+ `.env.example`)؛ storage خودش
+      `process.env` نمی‌خواند — config می‌سازد، `createS3ObjectStore(config)` می‌گیرد. (بقیه‌ی S3 env هم: endpoint/
+      region/کلیدها/TTL + باکتِ assets(۳٫۳)/snapshots(۳٫۲)؛ exports/public-url تا مصرف‌کننده نیامده.)
+- **معیار پذیرش:** ✅ `pnpm storage:smoke` روی MinIOِ واقعی (۱۱ سبز): round-trip + head + list + presignGet +
+      presignUpload (هر سه حالت: زیرِ سقف ۲۰۴/بالای سقف ۴۰۰/نوعِ غلط ۴۰۳) + قراردادِ null؛ گیتِ P4 با شکستنِ
+      عمدی **قرمز** شد؛ `license:check` سبز (۷۵۹)؛ `pnpm verify` سبز (۸ گیت).
 
 ### گام ۳٫۲ — `StorageSnapshotStore` (جایگزینِ `FsSnapshotStore` — پورتِ ۲)
 - [ ] پیاده‌سازیِ پورتِ `SnapshotStore`ِ `apps/realtime` روی `packages/storage`

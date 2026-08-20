@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "smoke": "node smoke/round-trip.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",

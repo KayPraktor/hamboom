@@ -620,7 +620,7 @@ interface Invoice {
 | GET | `/boards/:boardId/versions/:versionId/snapshot` | باینری | viewer+ |
 | POST | `/boards/:boardId/versions/:versionId/restore` | بازگردانی (خودش یک نسخه جدید می‌سازد) | editor+ |
 | **فایل‌ها** ||||
-| POST | `/boards/:boardId/assets/presign` | `{ mimeType, sizeBytes, sha256 }` → `{ fileId, uploadUrl, headers }` | editor+ |
+| POST | `/boards/:boardId/assets/presign` | `{ mimeType, sizeBytes, sha256 }` → `{ fileId, url, fields }` ¹ | editor+ |
 | POST | `/boards/:boardId/assets/:fileId/commit` | تایید آپلود، اعتبارسنجی سایز/نوع واقعی | editor+ |
 | GET | `/assets/:fileId` | ۳۰۲ به presigned GET | viewer+ |
 | **قالب‌ها** ||||
@@ -649,6 +649,14 @@ interface Invoice {
 | GET | `/healthz` / `/readyz` | بدون auth، برای K8s probe | — |
 | **ادمین پلتفرم** ||||
 | — | `/admin/*` | کاربران، تیم‌ها، پرداخت‌ها، قالب‌ها، feature flag، آمار | staff |
+
+> ¹ **به‌روزرسانیِ M3 گام ۳٫۱ (تاییدِ مالک ۱۴۰۵/۰۵/۲۸):** پاسخِ `assets/presign` **`{ fileId, url, fields }`**
+> است، نه `{ fileId, uploadUrl, headers }`ی که در نگارشِ اول اینجا نوشته بود. این ویرایشِ سلیقه‌ای نیست،
+> **نتیجه‌ی اجباریِ probe ۳٫۰** است: روی MinIO با عدد ثابت شد presigned **PUT** سقفِ اندازه را اعمال نمی‌کند
+> (PUTِ بدونِ امضای `content-length`، بدنه‌ی ۵۰۰۰بایتی را با status ۲۰۰ پذیرفت). تنها مکانیزمی که سقف را
+> **سمتِ سرور** اعمال می‌کند presigned **POST** با `content-length-range` است، که یک فرمِ `multipart` با
+> فیلدهای امضاشده می‌خواهد — یعنی `{ url, fields }` (که `file` آخرین فیلدش است)، نه «URL + هدر». جزئیات و
+> اعداد: [`PROGRESS-M3` §OD-2 و گام ۳٫۱](PROGRESS-M3-backend-api.md)؛ ADRِ مکانیزم سرِ گام ۳٫۳ نوشته می‌شود.
 
 ### ۵.۳ WebSocket (سرور realtime)
 
