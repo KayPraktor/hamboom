@@ -101,6 +101,9 @@ TODOی این ماژول: [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md). ن
 
 ## تصمیم‌های باز
 
+> ★ **وضعیت (۱۴۰۵/۰۵/۲۸):** **OD-1 و OD-2 بسته** شدند (تصمیم + شواهد)؛ **OD-3 یک قیدِ باز است، نه بلوکه** —
+> `member→editor` فقط تا وقتی عضویتِ تیم **عمدی** است معتبر می‌مانَد. تاریخچه‌ی هرکدام برای مرجع نگه داشته شده.
+
 **OD-1 — مدلِ دسترسیِ بورد + نگاشتِ `member`→بورد — ✅ بسته (مالک، ۱۴۰۵/۰۵/۲۸).** نگاشتِ نقشِ تیم→بورد در
 `effectiveBoardRole` وقتی `access_mode='team'`: **owner/admin→editor · member→editor · guest→viewer**.
 **گیتینگِ تاییدشده:** مسیرِ تیم **فقط** برای `access_mode='team'` فعال است؛ `private` → فقط مالکِ بورد +
@@ -255,12 +258,26 @@ API عمومی‌اش دست‌نخورده. verify سبز، پس تست‌ها�
 - **تست‌ها: ۴۳ سبز** · ★ **سه شکستنِ عمدی** (سقفِ exp، `pg` در boundaries، `burnFamily`) هر سه قرمز→سبز. `pnpm verify` سبز.
 - **گیتِ P4 `authCoreBoundaries` (خودآزمون سه‌لایه):** `pg`/`ioredis`/`ws`/`@aws-sdk` ممنوع (DB در apps/api)؛ jose مجاز.
 
-## قدم بعد
+## قدم بعد — فاز ۵ (`apps/api`)، **با نقشه‌ی اول** (مثلِ گام ۳٫۳ و فاز ۴)
 
-**فاز ۵ — `apps/api` (Fastify):** `buildApp()`، پلاگین‌ها (db/redis/s3/auth-guard/rate-limit/pino+redactorِ P7)،
-migrationِ **کاملِ** schema (`0001_init.sql`، شاملِ دو FKِ به‌ارث‌رسیده‌ی M2)، و **پیاده‌سازیِ DBِ پورت‌های فاز
-۳/۴** (`BoardAccessReader`/`SessionStore`/`OtpStore`/AssetTransport) + endpointها. ⚠️ **تنشِ ترتیب:** migrateِ
-infraِ M2 قبل از migrate:upِ api (FKها). endpointِ `rt-token` (پورتِ ۴) + کاوه‌نگار + `UPLOAD_MAX_BYTES` اینجا.
+بزرگ‌ترین و یکپارچه‌سازترین فاز. پیش از کد، نقشه + مرزها به مالک داده می‌شود. شامل:
+
+- `buildApp()`ِ تست‌پذیر (بدونِ `listen`) + پلاگین‌ها: `db` (Kysely+pg، ★ کوئرسِ `int8`→number، P5)، `redis`،
+  `s3` (از `packages/storage`)، `auth-guard`، `rate-limit`، `request-id`، `error`، و pino + **redactorِ P7**.
+- migrationِ **کاملِ** schema (`0001_init.sql`، همه‌ی جدول‌های [PLAN §۶](PLAN.md)).
+- ★★ **دو FKِ به‌ارث‌رسیده‌ی M2 (handoff §۳) — حالا که `boards` ساخته می‌شود:**
+  `board_updates.board_id → boards(id)` و `board_snapshots.board_id → boards(id)` (در M2 عمداً **بدونِ FK**
+  ماندند چون `boards` هنوز نبود). ⚠️ **ترتیب:** این `ALTER`ها بعد از `CREATE TABLE boards` می‌آیند و
+  **وابسته به اجرای migrationِ infraِ M2** (`infra/sql/migrations`) اند — روی دیتابیسِ تازه اول `pnpm db:migrate`
+  بعد `migrate:up`ِ api. `\d board_updates` باید دو FK را نشان دهد.
+- **پیاده‌سازیِ DBِ همه‌ی پورت‌های فاز ۳/۴:** `BoardAccessReader` (داده‌ی `effectiveBoardRole`)، `SessionStore`
+  (refresh، ★ با تراکنشِ اتمیِ `SELECT … FOR UPDATE`)، `OtpStore`، و AssetTransportِ HTTP (presign/commit/GET).
+- endpointها (auth/user/team/board + ★ `GET /boards/:id/rt-token`ِ پورتِ ۴) + سوییچِ کاوه‌نگار + `UPLOAD_MAX_BYTES`.
+
+⚠️ **لوز-اِندهای فاز ۳/۴ که به فاز ۵ رفتند (فهرست):** endpointهای asset، جدولِ `files`+دی‌دوپِ sha256،
+minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بالا، و DBِ سه پورتِ auth.
+⚠️ **اسکریپت‌های دورریختنی:** `storage/probe/s3-probe.ts` + `auth-core/probe/jose-probe.ts` (عدد گرفته شد)؛
+`smoke/`های storage و assets **کِیپر**‌اند (رفت‌وبرگشتِ واقعیِ MinIO).
 
 ⚠️ **لوز-اِندهای فاز ۳ که به فاز ۵ رفتند:** endpointهای asset، جدولِ `files`+دی‌دوپ، minio-init، `UPLOAD_MAX_BYTES`، w/h.
 ⚠️ **اسکریپت‌ها:** `storage/probe/s3-probe.ts` + `auth-core/probe/jose-probe.ts` دورریختنی؛ `smoke/`های storage/assets **کِیپر**.
