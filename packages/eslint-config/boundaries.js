@@ -475,3 +475,39 @@ export function storageBoundaries() {
       "بالاتر (sdk/auth-core)، و شبکه/دیتابیسِ دیگر (ws/pg/ioredis/axios/ky) اینجا جا ندارند.",
   });
 }
+
+/**
+ * `packages/assets` — لایه‌ی دامنه‌ی دارایی، افزوده‌ی M3 گام ۳٫۳.
+ *
+ * ★★ **برخلافِ `storageBoundaries`، اینجا `@aws-sdk/*` ممنوع است** (P4). assets به Object Storage
+ * فقط از راهِ `@hamboom/storage` می‌رسد، نه SDKِ خام — همان مرزی که storage را **نازک** نگه می‌دارد:
+ * منطقِ دامنه (قاعده‌ی mime، کلیدِ team/board، sniff، sha256) اینجاست، دروازه‌ی S3 آنجا. تناظرِ
+ * [ADR-029](../../ARCHITECTURE_DECISIONS.md#adr-029): assets↔storage مثلِ canvas-sync↔ydoc-schema.
+ * تستِ **`forbidden` روی `@aws-sdk`** نگهبانِ همین است — اگر روزی باز شود، storage دیگر نازک نیست.
+ *
+ * مجاز: `@hamboom/storage` (مصرفش می‌کند)، `@hamboom/shared-types`، `@hamboom/config`.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function assetsBoundaries() {
+  return packageBoundaries({
+    forbid: [
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/sdk",
+      "@hamboom/auth-core",
+      "@aws-sdk/*",
+      "react",
+      "react-dom",
+      "@excalidraw/*",
+      "ws",
+      "pg",
+      "ioredis",
+      "axios",
+      "ky",
+    ],
+    reason:
+      "assets لایه‌ی دامنه‌ی دارایی است، نه دروازه‌ی S3: به Object Storage فقط از راهِ " +
+      "@hamboom/storage می‌رسد (@aws-sdk ممنوع، P4)، و UI/شبکه/دیتابیسِ دیگر هم اینجا جا ندارند.",
+  });
+}

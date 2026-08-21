@@ -31,6 +31,7 @@
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
     "db:smoke": "node --env-file-if-exists=.env scripts/db-smoke.ts",
     "storage:smoke": "node --env-file-if-exists=.env packages/storage/smoke/round-trip.ts",
+    "assets:smoke": "node --env-file-if-exists=.env packages/assets/smoke/round-trip.ts",
     "rt:durability": "node --env-file-if-exists=.env scripts/rt-durability.ts",
     "rt:compaction": "node --env-file-if-exists=.env scripts/rt-compaction.ts",
     "rt:permission": "node --env-file-if-exists=.env scripts/rt-permission.ts",

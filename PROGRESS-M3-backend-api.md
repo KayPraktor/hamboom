@@ -1,12 +1,15 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۲۸ (2026-08-19)
-**فاز ۰ + ۱ + ۲ کامل ✅؛ گام ۳٫۰/۳٫۱/۳٫۲ هم کامل ✅ (۱۴۰۵/۰۵/۲۸).** بلوکه‌ی داکر رفع شد، MinIO بالا آمد،
-probe مکانیزمِ سقف را با عدد بست (OD-2)، ★ **`packages/storage` ساخته شد** (رابطِ `ObjectStore` روی S3، تنها جای
-`@aws-sdk`، گیتِ P4 خودآزمون، `s3EnvSchema` در config، smoke ۱۱ سبز روی MinIO)، و ★ **`StorageSnapshotStore`**
-پورتِ SnapshotStoreِ realtime را روی storage پیاده کرد (آداپتورِ نازک؛ سدِ putِ دروغین بازخوانیِ compactor است).
-یافته‌ی OD-2: مکانیزمِ سقف = **presigned POST با `content-length-range`**؛ پس `presignPut`→`presignUpload`ِ
-`{url, fields}` (PLAN §۵٫۲ با یادداشت به‌روز شد). `pnpm verify` سبز (۸ گیت). **قدمِ بعد: گام ۳٫۳ (AssetTransport).**
+**فاز ۰ + ۱ + ۲ کامل ✅؛ فاز ۳ (storage) هم کامل ✅ (۱۴۰۵/۰۵/۲۸)** — منطقِ گام ۳٫۳ الان ساخته و روی MinIO
+تست شد؛ endpointهای HTTPش به فاز ۵ موکول (تصمیمِ مالک). بلوکه‌ی داکر رفع شد، probe مکانیزمِ سقف را بست
+(OD-2/ADR-044)، و سه لایه ساخته شد: ★ **`packages/storage`** (رابطِ `ObjectStore` روی S3، تنها جای `@aws-sdk`،
+گیتِ P4 خودآزمون، smoke ۱۱ سبز) · ★ **`StorageSnapshotStore`** (پورتِ SnapshotStoreِ realtime روی storage،
+آداپتورِ نازک) · ★ **`packages/assets`** (لایه‌ی دامنه‌ی دارایی — presign/validateUploaded/resolve؛
+**مصرف‌کننده‌ی** storage نه بخشی از آن، [ADR-029](ARCHITECTURE_DECISIONS.md#adr-029)؛ **sha256 روی بایت‌های
+واقعی بازمحاسبه می‌شود**؛ smoke ۶ سبز). مکانیزمِ سقف = **presigned POST با `content-length-range`**
+([ADR-044](ARCHITECTURE_DECISIONS.md#adr-044)، PLAN §۵٫۲ به‌روز شد). `pnpm verify` سبز (۸ گیت).
+**قدمِ بعد: فاز ۴ (`packages/auth-core`).**
 
 TODOی این ماژول: [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md). نقطه‌ی ورود:
 [`docs/m3-handoff.md`](docs/m3-handoff.md). ماژول‌های تمام‌شده: M1
@@ -201,14 +204,34 @@ API عمومی‌اش دست‌نخورده. verify سبز، پس تست‌ها�
   `StorageSnapshotStore(ObjectStoreِ دروغین)` → `rejects("state vector")` + **صفر prune**. با شکستنِ عمدی
   (صادق‌کردنِ دروغ) قرمز شد (compact به‌جای reject، resolve کرد)، بعد revert سبز. `pnpm verify` سبز (۸ گیت).
 
+### فاز ۳ — گام ۳٫۳ ✅ منطق + DTO (۱۴۰۵/۰۵/۲۸)؛ HTTP/DB → فاز ۵
+
+★ **تصمیمِ مرزیِ مالک (۱۴۰۵/۰۵/۲۸):** منطق + DTO الان و روی MinIO تست شد؛ endpointهای HTTP + `apps/api` +
+جدولِ `files` به فاز ۵ (بدونِ اسکلتِ نصفه). و **بحثِ معماریِ خانه‌ی منطق:** مالک درست گفت storage نازک بمانَد؛
+پس **`packages/assets`ِ جدا** ساخته شد که مصرف‌کننده‌ی storage است نه بخشی از آن (ADR-029؛ نشتِ export/pg_dumpِ M5).
+
+**`packages/assets` — لایه‌ی دامنه‌ی دارایی:**
+- `createAssetService({ objectStore, maxBytes, … })`: `presign` (اعتبار + کلیدِ `teams/<t>/boards/<b>/<fileId>.<ext>`
+  + presigned POST)، `validateUploaded`، `resolve`؛ + `sniffMime` (magic-bytes: png/jpeg/webp/gif/svg).
+- ★★ **`validateUploaded` هیچ چیز را از کلاینت باور نمی‌کند** (قیدِ مالک): `sha256` را **خودش روی بایت‌های
+  دانلودشده** بازمحاسبه و با ادعا مقایسه می‌کند، نوعِ واقعی را **sniff** می‌کند (نه Content-Typeِ اعلامی)، اندازه
+  را با `headObject`. برمی‌گرداند `{ mime, sizeBytes, sha256 }`ِ **سرور-معتبر** (w/h را مصرف‌کننده اضافه می‌کند).
+- ★ `uploadedBy`/team/board از `ctx` (توکن)، نه بدنه — ساختاری در `presign(req, ctx)`.
+- **DTOها در shared-types:** `assetPresignRequest`/`assetPresignResponse` (`HbAsset`/`HB_ALLOWED_IMAGE_MIME` بازاستفاده).
+- **گیتِ P4 `assetsBoundaries` (خودآزمون سه‌لایه):** برخلافِ storage، `@aws-sdk` **ممنوع**. با شکستنِ عمدی ۴ تست قرمز، بعد سبز.
+- **`ensureBucket`** به storage افزوده شد (ادمینِ باکت، **بیرونِ** interfaceِ نازک — smoke لازمش داشت و assets حق `@aws-sdk` ندارد).
+- **[ADR-044](ARCHITECTURE_DECISIONS.md#adr-044)** نوشته شد (مکانیزمِ POST-policy، ثبتِ رسمیِ یافته‌ی probe ۳٫۰).
+- **تست‌ها:** unit ۲۰ سبز (sniff + service با `MemoryObjectStore`)؛ `pnpm assets:smoke` روی MinIO **۶ سبز**
+  (presign→آپلودِ واقعی→validate→resolve + sha256ِ اعلامیِ غلط رد + آپلودِ بزرگ‌تر از declared را MinIO رد). `pnpm verify` سبز.
+
+**w/h موکول** (تصمیمِ مالک): decoderِ سمتِ سرور (`sharp`) وابستگیِ native سنگین است و w/h نمایشی است نه امنیتی؛ فاز ۵/worker.
+
 ## قدم بعد
 
-**گام ۳٫۳ — `AssetTransport` سمتِ سرور** (پورتِ ۳): `POST /assets/presign` (حالا `{fileId, url, fields}`ِ
-POST-policy)، `.../commit` (اعتبارسنجیِ **واقعیِ** نوع/سایز بعد از آپلود: sniffِ بایت‌ها، `headObject`، `sha256`)،
-`GET /assets/:fileId` (۳۰۲ به presignGet). ⚠️ **`uploadedBy` را کلاینت تعیین نمی‌کند — سرور از توکن**؛ + جدولِ
-`files` + دی‌دوپِ `sha256` + ADRِ مکانیزمِ POST-policy + minio-init (۳ باکت).
-⚠️ **تنشِ ترتیب:** endpointها در `apps/api`اند که **هنوز ساخته نشده** (فاز ۵). گام ۳٫۳ منطقِ storage را طراحی
-می‌کند، ولی سیم‌کشیِ HTTPش به فاز ۵ گره می‌خورد — سرِ ۳٫۳ با مالک روشن شود چه‌قدرش الان و چه‌قدر فاز ۵.
+**فاز ۴ — `packages/auth-core`** (پورتِ ۱، `BoardAuthority`): JWT + refreshِ چرخشی + `effectiveBoardRole`ِ مشترک
+(محصولی‌کردنِ probe ۱٫۱) + `AuthCoreBoardAuthority` + OTP. ★ **قفل‌های طراحیِ فاز ۱ اینجا محقق می‌شوند:** حفره‌ی
+`exp` (probe ۱٫۳: schema ثانیه + یک signer + سقفِ آینده)، و **OD-1** (نگاشتِ تیم→بورد + `access_mode`) گِیتِ گام ۴٫۲.
 
-⚠️ **دو اسکریپتِ MinIO:** `probe/s3-probe.ts` دورریختنی (عدد گرفته شد؛ حذف هنگامِ بستنِ فاز ۳)؛
-`smoke/round-trip.ts` **کِیپر** (رفت‌وبرگشتِ interface).
+⚠️ **لوز-اِندهای فاز ۳ که به فاز ۵ رفتند:** endpointهای asset (presign/commit/GET)، جدولِ `files`+دی‌دوپ،
+minio-init، `UPLOAD_MAX_BYTES` در config، w/h.
+⚠️ **اسکریپت‌های MinIO:** `storage/probe/s3-probe.ts` دورریختنی (حذف هنگامِ بستنِ فاز ۳)؛ `smoke/`های storage و assets **کِیپر**‌اند.

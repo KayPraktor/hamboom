@@ -35,3 +35,6 @@ export type { ApiErrorCode, ApiError } from "./error.ts";
 
 export { rtTokenClaims } from "./rt-token.ts";
 export type { RtTokenClaims } from "./rt-token.ts";
+
+export { assetPresignRequest, assetPresignResponse } from "./asset.ts";
+export type { AssetPresignRequest, AssetPresignResponse } from "./asset.ts";

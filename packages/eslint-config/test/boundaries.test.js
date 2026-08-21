@@ -6,6 +6,7 @@ import { ESLint, Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
 import {
+  assetsBoundaries,
   canvasSyncBoundaries,
   processEnvDiscipline,
   realtimeBoundaries,
@@ -174,6 +175,37 @@ describe("لایه‌ی ۱ — الگوهای مرزی", () => {
     });
   });
 
+  describe("assetsBoundaries — لایه‌ی دامنه؛ برخلافِ storage، @aws-sdk **ممنوع** (M3 گام ۳٫۳)", () => {
+    const config = assetsBoundaries();
+
+    it.each([
+      // ★★ ادعای اصلی و **برعکسِ storage**: assets حق ندارد @aws-sdk را ببیند (P4) — به S3
+      //    فقط از راهِ @hamboom/storage می‌رسد. این همان چیزی است که storage را نازک نگه می‌دارد.
+      "@aws-sdk/client-s3",
+      "@aws-sdk/client-s3/dist/index.js",
+      "@aws-sdk/s3-presigned-post",
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/sdk",
+      "@hamboom/auth-core",
+      "react",
+      "ws",
+      "pg",
+      "axios",
+      "@hamboom/api",
+    ])("می‌گیرد: %s", (specifier) => {
+      expect(isForbidden(config, specifier)).toBe(true);
+    });
+
+    // مجاز: storage (مصرفش می‌کند)، shared-types، config.
+    it.each(["@hamboom/storage", "@hamboom/shared-types", "@hamboom/config", "node:crypto"])(
+      "مزاحمِ %s نمی‌شود",
+      (specifier) => {
+        expect(isForbidden(config, specifier)).toBe(false);
+      },
+    );
+  });
+
   /**
    * تطبیقِ گلاب در `no-restricted-imports` خلافِ شهودِ رایج است: `*` **از `/`
    * عبور می‌کند**. این در گام ۰٫۲ probe شد و اینجا pin می‌شود تا کسی بعداً
@@ -216,6 +248,8 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     ["apps/realtime", 'import { S3Client } from "@aws-sdk/client-s3";'],
     // ★ storage: `@aws-sdk` مجاز است، ولی UI (react) نه — همین سیم‌کشی را می‌سنجد.
     ["packages/storage", 'import React from "react";'],
+    // ★★ assets **برعکسِ storage**: importِ خامِ `@aws-sdk` باید خطا بخورد (به S3 فقط از راهِ storage).
+    ["packages/assets", 'import { S3Client } from "@aws-sdk/client-s3";'],
   ])("%s نقضِ واقعی را خطا می‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
     expect(messages.some((m) => m.ruleId === "no-restricted-imports")).toBe(true);
@@ -232,6 +266,11 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     [
       "packages/storage",
       'import { S3Client } from "@aws-sdk/client-s3";\nexport const c = S3Client;',
+    ],
+    // ★ assets مجاز است @hamboom/storage را ببیند (مصرفش می‌کند، نه دروازه‌ی S3ِ دوم).
+    [
+      "packages/assets",
+      'import { createS3ObjectStore } from "@hamboom/storage";\nexport const c = createS3ObjectStore;',
     ],
   ])("%s importِ مجاز را خطا نمی‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
@@ -349,6 +388,14 @@ describe("لایه‌ی ۳ — وابستگی‌های اعلام‌شده در 
       "ky",
     ];
     expect(deps.filter((d) => forbidden.includes(d))).toEqual([]);
+  });
+
+  // ★ assets برعکسِ storage: `@hamboom/storage` **باید** باشد، `@aws-sdk` **نباید** — دروازه‌ی S3 آنجاست.
+  it("assets مصرف‌کننده‌ی @hamboom/storage است، نه @aws-sdk", () => {
+    const deps = declaredDeps("packages/assets");
+    expect(deps).toContain("@hamboom/storage");
+    expect(deps.filter((d) => d.startsWith("@aws-sdk/"))).toEqual([]);
+    expect(deps).not.toContain("react");
   });
 });
 

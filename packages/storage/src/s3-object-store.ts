@@ -7,6 +7,7 @@
  * `process.env` را نمی‌خواند (PLAN §۴).
  */
 import {
+  CreateBucketCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -123,4 +124,26 @@ export function createS3ObjectStore(config: S3StorageConfig): ObjectStore {
 function isNotFound(e: unknown): boolean {
   const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
   return err.name === "NoSuchKey" || err.name === "NotFound" || err.$metadata?.httpStatusCode === 404;
+}
+
+/**
+ * ★ ادمینِ باکت — عمداً **بیرونِ** interfaceِ `ObjectStore` (که نازک می‌مانَد). ساختِ باکت یک
+ * عملِ S3ِ ادمین است، پس اینجا — تنها جای مجازِ `@aws-sdk` — زندگی می‌کند، نه در مصرف‌کننده‌ها
+ * (که حق ندارند SDK را ببینند، P4). idempotent: اگر باکت از قبل مالِ ماست، بی‌سروصدا برمی‌گردد.
+ * برای smoke و تنظیمِ اولیه؛ در production کارِ minio-init/آروان است.
+ */
+export async function ensureBucket(config: S3StorageConfig): Promise<void> {
+  const client = new S3Client({
+    endpoint: config.endpoint,
+    region: config.region,
+    credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+    forcePathStyle: config.forcePathStyle,
+  });
+  try {
+    await client.send(new CreateBucketCommand({ Bucket: config.bucket }));
+  } catch (e) {
+    const name = (e as { name?: string }).name ?? "";
+    if (name === "BucketAlreadyOwnedByYou" || name === "BucketAlreadyExists") return;
+    throw e;
+  }
 }

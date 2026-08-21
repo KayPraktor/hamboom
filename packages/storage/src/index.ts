@@ -11,6 +11,6 @@ export type {
   PresignUploadOptions,
   PresignedUpload,
 } from "./object-store.ts";
-export { createS3ObjectStore } from "./s3-object-store.ts";
+export { createS3ObjectStore, ensureBucket } from "./s3-object-store.ts";
 export type { S3StorageConfig } from "./s3-object-store.ts";
 export { createMemoryObjectStore } from "./memory-object-store.ts";

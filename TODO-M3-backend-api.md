@@ -322,30 +322,35 @@ Chromium، thumbnail) = **بعد از M3**.
       → بازخوانی می‌گیردش، `rejects` + **صفر prune**. با شکستنِ عمدی (صادق‌کردنِ دروغ) قرمز شد، بعد revert سبز.
       `MemoryObjectStore` به storage افزوده و خودآزمون شد. اتصالِ end-to-end در فاز ۷. `pnpm verify` سبز.
 
-### گام ۳٫۳ — سمتِ سرورِ `AssetTransport` (پورتِ ۳)
-- [ ] `POST /api/v1/boards/:boardId/assets/presign` (`{mimeType, sizeBytes, sha256}` →
-      `{fileId, uploadUrl, headers}`) و `.../assets/:fileId/commit` (اعتبارسنجیِ سایز/نوعِ
-      **واقعی** بعد از آپلود) و `GET /api/v1/assets/:fileId` (۳۰۲ به presigned GET) —
-      [PLAN §۵٫۲](PLAN.md). این‌ها در `apps/api` اند ولی چون منطقشان storage است اینجا طراحی می‌شود.
-- [ ] ★ **`uploadedBy` را کلاینت تعیین نمی‌کند** — سرور از توکن درمی‌آورد (handoff). جدولِ
-      `files` + دی‌دوپِ `sha256` در سطحِ تیم.
-- [ ] ★★ **محدودیتِ اندازه و نوع باید در خودِ امضای presign باشد، نه فقط در `commit`** (نکته‌ی
-      مالک ۱۴۰۵/۰۵/۲۴): آپلودِ مستقیمِ کلاینت→Object Storage **دورِ سرور را می‌زند**، پس تا
-      لحظه‌ی `commit` بایت‌ها همین حالا در باکت‌اند و مرزِ واقعی در لایه‌ی storage است —
-  - **سقفِ اندازه:** `Content-Length`ِ **دقیقِ** امضاشده روی presigned PUT (سرور `sizeBytes`ِ
-    اعلامی را امضا می‌کند، پس آپلود باید دقیقاً همان باشد)، یا `content-length-range` در
-    policyِ presigned POST؛ و درخواستِ presign با `sizeBytes > UPLOAD_MAX_BYTES` **همان‌جا** رد شود.
-  - **نوع:** `Content-Type`ِ امضاشده (هدرِ امضاشده را کلاینت نمی‌تواند عوض کند).
-  - **`commit` فقط چیزی را می‌سنجد که امضا نمی‌تواند:** نوعِ **واقعیِ** بایت‌ها (sniff، نه ادعای
-    کلاینت)، ابعادِ واقعی، و تطبیقِ `sha256`.
-  - ⚠️ **مکانیزم در فاز ۱٫۲ روی MinIO probe شود** ([ADR-013](ARCHITECTURE_DECISIONS.md#adr-013):
-    رفتارِ presign بین سرویس‌های S3 فرق می‌کند)؛ تصمیمِ PUT-امضاشده در برابر POST-policy با عدد گرفته شود.
-- [ ] `resolve()` سمتِ کلاینت (فاز ۸/۶) **هرگز reject نمی‌کند** — فایلِ گمشده کلِ بورد را
-      نمی‌شکند.
-- **معیار پذیرش:** یک آپلودِ **بزرگ‌تر از سقف** یا با **`Content-Type` غلط** باید **در خودِ Object
-      Storage رد شود** (نه فقط در `commit`)؛ تستِ HTTP که presign→commit را می‌رود `uploadedBy`ِ
-      جعلیِ کلاینت را **نادیده** می‌گیرد، سایزِ دروغین را با `headObject` می‌گیرد، و نوعِ واقعیِ
-      بایت‌ها را **sniff** می‌کند (نه اعتماد به `mimeType`ِ اعلامی).
+### گام ۳٫۳ — لایه‌ی دامنه‌ی `AssetService` (پورتِ ۳) — ✅ منطق + DTO کامل (۱۴۰۵/۰۵/۲۸)؛ HTTP/DB → فاز ۵
+
+> ★ **مرزِ «الان» در برابر «فاز ۵»** (تاییدِ مالک ۱۴۰۵/۰۵/۲۸): منطق + DTO الان و روی MinIO تست شد؛
+> endpointهای HTTP و ساختِ `apps/api` به فاز ۵ (بدونِ اسکلتِ نصفه). خانه‌ی منطق: **`packages/assets`ِ
+> جدا** که **مصرف‌کننده‌ی** storage است نه بخشی از آن ([ADR-029](ARCHITECTURE_DECISIONS.md#adr-029)) —
+> تا storage نازک بمانَد (تناظرِ `canvas-sync`↔`ydoc-schema`؛ نشتِ export/pg_dumpِ M5 را می‌بندد).
+
+**✅ الان ساخته و روی MinIO تست شد:**
+- [x] **DTOهای shared-types** (تاییدِ ADR-021، ۱۴۰۵/۰۵/۲۸): `assetPresignRequest` (`{mimeType, sizeBytes,
+      sha256}`) و `assetPresignResponse` (`{fileId, url, fields}`). `HbAsset`/`HB_ALLOWED_IMAGE_MIME` **بازاستفاده**.
+- [x] **`packages/assets` — `createAssetService`:** `presign` (اعتبار + کلیدِ `teams/<t>/boards/<b>/` +
+      presigned POST)، `validateUploaded`، `resolve` (presignGet)، و `sniffMime` (magic-bytes).
+- [x] ★★ **`validateUploaded` sha256 را مستقلاً روی بایت‌های واقعی بازمحاسبه و با ادعا مقایسه می‌کند** —
+      به کلاینت اعتماد نمی‌شود (قیدِ مالک ۱۴۰۵/۰۵/۲۸). نوعِ واقعی با **sniff**، اندازه با **headObject**.
+- [x] ★ **`uploadedBy`/`teamId`/`boardId` از `ctx` (توکن)، نه بدنه‌ی کلاینت** — ساختاری در `presign(req, ctx)`.
+- [x] ★ **گیتِ P4 `assetsBoundaries` خودآزمون:** برخلافِ storage، `@aws-sdk` **ممنوع** (به S3 فقط از راهِ
+      storage). با شکستنِ عمدی (برداشتنِ `@aws-sdk` از forbid) **۴ تست قرمز** شد، بعد revert سبز.
+- [x] **مکانیزم = POST-policy** ([ADR-044](ARCHITECTURE_DECISIONS.md#adr-044))؛ `ensureBucket` به storage
+      افزوده شد (ادمینِ باکت برای smoke، **بیرونِ** interfaceِ نازکِ `ObjectStore`).
+- **معیار پذیرش:** ✅ `pnpm assets:smoke` روی MinIO (۶ سبز): presign → آپلودِ POSTِ واقعی → validateUploaded →
+      resolve؛ + امنیت: sha256ِ اعلامیِ غلط **رد**، آپلودِ بزرگ‌تر از declared را **خودِ MinIO رد** (۴۰۰).
+      unit (۲۰ سبز: sniff + service). `pnpm verify` سبز.
+
+**⛔ به فاز ۵ (`apps/api`) موکول شد:**
+- [ ] endpointهای HTTP: `POST /assets/presign`، `/commit` (مصرفِ `validateUploaded` + **ثبتِ رکورد**)،
+      `GET /assets/:id` (۳۰۲ به `resolve`).
+- [ ] جدولِ `files` + migration + دی‌دوپِ `sha256`ِ سطحِ تیم + `UPLOAD_MAX_BYTES` در config + سیم‌کشیِ `ctx` از توکن.
+- [ ] `w`/`h` (decoder — نمایشی نه امنیتی، مالک موکول کرد) + minio-init (۳ باکت).
+- [ ] `resolve()`ِ سمتِ کلاینت **هرگز reject نمی‌کند** (فاز ۸/۶) — فایلِ گمشده کلِ بورد را نمی‌شکند.
 
 ---
 
