@@ -19,3 +19,15 @@ export type { BoardAccessInput } from "./roles.ts";
 
 export { createAuthCoreBoardAuthority } from "./board-authority.ts";
 export type { BoardAccessReader, AuthCoreBoardAuthorityConfig } from "./board-authority.ts";
+
+export { RefreshError, startSession, rotateSession, createMemorySessionStore } from "./refresh.ts";
+export type { SessionStore, SessionRecord, RefreshConfig, RotateResult } from "./refresh.ts";
+
+export {
+  maskPhone,
+  requestOtp,
+  verifyOtp,
+  createMockSmsProvider,
+  createMemoryOtpStore,
+} from "./otp.ts";
+export type { OtpStore, OtpRecord, SmsProvider, OtpConfig, OtpResult } from "./otp.ts";

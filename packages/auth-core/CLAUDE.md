@@ -34,6 +34,8 @@
 | `src/tokens.ts` | JWT (jose): `signRtToken`/`verifyRtToken` (قفلِ exp) + access | ۴٫۱ |
 | `src/roles.ts` | `effectiveBoardRole` (ADR-012، OD-1/OD-3) | ۴٫۲ |
 | `src/board-authority.ts` | `AuthCoreBoardAuthority` (verify + currentRole) + `BoardAccessReader` | ۴٫۳ |
+| `src/refresh.ts` | refreshِ چرخشی + تشخیصِ استفاده‌ی مجدد (سوزاندنِ خانواده) + `SessionStore` | ۴٫۱ |
+| `src/otp.ts` | OTP (hash، rate-limit، ضدِ enumeration، P7) + `SmsProvider`/Mock + `OtpStore` | ۴٫۴ |
 | `probe/jose-probe.ts` | ⚠️ probeِ jose (خارج از verify) — رفتارِ exp/alg:none | ۴٫۱ |
 
 ## دستورات
@@ -46,6 +48,7 @@ node packages/auth-core/probe/jose-probe.ts   # رفتارِ jose
 
 ## چیزهایی که اینجا انجام نمی‌شوند
 
-جدول‌های `users`/`auth_sessions`/`otp_challenges` و پیاده‌سازیِ DBِ پورت‌ها (کارِ `apps/api`، فاز ۵)؛
-endpointهای HTTP احراز هویت. **refresh چرخشی (گام ۴٫۱) و OTP+SMS (گام ۴٫۴) هنوز ساخته نشده‌اند** —
-منطقشان پشتِ پورتِ store اینجا می‌آید، DBشان فاز ۵.
+جدول‌های `users`/`auth_sessions`/`otp_challenges` و **پیاده‌سازیِ DBِ پورت‌ها** (`BoardAccessReader`،
+`SessionStore`، `OtpStore`) — کارِ `apps/api` (فاز ۵)؛ endpointهای HTTP احراز هویت؛ و سوییچِ کاوه‌نگار
+(env). ⚠️ **قیدِ فاز ۵:** «یافتن+markUsed»ِ `rotateSession` باید در **یک تراکنشِ DB** اتمی باشد
+(`SELECT … FOR UPDATE`)، وگرنه دو درخواستِ همزمانِ سالم هر دو `used=false` می‌بینند. منطق کامل است.

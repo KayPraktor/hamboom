@@ -354,50 +354,41 @@ Chromium، thumbnail) = **بعد از M3**.
 
 ---
 
-## فاز ۴ — `packages/auth-core` (تخمین: ۲–۳ روز)
+## فاز ۴ — `packages/auth-core` — ✅ کامل (۱۴۰۵/۰۵/۲۸)
 
-### گام ۴٫۱ — JWT + refresh چرخشی ([ADR-011](ARCHITECTURE_DECISIONS.md#adr-011))
-- [ ] `sign`/`verify` accessِ کوتاه‌عمر (JWT، ۱۵دقیقه)؛ refreshِ مات در دیتابیس با
-      **rotation + reuse detection** (استفاده‌ی دوباره کلِ خانواده‌ی session را می‌سوزاند).
-- [ ] سه حمله‌ی کلاسیکِ JWT تست دارند (`alg:none`، مقایسه‌ی زمان‌ثابت، `exp`ِ اجباری) —
-      همان سه که M2 روی `DevBoardAuthority` داشت، این‌بار روی نسخه‌ی محصولی.
-- **معیار پذیرش:** تستِ reuse که خانواده را می‌سوزاند؛ سه تستِ حمله سبز؛ access فقط در
-      حافظه (نه localStorage) در قراردادِ sdk/web ثبت شود.
+> منطقِ خالص + پورت؛ **پیاده‌سازیِ DBِ پورت‌ها (`BoardAccessReader`/`SessionStore`/`OtpStore`) +
+> endpointها = فاز ۵.** جزئیات + دو گیتِ اثبات‌شده (exp، reuse) در [`PROGRESS-M3`](PROGRESS-M3-backend-api.md)
+> §فاز ۴. ۴۳ تست. `pnpm verify` سبز.
 
-### گام ۴٫۲ — `effectiveBoardRole` — تنها پیاده‌سازیِ مشترک ([ADR-012](ARCHITECTURE_DECISIONS.md#adr-012))
-- [ ] منطقِ probe ۱٫۱ محصولی شود؛ **هم api و هم realtime از همین تابع** استفاده کنند.
-- [ ] ★ قراردادِ `undefined` (نظری ندارم) در برابر `null` (برداشته شده) حفظ شود (fail-closed).
-- [!] ⚠️ **OD-1 — نگاشتِ تیم→بورد + مدلِ دسترسیِ بورد (تصمیمِ بازِ مالک ۱۴۰۵/۰۵/۲۴):**
-      `guest→viewer` و `owner/admin→editor` **قطعی**‌اند. ولی **`member→editor` باز است** و به
-      مدلِ اشتراک گره خورده: بوردها پیش‌فرض برای کلِ تیم بازند (`access_mode='team'`) یا فقط با
-      اشتراکِ صریح؟ پیامد: مسیرِ نقشِ **تیم** در `effectiveBoardRole` باید با `access_mode` **گِیت**
-      شود (بوردِ `private` → عضویتِ تیم به‌تنهایی هیچ نقشی نمی‌دهد، فقط `board_members`) — یعنی
-      امضای probe ۱٫۱ ناقص بود و تابع به `access_mode` نیاز دارد. **تا جواب، ۴٫۲ قفل نمی‌شود**؛
-      بر گام ۵٫۴ (endpointهای دسترسیِ بورد) هم اثر دارد.
-- **معیار پذیرش:** جدولِ تصمیمِ کاملِ اجراشدنی (همان ۸ ردیفِ probe + نگاشتِ تاییدشده) + تستِ منفیِ
-      `??`؛ یک تست که ثابت می‌کند **همان** ماژول در دو مصرف‌کننده import می‌شود (نه کپی).
+### گام ۴٫۱ — JWT + refresh چرخشی ([ADR-011](ARCHITECTURE_DECISIONS.md#adr-011)) — ✅
+- [x] `signAccessToken`/`verifyAccessToken` (JWT ۱۵دقیقه) + `signRtToken`/`verifyRtToken`؛ refreshِ مات با
+      **rotation + reuse detection** (`refresh.ts`، پشتِ پورتِ `SessionStore`؛ استفاده‌ی دوباره کلِ خانواده را می‌سوزاند).
+- [x] سه حمله‌ی JWT (`alg:none`، امضای اشتباه، `exp`) روی نسخه‌ی محصولی (jose) — به‌علاوه‌ی ★★ **exp-in-ms**.
+- **معیار پذیرش:** ✅ تستِ reuse (با شکستنِ عمدی قرمز شد)؛ حمله‌ها سبز؛ access در حافظه — قید در sdk/web (فاز ۶/۸).
+      ⚠️ اتمی‌بودنِ rotate در تراکنشِ DB = فاز ۵.
 
-### گام ۴٫۳ — `AuthCoreBoardAuthority` (جایگزینِ `DevBoardAuthority` — پورتِ ۱)
-- [ ] پیاده‌سازیِ پورتِ `BoardAuthority`: `verify(token, boardId)` و ★ `currentRole(sub,
-      boardId)` که **نقشِ همین حالا** را می‌دهد، نه claimِ توکن (وگرنه کاربرِ تنزل‌داده با
-      بازکردنِ تب دوباره `editor` می‌شود).
-- [ ] ★★ **قفلِ طراحیِ probe ۱٫۳ — بستنِ حفره‌ی `exp`:** claim از schemaی `shared-types` خوانده
-      شود (نه دستی)، امضا از **یک** signerِ auth-core بیاید، و `verify` علاوه بر انقضا یک **سقفِ
-      آینده** بگذارد (مثلاً `exp - now > ۲×TTL` → رد) — چون rt-token ۶۰ثانیه‌ای است و `exp`ِ سال‌ها
-      دورتر یعنی صادرکننده واحد را اشتباه (ms) نوشته. **تستِ «exp به ms → رد» اجباری است.**
-- [ ] ★ **`developmentOnly` را `false`/غایب بگذار** — و گیتِ production همان است: با
-      `APP_ENV=production`، اگر پیاده‌سازیِ dev فعال بود سرور **بالا نیاید**. حالا با نسخه‌ی
-      واقعی، production باید **بالا بیاید**.
-- **معیار پذیرش:** تستی که نقشِ عوض‌شده‌ی وسطِ session را از `currentRole` می‌گیرد؛ گیتِ
-      production با dev-impl **قرمز** و با auth-core **سبز**؛ `undefined`/`null` تفکیک‌شده.
+### گام ۴٫۲ — `effectiveBoardRole` — تنها پیاده‌سازیِ مشترک ([ADR-012](ARCHITECTURE_DECISIONS.md#adr-012)) — ✅
+- [x] `effectiveBoardRole(input)` در `roles.ts` — تابعِ خالص؛ api و realtime (فاز ۷) از همین یکی مصرف می‌کنند.
+- [x] ★ `undefined`≠`null` حفظ شد — auth-core همیشه نظر دارد (`currentRole` هرگز `undefined` نمی‌دهد).
+- [x] ✅ **OD-1 بسته (مالک ۱۴۰۵/۰۵/۲۸):** `access_mode='team'` → owner/admin/member→editor، guest→viewer.
+      گیتینگ: مسیرِ تیم فقط `team`؛ `private` فقط مالک+board_members+staff؛ لینک → مسیرِ تیم خاموش. امضای تابع
+      `access_mode` را می‌گیرد. ⚠️ **OD-3** (PROGRESS + کامنتِ کد): `member→editor` فقط تا وقتی عضویت عمدی است.
+- **معیار پذیرش:** ✅ جدولِ تصمیمِ اجراشدنی (staff/owner/direct/team-gated/link + max + fail-closed)؛ تستِ همان‌ماژول در فاز ۷.
 
-### گام ۴٫۴ — OTP + درگاهِ پیامک ([ADR-011](ARCHITECTURE_DECISIONS.md#adr-011))
-- [ ] صدور/اعتبارسنجیِ OTP: کد **hash** ذخیره شود (هرگز plaintext)، `max_attempts`،
-      انقضا، cooldown. رابطِ `SmsProvider` با `MockProvider` (چاپ در ترمینال) و سوییچِ
-      env به کاوه‌نگار (P2/P3). `OTP_DEV_FIXED_CODE` فقط در `APP_ENV=local`.
-- [ ] ★ P7: شماره ماسک‌شده، کد **هرگز** لاگ نشود.
-- **معیار پذیرش:** جریانِ کاملِ mock در تست؛ rate-limit با `RATE_LIMIT_OTP_*`؛ تستِ P7 که
-      با یک لاگِ عمدیِ کد **قرمز** می‌شود؛ پاسخِ `otp/request` همیشه ۲۰۰ (ضدِ enumeration).
+### گام ۴٫۳ — `AuthCoreBoardAuthority` (جایگزینِ `DevBoardAuthority` — پورتِ ۱) — ✅
+- [x] `createAuthCoreBoardAuthority`: `verify(token, boardId)` + ★ `currentRole(sub, boardId)` که **نقشِ
+      همین‌حالا** را می‌دهد via `effectiveBoardRole` + پورتِ `BoardAccessReader` (نه claimِ توکن).
+- [x] ★★ **قفلِ probe ۱٫۳ (سه سد):** claim از schemaِ `shared-types`؛ **یک** signer (exp از ثانیه)؛ و **سقفِ
+      آینده** (`exp-now > 2×TTL` → رد). ✅ تستِ «exp-in-ms → رد» با شکستنِ عمدی قرمز شد؛ probeِ jose لزومش را نشان داد.
+- [x] ★ `developmentOnly=false` — production بالا می‌آید. ⚠️ گیتِ `assertAuthorityUsable`ِ realtime هنگامِ تزریق (فاز ۷).
+- **معیار پذیرش:** ✅ تستِ نقشِ عوض‌شده از `currentRole`؛ `null`≠`undefined`؛ گیتِ production در فاز ۷ (تزریقِ واقعی).
+
+### گام ۴٫۴ — OTP + درگاهِ پیامک ([ADR-011](ARCHITECTURE_DECISIONS.md#adr-011)) — ✅
+- [x] `requestOtp`/`verifyOtp` (`otp.ts`، پشتِ پورتِ `OtpStore`): کد **hash** (هرگز plaintext)، `maxAttempts`،
+      انقضا، cooldown، تطبیقِ زمان‌ثابت. `SmsProvider` + `createMockSmsProvider`؛ سوییچِ کاوه‌نگار = فاز ۵. `fixedCode` برای dev.
+- [x] ★ P7: `maskPhone`؛ کد هرگز لاگ نمی‌شود (تنها به `SmsProvider.send`). تست ثابت می‌کند خام در رکورد نیست.
+- **معیار پذیرش:** ✅ جریانِ mock در تست (۹ تست)؛ ضدِ enumeration (`requestOtp` همیشه موفق، cooldown بی‌صدا)؛
+      `RATE_LIMIT_OTP_*` + endpointِ `otp/request` = فاز ۵.
 
 ---
 

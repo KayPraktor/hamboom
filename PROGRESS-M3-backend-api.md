@@ -1,16 +1,16 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۲۸ (2026-08-19)
-**فاز ۰–۳ کامل ✅؛ فاز ۴ (auth-core) هسته‌ی امنیتی کامل ✅ (۱۴۰۵/۰۵/۲۸)** — دو گیتِ امنیتیِ فاز ۱ (حفره‌ی
-`exp` + OD-1) بسته شد؛ **refreshِ چرخشی (۴٫۱) + OTP/SMS (۴٫۴) مانده.** فاز ۳: منطقِ گام ۳٫۳ الان ساخته و روی MinIO
-تست شد؛ endpointهای HTTPش به فاز ۵ موکول (تصمیمِ مالک). بلوکه‌ی داکر رفع شد، probe مکانیزمِ سقف را بست
+**فاز ۰–۴ کامل ✅ (۱۴۰۵/۰۵/۲۸)** — `packages/auth-core` تمام شد: دو گیتِ امنیتیِ فاز ۱ (حفره‌ی `exp` + OD-1)
+بسته، به‌علاوه‌ی **refreshِ چرخشی** (reuse → سوزاندنِ خانواده) و **OTP** (hash، P7، ضدِ enumeration) — همه پشتِ
+پورت، DBشان فاز ۵. فاز ۳: منطقِ گام ۳٫۳ الان ساخته و روی MinIO تست شد؛ endpointهای HTTPش به فاز ۵ موکول. بلوکه‌ی داکر رفع شد، probe مکانیزمِ سقف را بست
 (OD-2/ADR-044)، و سه لایه ساخته شد: ★ **`packages/storage`** (رابطِ `ObjectStore` روی S3، تنها جای `@aws-sdk`،
 گیتِ P4 خودآزمون، smoke ۱۱ سبز) · ★ **`StorageSnapshotStore`** (پورتِ SnapshotStoreِ realtime روی storage،
 آداپتورِ نازک) · ★ **`packages/assets`** (لایه‌ی دامنه‌ی دارایی — presign/validateUploaded/resolve؛
 **مصرف‌کننده‌ی** storage نه بخشی از آن، [ADR-029](ARCHITECTURE_DECISIONS.md#adr-029)؛ **sha256 روی بایت‌های
 واقعی بازمحاسبه می‌شود**؛ smoke ۶ سبز). مکانیزمِ سقف = **presigned POST با `content-length-range`**
 ([ADR-044](ARCHITECTURE_DECISIONS.md#adr-044)، PLAN §۵٫۲ به‌روز شد). `pnpm verify` سبز (۸ گیت).
-**قدمِ بعد: ادامه‌ی فاز ۴ — refreshِ چرخشی (گام ۴٫۱) + OTP/SMS (گام ۴٫۴).**
+**قدمِ بعد: فاز ۵ (`apps/api` — Fastify): پلاگین‌ها + migrationِ کاملِ schema + پیاده‌سازیِ DBِ پورت‌ها + endpointها.**
 
 TODOی این ماژول: [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md). نقطه‌ی ورود:
 [`docs/m3-handoff.md`](docs/m3-handoff.md). ماژول‌های تمام‌شده: M1
@@ -246,14 +246,21 @@ API عمومی‌اش دست‌نخورده. verify سبز، پس تست‌ها�
 - **`AuthCoreBoardAuthority` (`board-authority.ts`، پورتِ ۱):** `verify` (rt-token) + `currentRole` (نقشِ
   همین‌حالا via `effectiveBoardRole` + پورتِ `BoardAccessReader`). ⚠️ `null`≠`undefined`: auth-core همیشه نظر
   دارد. شیءِ **هم‌شکلِ** BoardAuthority (پکیج اپ را import نمی‌کند)؛ تزریق + نگاشتِ خطا در فاز ۷.
-- **تست‌ها: ۳۰ سبز** (۳ حمله‌ی JWT + exp-in-ms + جدولِ effectiveBoardRole + BoardAuthority). ★ دو شکستنِ عمدی:
-  برداشتنِ سقفِ آینده → تستِ exp-in-ms قرمز؛ برداشتنِ `pg` از `authCoreBoundaries` → ۲ تست قرمز. `pnpm verify` سبز.
+- **`refresh.ts` (گام ۴٫۱):** `startSession`/`rotateSession` روی پورتِ `SessionStore`. ★★ **تشخیصِ استفاده‌ی
+  مجدد (تصمیمِ مالک):** توکنِ یک‌بارمصرف؛ ارائه‌ی دوباره‌ی توکنِ چرخانده‌شده → **کلِ خانواده می‌سوزد**، نه فقط ردِ
+  همان یکی. ★ با شکستنِ عمدیِ `burnFamily` قرمز شد. ⚠️ اتمی‌بودنِ rotate در تراکنشِ DB = فاز ۵.
+- **`otp.ts` (گام ۴٫۴):** `requestOtp`/`verifyOtp` روی پورتِ `OtpStore` + `SmsProvider`/Mock. کد **hash** (P7،
+  خام هرگز ذخیره/لاگ نمی‌شود)، `maxAttempts`، انقضا، cooldown، تطبیقِ زمان‌ثابت، `maskPhone`. ★ ضدِ enumeration
+  (`requestOtp` همیشه موفق). سوییچِ کاوه‌نگار = فاز ۵.
+- **تست‌ها: ۴۳ سبز** · ★ **سه شکستنِ عمدی** (سقفِ exp، `pg` در boundaries، `burnFamily`) هر سه قرمز→سبز. `pnpm verify` سبز.
 - **گیتِ P4 `authCoreBoundaries` (خودآزمون سه‌لایه):** `pg`/`ioredis`/`ws`/`@aws-sdk` ممنوع (DB در apps/api)؛ jose مجاز.
 
 ## قدم بعد
 
-**ادامه‌ی فاز ۴:** گام ۴٫۱ (refreshِ چرخشی + reuse detection پشتِ پورتِ SessionStore؛ DBش فاز ۵) و گام ۴٫۴
-(OTP + `SmsProvider`/MockProvider، hashِ کد، rate-limit، P7). سپس فاز ۵ (`apps/api`).
+**فاز ۵ — `apps/api` (Fastify):** `buildApp()`، پلاگین‌ها (db/redis/s3/auth-guard/rate-limit/pino+redactorِ P7)،
+migrationِ **کاملِ** schema (`0001_init.sql`، شاملِ دو FKِ به‌ارث‌رسیده‌ی M2)، و **پیاده‌سازیِ DBِ پورت‌های فاز
+۳/۴** (`BoardAccessReader`/`SessionStore`/`OtpStore`/AssetTransport) + endpointها. ⚠️ **تنشِ ترتیب:** migrateِ
+infraِ M2 قبل از migrate:upِ api (FKها). endpointِ `rt-token` (پورتِ ۴) + کاوه‌نگار + `UPLOAD_MAX_BYTES` اینجا.
 
 ⚠️ **لوز-اِندهای فاز ۳ که به فاز ۵ رفتند:** endpointهای asset، جدولِ `files`+دی‌دوپ، minio-init، `UPLOAD_MAX_BYTES`، w/h.
 ⚠️ **اسکریپت‌ها:** `storage/probe/s3-probe.ts` + `auth-core/probe/jose-probe.ts` دورریختنی؛ `smoke/`های storage/assets **کِیپر**.
