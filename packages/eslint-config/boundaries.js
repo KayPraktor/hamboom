@@ -511,3 +511,37 @@ export function assetsBoundaries() {
       "@hamboom/storage می‌رسد (@aws-sdk ممنوع، P4)، و UI/شبکه/دیتابیسِ دیگر هم اینجا جا ندارند.",
   });
 }
+
+/**
+ * `packages/auth-core` — منطقِ احراز هویت و نقش، افزوده‌ی M3 فاز ۴.
+ *
+ * ★ **منطقِ خالص + پورت است، نه یک اپِ کامل.** JWT (`jose`)، `effectiveBoardRole`، و منطقِ
+ * refresh/OTP پشتِ پورت‌های store قرار دارند؛ **پیاده‌سازیِ DBِ آن پورت‌ها در `apps/api` (فاز ۵)
+ * است، نه اینجا** — همان‌طور که realtime پورتِ `SnapshotStore` را دارد ولی خودش به S3 وصل نمی‌شود.
+ * پس `pg`/`ioredis`/`ws` اینجا ممنوع‌اند، و `@aws-sdk` هم (P4). مجاز: `jose`، `@hamboom/shared-types`،
+ * `@hamboom/config`، `node:crypto`.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function authCoreBoundaries() {
+  return packageBoundaries({
+    forbid: [
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/sdk",
+      "@hamboom/storage",
+      "@aws-sdk/*",
+      "react",
+      "react-dom",
+      "@excalidraw/*",
+      "ws",
+      "pg",
+      "ioredis",
+      "axios",
+      "ky",
+    ],
+    reason:
+      "auth-core منطقِ خالص + پورت است: JWT/نقش/OTP اینجا، ولی پیاده‌سازیِ DBِ پورت‌ها در apps/api " +
+      "(فاز ۵). پس pg/ioredis/ws و @aws-sdk اینجا جا ندارند؛ مجاز: jose، shared-types، config.",
+  });
+}

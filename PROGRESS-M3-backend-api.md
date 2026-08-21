@@ -1,7 +1,8 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۲۸ (2026-08-19)
-**فاز ۰ + ۱ + ۲ کامل ✅؛ فاز ۳ (storage) هم کامل ✅ (۱۴۰۵/۰۵/۲۸)** — منطقِ گام ۳٫۳ الان ساخته و روی MinIO
+**فاز ۰–۳ کامل ✅؛ فاز ۴ (auth-core) هسته‌ی امنیتی کامل ✅ (۱۴۰۵/۰۵/۲۸)** — دو گیتِ امنیتیِ فاز ۱ (حفره‌ی
+`exp` + OD-1) بسته شد؛ **refreshِ چرخشی (۴٫۱) + OTP/SMS (۴٫۴) مانده.** فاز ۳: منطقِ گام ۳٫۳ الان ساخته و روی MinIO
 تست شد؛ endpointهای HTTPش به فاز ۵ موکول (تصمیمِ مالک). بلوکه‌ی داکر رفع شد، probe مکانیزمِ سقف را بست
 (OD-2/ADR-044)، و سه لایه ساخته شد: ★ **`packages/storage`** (رابطِ `ObjectStore` روی S3، تنها جای `@aws-sdk`،
 گیتِ P4 خودآزمون، smoke ۱۱ سبز) · ★ **`StorageSnapshotStore`** (پورتِ SnapshotStoreِ realtime روی storage،
@@ -9,7 +10,7 @@
 **مصرف‌کننده‌ی** storage نه بخشی از آن، [ADR-029](ARCHITECTURE_DECISIONS.md#adr-029)؛ **sha256 روی بایت‌های
 واقعی بازمحاسبه می‌شود**؛ smoke ۶ سبز). مکانیزمِ سقف = **presigned POST با `content-length-range`**
 ([ADR-044](ARCHITECTURE_DECISIONS.md#adr-044)، PLAN §۵٫۲ به‌روز شد). `pnpm verify` سبز (۸ گیت).
-**قدمِ بعد: فاز ۴ (`packages/auth-core`).**
+**قدمِ بعد: ادامه‌ی فاز ۴ — refreshِ چرخشی (گام ۴٫۱) + OTP/SMS (گام ۴٫۴).**
 
 TODOی این ماژول: [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md). نقطه‌ی ورود:
 [`docs/m3-handoff.md`](docs/m3-handoff.md). ماژول‌های تمام‌شده: M1
@@ -100,12 +101,17 @@ TODOی این ماژول: [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md). ن
 
 ## تصمیم‌های باز
 
-**OD-1 — مدلِ دسترسیِ بورد + نگاشتِ `member`→بورد (مالک، ۱۴۰۵/۰۵/۲۴).** `guest→viewer` و
-`owner/admin→editor` قطعی‌اند. **`member→editor` باز است:** آیا هر عضوِ تیم هر بوردِ تیم را
-ویرایش می‌کند؟ به مدلِ اشتراک وابسته است — بوردها پیش‌فرض برای کلِ تیم بازند (`access_mode='team'`)
-یا فقط با اشتراکِ صریح؟ پیامد: مسیرِ نقشِ **تیم** در `effectiveBoardRole` باید با `access_mode`
-**گِیت** شود (بوردِ `private` → عضویتِ تیم به‌تنهایی هیچ نقشی نمی‌دهد)، و امضای تابع به `access_mode`
-نیاز دارد — که probe ۱٫۱ نداشت. **گِیتِ گام ۴٫۲**، مؤثر بر گام ۵٫۴. تا جواب، ۴٫۲ قفل نمی‌شود.
+**OD-1 — مدلِ دسترسیِ بورد + نگاشتِ `member`→بورد — ✅ بسته (مالک، ۱۴۰۵/۰۵/۲۸).** نگاشتِ نقشِ تیم→بورد در
+`effectiveBoardRole` وقتی `access_mode='team'`: **owner/admin→editor · member→editor · guest→viewer**.
+**گیتینگِ تاییدشده:** مسیرِ تیم **فقط** برای `access_mode='team'` فعال است؛ `private` → فقط مالکِ بورد +
+`board_members` + staff (عضویتِ تیم هیچ نقشی نمی‌دهد)؛ در `link_view`/`link_edit` مسیرِ تیم **خاموش** و مسیرِ لینک
+روشن (viewer/editor). پس امضای `effectiveBoardRole` به `access_mode` نیاز دارد (probe ۱٫۱ نداشت). پیاده در گام ۴٫۲.
+
+**OD-3 — قیدِ مشروطِ `member→editor` (مالک، ۱۴۰۵/۰۵/۲۸).** ⚠️ نگاشتِ `member→editor` **معتبر است فقط تا وقتی
+عضویتِ تیم صرفاً با افزودنِ عمدیِ admin/owner ساخته می‌شود.** اگر روزی **عضویتِ باز** اضافه شد (لینکِ دعوتِ
+عمومی، ثبت‌نامِ خودکار به تیم)، `member→editor` یعنی هرکس واردِ تیم شد **همه‌ی** بوردهای تیم را ویرایش می‌کند —
+یک حفره. پس افزودنِ عضویتِ باز **بازنگریِ این نگاشت را لازم می‌کند**. این قید در کامنتِ `effectiveBoardRole` و
+در `m4-handoff` ثبت می‌شود.
 
 **OD-2 — مکانیزمِ اعمالِ سقفِ اندازه/نوع در presign — ✅ بسته با شواهد (۱۴۰۵/۰۵/۲۸).** probe روی MinIOِ
 واقعی اجرا شد و **هر دو حالت** را با عدد نشان داد. **تصمیم: presigned POST با `content-length-range` +
@@ -226,12 +232,28 @@ API عمومی‌اش دست‌نخورده. verify سبز، پس تست‌ها�
 
 **w/h موکول** (تصمیمِ مالک): decoderِ سمتِ سرور (`sharp`) وابستگیِ native سنگین است و w/h نمایشی است نه امنیتی؛ فاز ۵/worker.
 
+## فاز ۴ — هسته‌ی امنیتیِ auth-core ✅ (۱۴۰۵/۰۵/۲۸؛ گام‌های ۴٫۱-JWT + ۴٫۲ + ۴٫۳)
+
+`packages/auth-core` ساخته شد — **منطقِ خالص + پورت** (DBِ پورت‌ها فاز ۵). تصمیم‌های مالک: exp-lock + `jose`
+تایید؛ member→editor با گیتینگِ access_mode (OD-1)؛ قیدِ OD-3 ثبت شد؛ JWT = HS256 (زیرساختِ مورداعتماد).
+
+- **JWT (`tokens.ts` — جای‌گزینِ JWTِ دستیِ DevBoardAuthority):** `signRtToken`/`verifyRtToken` روی `jose`.
+  ★★ **سه سدِ حفره‌ی `exp` (probe ۱٫۳):** `algorithms:["HS256"]` (alg:none رد) · یک signer که exp را از **ثانیه**
+  می‌سازد · **سقفِ آینده** (`exp-now > 2×TTL` → رد). probeِ jose ثابت کرد jose **تنها** سومی را نمی‌گیرد (سالِ ~۵۸۶۰۷).
+- **`effectiveBoardRole` (`roles.ts`، ADR-012):** بیشترین‌برنده، fail-closed (→`null`). ★ گیتینگِ `access_mode`
+  (OD-1): مسیرِ تیم فقط `team`؛ `private` فقط مالک+board_members+staff؛ لینک فقط `link_*`+توکن. نگاشتِ تیم
+  owner/admin/member→editor، guest→viewer (**OD-3** در کامنت).
+- **`AuthCoreBoardAuthority` (`board-authority.ts`، پورتِ ۱):** `verify` (rt-token) + `currentRole` (نقشِ
+  همین‌حالا via `effectiveBoardRole` + پورتِ `BoardAccessReader`). ⚠️ `null`≠`undefined`: auth-core همیشه نظر
+  دارد. شیءِ **هم‌شکلِ** BoardAuthority (پکیج اپ را import نمی‌کند)؛ تزریق + نگاشتِ خطا در فاز ۷.
+- **تست‌ها: ۳۰ سبز** (۳ حمله‌ی JWT + exp-in-ms + جدولِ effectiveBoardRole + BoardAuthority). ★ دو شکستنِ عمدی:
+  برداشتنِ سقفِ آینده → تستِ exp-in-ms قرمز؛ برداشتنِ `pg` از `authCoreBoundaries` → ۲ تست قرمز. `pnpm verify` سبز.
+- **گیتِ P4 `authCoreBoundaries` (خودآزمون سه‌لایه):** `pg`/`ioredis`/`ws`/`@aws-sdk` ممنوع (DB در apps/api)؛ jose مجاز.
+
 ## قدم بعد
 
-**فاز ۴ — `packages/auth-core`** (پورتِ ۱، `BoardAuthority`): JWT + refreshِ چرخشی + `effectiveBoardRole`ِ مشترک
-(محصولی‌کردنِ probe ۱٫۱) + `AuthCoreBoardAuthority` + OTP. ★ **قفل‌های طراحیِ فاز ۱ اینجا محقق می‌شوند:** حفره‌ی
-`exp` (probe ۱٫۳: schema ثانیه + یک signer + سقفِ آینده)، و **OD-1** (نگاشتِ تیم→بورد + `access_mode`) گِیتِ گام ۴٫۲.
+**ادامه‌ی فاز ۴:** گام ۴٫۱ (refreshِ چرخشی + reuse detection پشتِ پورتِ SessionStore؛ DBش فاز ۵) و گام ۴٫۴
+(OTP + `SmsProvider`/MockProvider، hashِ کد، rate-limit، P7). سپس فاز ۵ (`apps/api`).
 
-⚠️ **لوز-اِندهای فاز ۳ که به فاز ۵ رفتند:** endpointهای asset (presign/commit/GET)، جدولِ `files`+دی‌دوپ،
-minio-init، `UPLOAD_MAX_BYTES` در config، w/h.
-⚠️ **اسکریپت‌های MinIO:** `storage/probe/s3-probe.ts` دورریختنی (حذف هنگامِ بستنِ فاز ۳)؛ `smoke/`های storage و assets **کِیپر**‌اند.
+⚠️ **لوز-اِندهای فاز ۳ که به فاز ۵ رفتند:** endpointهای asset، جدولِ `files`+دی‌دوپ، minio-init، `UPLOAD_MAX_BYTES`، w/h.
+⚠️ **اسکریپت‌ها:** `storage/probe/s3-probe.ts` + `auth-core/probe/jose-probe.ts` دورریختنی؛ `smoke/`های storage/assets **کِیپر**.

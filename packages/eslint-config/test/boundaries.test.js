@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assetsBoundaries,
+  authCoreBoundaries,
   canvasSyncBoundaries,
   processEnvDiscipline,
   realtimeBoundaries,
@@ -206,6 +207,35 @@ describe("لایه‌ی ۱ — الگوهای مرزی", () => {
     );
   });
 
+  describe("authCoreBoundaries — منطقِ خالص + پورت؛ pg/ioredis/@aws-sdk ممنوع (M3 فاز ۴)", () => {
+    const config = authCoreBoundaries();
+
+    it.each([
+      // ★ auth-core به DB مستقیم وصل نمی‌شود (پورت است، پیاده‌سازیِ DB در apps/api)، و @aws-sdk هم ندارد.
+      "@aws-sdk/client-s3",
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/sdk",
+      "@hamboom/storage",
+      "react",
+      "ws",
+      "pg",
+      "ioredis",
+      "axios",
+      "@hamboom/api",
+    ])("می‌گیرد: %s", (specifier) => {
+      expect(isForbidden(config, specifier)).toBe(true);
+    });
+
+    // مجاز: jose (JWT)، shared-types، config، node:crypto.
+    it.each(["jose", "@hamboom/shared-types", "@hamboom/config", "node:crypto"])(
+      "مزاحمِ %s نمی‌شود",
+      (specifier) => {
+        expect(isForbidden(config, specifier)).toBe(false);
+      },
+    );
+  });
+
   /**
    * تطبیقِ گلاب در `no-restricted-imports` خلافِ شهودِ رایج است: `*` **از `/`
    * عبور می‌کند**. این در گام ۰٫۲ probe شد و اینجا pin می‌شود تا کسی بعداً
@@ -250,6 +280,8 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     ["packages/storage", 'import React from "react";'],
     // ★★ assets **برعکسِ storage**: importِ خامِ `@aws-sdk` باید خطا بخورد (به S3 فقط از راهِ storage).
     ["packages/assets", 'import { S3Client } from "@aws-sdk/client-s3";'],
+    // ★ auth-core منطقِ خالص است: importِ خامِ `pg` باید خطا بخورد (DB در apps/api، فاز ۵).
+    ["packages/auth-core", 'import { Pool } from "pg";'],
   ])("%s نقضِ واقعی را خطا می‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
     expect(messages.some((m) => m.ruleId === "no-restricted-imports")).toBe(true);
@@ -272,6 +304,8 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
       "packages/assets",
       'import { createS3ObjectStore } from "@hamboom/storage";\nexport const c = createS3ObjectStore;',
     ],
+    // ★ auth-core مجاز است `jose` را ببیند (JWT).
+    ["packages/auth-core", 'import { SignJWT } from "jose";\nexport const s = SignJWT;'],
   ])("%s importِ مجاز را خطا نمی‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
     expect(messages.filter((m) => m.ruleId === "no-restricted-imports")).toEqual([]);
@@ -396,6 +430,16 @@ describe("لایه‌ی ۳ — وابستگی‌های اعلام‌شده در 
     expect(deps).toContain("@hamboom/storage");
     expect(deps.filter((d) => d.startsWith("@aws-sdk/"))).toEqual([]);
     expect(deps).not.toContain("react");
+  });
+
+  // ★ auth-core منطقِ خالص است: jose/shared-types **بله**، pg/ioredis/@aws-sdk **نه** (DB در apps/api).
+  it("auth-core منطقِ خالص است — jose و shared-types را دارد، نه pg/ioredis/@aws-sdk", () => {
+    const deps = declaredDeps("packages/auth-core");
+    expect(deps).toContain("jose");
+    expect(deps).toContain("@hamboom/shared-types");
+    expect(deps.filter((d) => d.startsWith("@aws-sdk/"))).toEqual([]);
+    expect(deps).not.toContain("pg");
+    expect(deps).not.toContain("ioredis");
   });
 });
 
