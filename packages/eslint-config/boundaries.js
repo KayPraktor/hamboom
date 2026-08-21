@@ -545,3 +545,39 @@ export function authCoreBoundaries() {
       "(فاز ۵). پس pg/ioredis/ws و @aws-sdk اینجا جا ندارند؛ مجاز: jose، shared-types، config.",
   });
 }
+
+/**
+ * `apps/api` — REST APIِ Fastify، افزوده‌ی M3 فاز ۵.
+ *
+ * ★ **لایه‌ی داده/REST است، نه UI و نه دروازه‌ی S3.** بالاترین مصرف‌کننده‌ی پکیج‌های M3:
+ * `@hamboom/storage` (پلاگینِ s3)، `@hamboom/auth-core` (JWT/نقش/refresh/OTP)، `@hamboom/assets`
+ * (presign/commit)، `config`، `shared-types` — همه **مجاز**؛ به‌علاوه‌ی `pg`/`ioredis`/`fastify`/`kysely`.
+ *
+ * ⚠️ **سه چیز عمداً ممنوع:**
+ * - `@aws-sdk/*`ِ خام (P4) — به Object Storage فقط از راهِ `@hamboom/storage`. مثلِ realtime.
+ * - موتورِ رندر/React (`@hamboom/canvas-core`/`canvas-sync`، `react`، `@excalidraw/*`) — کارِ `apps/web`.
+ * - `@hamboom/sdk` — **دورِ باطل**: sdk مصرف‌کننده‌ی api است (کلاینتِ typed)، نه برعکس. با realtime هم
+ *   از راهِ کدِ مشترکِ `auth-core` حرف می‌زند ([ADR-012](../../ARCHITECTURE_DECISIONS.md#adr-012))، نه import.
+ *
+ * ★ تستِ **`allowed`** اینجا هم نگهبانِ یک اشتباهِ محتمل است: کسی که P4 را سرسری بخواند ممکن است
+ *   `@hamboom/storage`/`auth-core` را هم ببندد — که یعنی بستنِ همان مسیری که P4 و ADR-012 تجویز کرده‌اند.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function apiBoundaries() {
+  return packageBoundaries({
+    forbid: [
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/sdk",
+      "@aws-sdk/*",
+      "react",
+      "react-dom",
+      "@excalidraw/*",
+    ],
+    reason:
+      "apps/api لایه‌ی REST/داده است: به Object Storage فقط از راهِ @hamboom/storage می‌رسد (@aws-sdk " +
+      "ممنوع، P4)، موتورِ رندر/React نمی‌بیند (کارِ apps/web)، و هرگز @hamboom/sdk را import نمی‌کند " +
+      "(sdk کلاینتِ api است — دورِ باطل). مجاز: storage/auth-core/assets/config/shared-types + pg/ioredis/fastify/kysely.",
+  });
+}

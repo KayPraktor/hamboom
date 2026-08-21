@@ -69,6 +69,43 @@ importers:
         specifier: ^13.6.20
         version: 13.6.32
 
+  apps/api:
+    dependencies:
+      '@hamboom/assets':
+        specifier: workspace:*
+        version: link:../../packages/assets
+      '@hamboom/auth-core':
+        specifier: workspace:*
+        version: link:../../packages/auth-core
+      '@hamboom/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@hamboom/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+      '@hamboom/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+    devDependencies:
+      '@hamboom/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
+      '@hamboom/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.1)(jsdom@25.0.1)(sass@1.51.0)
+
   apps/realtime:
     dependencies:
       '@hamboom/shared-types':

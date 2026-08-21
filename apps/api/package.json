@@ -1,0 +1,32 @@
+{
+  "name": "@hamboom/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "REST APIِ اصلی — Fastify. auth/team/board/asset + rt-token. ماژول M3 فاز ۵.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@hamboom/assets": "workspace:*",
+    "@hamboom/auth-core": "workspace:*",
+    "@hamboom/config": "workspace:*",
+    "@hamboom/shared-types": "workspace:*",
+    "@hamboom/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "@hamboom/eslint-config": "workspace:*",
+    "@hamboom/tsconfig": "workspace:*",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

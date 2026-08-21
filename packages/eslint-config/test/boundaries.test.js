@@ -6,6 +6,7 @@ import { ESLint, Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
 import {
+  apiBoundaries,
   assetsBoundaries,
   authCoreBoundaries,
   canvasSyncBoundaries,
@@ -236,6 +237,45 @@ describe("لایه‌ی ۱ — الگوهای مرزی", () => {
     );
   });
 
+  describe("apiBoundaries — لایه‌ی REST؛ @aws-sdk/UI/sdk ممنوع، storage/auth-core مجاز (M3 فاز ۵)", () => {
+    const config = apiBoundaries();
+
+    it.each([
+      // P4: به S3 فقط از راهِ storage — SDKِ خام ممنوع.
+      "@aws-sdk/client-s3",
+      "@aws-sdk/lib-storage",
+      // موتورِ رندر/React کارِ apps/web است.
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "react",
+      "react-dom",
+      "@excalidraw/excalidraw",
+      // ★ دورِ باطل: sdk کلاینتِ api است، نه برعکس.
+      "@hamboom/sdk",
+      "@hamboom/sdk/client",
+      // اپِ دیگر را هم import نمی‌کند (APPS_PATTERN).
+      "@hamboom/realtime",
+    ])("می‌گیرد: %s", (specifier) => {
+      expect(isForbidden(config, specifier)).toBe(true);
+    });
+
+    // ★★ نگهبانِ اشتباهِ محتمل: بستنِ storage/auth-core یعنی بستنِ همان مسیری که P4 و ADR-012 خواستند.
+    //    api بالاترین مصرف‌کننده‌ی پکیج‌های M3 است — این‌ها باید **مجاز** بمانند.
+    it.each([
+      "@hamboom/storage",
+      "@hamboom/auth-core",
+      "@hamboom/assets",
+      "@hamboom/config",
+      "@hamboom/shared-types",
+      "pg",
+      "ioredis",
+      "fastify",
+      "kysely",
+    ])("مزاحمِ %s نمی‌شود", (specifier) => {
+      expect(isForbidden(config, specifier)).toBe(false);
+    });
+  });
+
   /**
    * تطبیقِ گلاب در `no-restricted-imports` خلافِ شهودِ رایج است: `*` **از `/`
    * عبور می‌کند**. این در گام ۰٫۲ probe شد و اینجا pin می‌شود تا کسی بعداً
@@ -282,6 +322,8 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     ["packages/assets", 'import { S3Client } from "@aws-sdk/client-s3";'],
     // ★ auth-core منطقِ خالص است: importِ خامِ `pg` باید خطا بخورد (DB در apps/api، فاز ۵).
     ["packages/auth-core", 'import { Pool } from "pg";'],
+    // ★ apps/api: importِ خامِ `@aws-sdk` باید خطا بخورد (به S3 فقط از راهِ storage، P4).
+    ["apps/api", 'import { S3Client } from "@aws-sdk/client-s3";'],
   ])("%s نقضِ واقعی را خطا می‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
     expect(messages.some((m) => m.ruleId === "no-restricted-imports")).toBe(true);
@@ -306,6 +348,11 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     ],
     // ★ auth-core مجاز است `jose` را ببیند (JWT).
     ["packages/auth-core", 'import { SignJWT } from "jose";\nexport const s = SignJWT;'],
+    // ★ apps/api مجاز است `@hamboom/storage` را ببیند (پلاگینِ s3 — مسیرِ درستِ P4).
+    [
+      "apps/api",
+      'import { createS3ObjectStore } from "@hamboom/storage";\nexport const c = createS3ObjectStore;',
+    ],
   ])("%s importِ مجاز را خطا نمی‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
     expect(messages.filter((m) => m.ruleId === "no-restricted-imports")).toEqual([]);
@@ -440,6 +487,19 @@ describe("لایه‌ی ۳ — وابستگی‌های اعلام‌شده در 
     expect(deps.filter((d) => d.startsWith("@aws-sdk/"))).toEqual([]);
     expect(deps).not.toContain("pg");
     expect(deps).not.toContain("ioredis");
+  });
+
+  // ★ apps/api لایه‌ی REST است: به S3 فقط از راهِ storage (نه @aws-sdk)، نه موتورِ رندر، نه sdk (دورِ باطل).
+  //   وابستگی‌های مثبتش افزایشی رشد می‌کنند (fastify/kysely با مصرف‌کننده‌شان، گام ۵٫۱/۵٫۲)؛ مرزِ تعریف‌کننده‌اش نفی است.
+  it("apps/api @aws-sdk/react/canvas-core/sdk را اعلام نکرده", () => {
+    const deps = declaredDeps("apps/api");
+    expect(deps).toContain("@hamboom/shared-types");
+    expect(deps.filter((d) => d.startsWith("@aws-sdk/"))).toEqual([]);
+    expect(deps).not.toContain("react");
+    expect(deps).not.toContain("react-dom");
+    expect(deps).not.toContain("@hamboom/canvas-core");
+    expect(deps).not.toContain("@hamboom/canvas-sync");
+    expect(deps).not.toContain("@hamboom/sdk");
   });
 });
 
