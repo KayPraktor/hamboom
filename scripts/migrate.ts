@@ -13,6 +13,18 @@
  *    بدونِ این، دیتابیسِ توسعه و production بی‌صدا از هم واگرا می‌شوند و هیچ‌جا
  *    معلوم نمی‌شود — که دقیقاً همان چیزی است که ADR-005 می‌خواست جلویش را بگیرد.
  *
+ * ── ★ تعمیمِ M3 فاز ۵٫۱ (DP-1، تاییدِ مالک ۱۴۰۵/۰۵/۲۸): یک رانر، دو پوشه ──
+ *
+ * تا M2 فقط `infra/sql/migrations` بود (جدول‌های realtime). M3 جدول‌های خودش را در
+ * `apps/api/migrations` می‌گذارد (PLAN §۶). به‌جای **دو رانرِ** جدا با تنشِ ترتیب،
+ * همین یک رانر هر دو پوشه را با **یک `schema_migrations`** اجرا می‌کند، به ترتیبِ
+ * **ثابتِ** `infra` سپس `api` — چون FK-ALTERِ `apps/api` (گام ۵٫۱) به
+ * `board_updates`/`board_snapshotsِ` infra وابسته است و باید بعد از آن‌ها بیاید.
+ *
+ * ★ افزایشی است: بلوکِ infra **بی‌تغییر** می‌ماند (همان نام‌ها، همان checksumها)، پس
+ *   M2 دست‌نخورده است. ledger با **نامِ فایل** کلید می‌خورد، پس نام‌ها باید بینِ
+ *   پوشه‌ها یکتا باشند — گیتی پایین این را می‌گیرد.
+ *
  * اجرا: `pnpm db:migrate`
  */
 import { createHash } from "node:crypto";
@@ -23,13 +35,17 @@ import { fileURLToPath } from "node:url";
 import { databaseEnvSchema, loadEnv } from "@hamboom/config";
 import pg from "pg";
 
-const MIGRATIONS_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "infra",
-  "sql",
-  "migrations",
-);
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * ★ ترتیبِ پوشه‌ها **ثابت** است، نه بر اساسِ نام: `infra` قبل از `api`.
+ * جدول‌های `board_updates`/`board_snapshots` مالِ M2 اند (`infra/sql/migrations`) و
+ * FK-ALTERِ `apps/api` به آن‌ها وابسته است — پس روی دیتابیسِ تازه اول infra، بعد api.
+ */
+const MIGRATION_DIRS = [
+  join(REPO_ROOT, "infra", "sql", "migrations"),
+  join(REPO_ROOT, "apps", "api", "migrations"),
+];
 
 function sha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
@@ -54,11 +70,45 @@ function explainConnectionFailure(error: unknown): string | null {
   ].join("\n");
 }
 
+/**
+ * فایل‌های migration را از همه‌ی پوشه‌ها به ترتیبِ `MIGRATION_DIRS` جمع می‌کند.
+ * درونِ هر پوشه به ترتیبِ نام. پوشه‌ی ناموجود (مثلاً قبل از ساختِ `apps/api`) رد می‌شود.
+ */
+async function collectMigrations(): Promise<{ name: string; dir: string }[]> {
+  const collected: { name: string; dir: string }[] = [];
+  const seen = new Map<string, string>(); // نامِ فایل → پوشه، برای گیتِ نامِ تکراری
+
+  for (const dir of MIGRATION_DIRS) {
+    let names: string[];
+    try {
+      names = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort();
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "ENOENT") continue;
+      throw error;
+    }
+
+    for (const name of names) {
+      const previousDir = seen.get(name);
+      if (previousDir !== undefined) {
+        throw new Error(
+          `‏[hamboom] نامِ migrationِ تکراری «${name}» در دو پوشه: «${previousDir}» و «${dir}».\n` +
+            "‏کلیدِ ledger نامِ فایل است، پس نام‌ها باید بینِ همه‌ی پوشه‌ها یکتا باشند — " +
+            "شماره‌ی متفاوت یا پیشوندِ ماژول بگذار.",
+        );
+      }
+      seen.set(name, dir);
+      collected.push({ name, dir });
+    }
+  }
+
+  return collected;
+}
+
 async function main(): Promise<void> {
   const env = loadEnv(databaseEnvSchema);
 
-  const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
-  if (files.length === 0) {
+  const migrations = await collectMigrations();
+  if (migrations.length === 0) {
     console.log("هیچ migrationـی پیدا نشد.");
     return;
   }
@@ -95,8 +145,8 @@ async function main(): Promise<void> {
     const applied = new Map(rows.map((r) => [r.name, r.checksum]));
 
     let count = 0;
-    for (const name of files) {
-      const sql = await readFile(join(MIGRATIONS_DIR, name), "utf8");
+    for (const { name, dir } of migrations) {
+      const sql = await readFile(join(dir, name), "utf8");
       const checksum = sha256(sql);
       const previous = applied.get(name);
 
@@ -131,7 +181,7 @@ async function main(): Promise<void> {
 
     console.log(
       count === 0
-        ? `همه‌ی migrationها از قبل اعمال شده‌اند (${files.length} فایل).`
+        ? `همه‌ی migrationها از قبل اعمال شده‌اند (${migrations.length} فایل).`
         : `✔ ${count} migration اعمال شد.`,
     );
   } finally {

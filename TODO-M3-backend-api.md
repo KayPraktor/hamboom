@@ -398,12 +398,12 @@ Chromium، thumbnail) = **بعد از M3**.
 - [ ] `buildApp()` تست‌پذیر (بدونِ `listen`)؛ پلاگین‌ها: `db` (Kysely+pg، کوئرسِ int8)،
       `redis`، `s3` (از `packages/storage`)، `auth-guard`، `rate-limit`، `request-id`،
       `error` (قالبِ خطای §۵ با `code`/`requestId`)؛ pino + redactorِ P7.
-- [ ] ★ migrationِ `0001_init.sql` — **کلِ schemaی [PLAN §۶](PLAN.md)** (users، auth_sessions،
+- [x] ✅ (۵٫۱، ۱۴۰۵/۰۵/۳۱) migrationِ `0001_init.sql` — **کلِ schemaی [PLAN §۶](PLAN.md)** (users، auth_sessions،
       otp_challenges، teams، team_members، team_invites، folders، boards، board_members،
       board_favorites، files، templates، comment_threads، comments، board_versions،
       plans، subscriptions، coupons، invoices، payments، usage_counters، audit_logs،
       sms_logs، export_jobs، feature_flags). با اجراکننده‌ی checksumِ M2.
-- [ ] ★★ **موردِ به‌ارث‌رسیده‌ی ۱ (handoff §۳):** حالا که `boards` ساخته شد، دو FK با
+- [x] ✅ (۵٫۱، ۱۴۰۵/۰۵/۳۱ — CASCADE + origin_user→SET NULL، روی DBِ تازه `\d` تایید) **موردِ به‌ارث‌رسیده‌ی ۱ (handoff §۳):** حالا که `boards` ساخته شد، دو FK با
       `ALTER TABLE` اضافه شود: `board_updates.board_id → boards(id)` و
       `board_snapshots.board_id → boards(id)` (در M2 عمداً بدونِ FK ماندند چون `boards`
       نبود). یک migrationِ جدا (نه ویرایشِ `0001_realtime_documents.sql`ی M2).

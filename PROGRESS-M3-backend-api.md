@@ -1,6 +1,10 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
-تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۲۸ (2026-08-19)
+تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۳۱ (2026-08-22)
+**فاز ۵ آغاز شد ✅ (۱۴۰۵/۰۵/۳۱)** — گام ۵٫۰ (اسکلتِ `apps/api` + گیتِ خودآزمونِ `apiBoundaries`) و گام ۵٫۱-migration
+(کلِ schemaی PLAN §۶ + دو FKِ ارثی) کامل و روی دیتابیسِ تازه اثبات‌شده. جزئیات در §فاز ۵ پایین. **قدمِ بعد: ۵٫۱-buildApp**
+(پلاگین‌ها + `int8`→number + redactor). ⚠️ **دیتابیسِ dev نیمه-migrate است** (پایین).
+
 **فاز ۰–۴ کامل ✅ (۱۴۰۵/۰۵/۲۸)** — `packages/auth-core` تمام شد: دو گیتِ امنیتیِ فاز ۱ (حفره‌ی `exp` + OD-1)
 بسته، به‌علاوه‌ی **refreshِ چرخشی** (reuse → سوزاندنِ خانواده) و **OTP** (hash، P7، ضدِ enumeration) — همه پشتِ
 پورت، DBشان فاز ۵. فاز ۳: منطقِ گام ۳٫۳ الان ساخته و روی MinIO تست شد؛ endpointهای HTTPش به فاز ۵ موکول. بلوکه‌ی داکر رفع شد، probe مکانیزمِ سقف را بست
@@ -281,3 +285,47 @@ minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بال
 
 ⚠️ **لوز-اِندهای فاز ۳ که به فاز ۵ رفتند:** endpointهای asset، جدولِ `files`+دی‌دوپ، minio-init، `UPLOAD_MAX_BYTES`، w/h.
 ⚠️ **اسکریپت‌ها:** `storage/probe/s3-probe.ts` + `auth-core/probe/jose-probe.ts` دورریختنی؛ `smoke/`های storage/assets **کِیپر**.
+
+## فاز ۵ — `apps/api` (Fastify)
+
+### سه سوالِ مالک قبل از شروع — پاسخ‌های قفل‌شده (۱۴۰۵/۰۵/۳۱)
+
+۱. **مسیرِ داغ:** `effectiveBoardRole`/`BoardAccessReader` روی هر update **صدا زده نمی‌شود** — کدِ M2 نشان داد
+   `currentRole` فقط در اتصال ([`server.ts:318`](apps/realtime/src/server.ts)) و `HB_AUTH_REFRESH` (~۱/دقیقه/کلاینت)
+   فراخوانی می‌شود و در `session.role` **کش** می‌ماند؛ گیتِ هر-update در حافظه است (`mayWriteDocument`). پس **یک
+   کوئریِ JOINدارِ ایندکس‌شده** per read، **بدونِ کشِ زودهنگام** (کش = بازکردنِ همان حفره‌ی اتصالِ مجددِ M2؛ تاییدِ مالک).
+   تغییرِ زنده‌ی نقش via push روی Redis busِ موجود، نه TTL.
+۲. **دو FKِ ارثی: `ON DELETE CASCADE`** (+ `origin_user_id → SET NULL`). چون حذفِ بورد **نرم** است، FK فقط در حذفِ
+   سختِ فقط-ownerِ بالادست شلیک می‌کند. ⚠️ CASCADE بلابِ S3 را پاک نمی‌کند (جاروبِ M5/worker).
+۳. **نوشتنِ چندجدولی: همیشه تراکنش** + خودآزمونِ شکستِ وسطِ تراکنش. ساختِ بورد ذاتاً تک‌ردیفی (`created_by`) → بوردِ بی‌مالک ناممکن.
+
+### گام ۵٫۰ — اسکلتِ `apps/api` + گیتِ `apiBoundaries` ✅ (۱۴۰۵/۰۵/۳۱)
+
+«مرز قبل از کد»: `apps/api` خالی ساخته شد ولی مرزش قفل شد. **`apiBoundaries()`** (eslint-config): `@aws-sdk`ِ خام/
+موتورِ رندر/React/`@hamboom/sdk` ممنوع؛ storage/auth-core/assets مجاز. خودآزمونِ سه‌لایه (الگو/سیم‌کشی/manifest).
+★ با برداشتنِ `@aws-sdk/*` از forbid → **۳ تست قرمز**؛ revert → **۱۶۰ سبز**. `test` فعلاً `--passWithNoTests` (تا ۵٫۱-buildApp).
+
+### گام ۵٫۱ — schema + migration ✅ (۱۴۰۵/۰۵/۳۱)
+
+- **DP-1 پیاده شد:** `scripts/migrate.ts` تعمیم یافت — یک رانر، دو پوشه‌ی **مرتبِ ثابت** (`infra/sql/migrations` →
+  `apps/api/migrations`)، یک `schema_migrations`. افزایشی: بلوکِ infraِ M2 بی‌تغییر (همان checksumها)؛ + گیتِ نامِ تکراری
+  بینِ پوشه‌ها + پرشِ پوشه‌ی ناموجود.
+- **`0001_init.sql`** — کلِ schemaی PLAN §۶ (**بدونِ** `board_updates`/`board_snapshotsِ` infra). آشتی‌های قفل‌شده:
+  `auth_sessions.rotated_at` (پورتِ reuse)، CHECKِ `access_mode` بدونِ `link_comment` (هم‌تراز با shared-types)، CHECKِ
+  نقش‌های `team_members`/`board_members`(commenter می‌پذیرد ولی تخصیص نه)/`team_invites`، و FKهای تاخیریِ
+  `avatar/thumbnail/template → SET NULL`.
+- **`0002_board_fks.sql`** — دو FKِ ارثی: `board_updates`/`board_snapshots.board_id → boards` **CASCADE**؛
+  `board_updates.origin_user_id → users` **SET NULL**.
+- ★ **روی دیتابیسِ تازه اثبات شد:** زنجیره به ترتیبِ `0001_realtime_documents`(infra) → `0001_init` → `0002` تمیز اعمال
+  شد؛ `\d board_updates` **هر دو FK** را دارد؛ **۲۸ جدول**؛ اجرای دوم = no-op (ledgerِ واحد روی دو پوشه). گیتِ
+  checksum-تغییرناپذیری با ویرایشِ عمدیِ فایلِ اعمال‌شده **قرمز** شد، بعد rev. `pnpm verify` سبز (۸ گیت).
+- ⚠️ **دیتابیسِ `hamboom`ِ dev نیمه-migrate است:** `0001_init` اعمال شد ولی `0002` روی **۲۳۲۴ ردیفِ یتیمِ متریکِ M2**
+  در `board_updates` (۹۳ boardِ آزمایشی، هیچ‌کدام در `boards`) افتاد — که رفتارِ **درستِ** FK است. روی دیتابیسِ تازه رخ
+  نمی‌دهد. رفعِ پیشنهادی (نیازِ تاییدِ مالک، چون مخرب): `docker compose ... down -v && pnpm db:up && pnpm db:migrate`.
+  دیتابیسِ اثبات (`hamboom_migrate_test`) دورریختنی است و می‌تواند drop شود.
+
+### قدمِ بعد — گام ۵٫۱-buildApp
+
+`buildApp()`ِ تست‌پذیر (بدونِ `listen`) + پلاگین‌ها: `db` (Kysely+pg، **کوئرسِ `int8`→number** P5)، `redis`، `s3`
+(از storage)، `auth-guard`، `rate-limit`، `request-id`، `error`، pino + **redactorِ P7** (لیستِ مرکزی در config، یکی با
+realtime). اولین تستِ api → برداشتنِ `--passWithNoTests`. `/healthz`/`/readyz`. سپس ۵٫۲ (adapterهای DBِ پورت‌ها).
