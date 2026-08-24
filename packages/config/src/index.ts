@@ -19,10 +19,21 @@ export type { EnvSource } from "./load.ts";
 
 export {
   appEnvSchema,
+  authEnvSchema,
   databaseEnvSchema,
   devAuthEnvSchema,
+  otpEnvSchema,
   realtimeEnvSchema,
   redisEnvSchema,
   s3EnvSchema,
 } from "./sections.ts";
-export type { AppEnv, DatabaseEnv, DevAuthEnv, RealtimeEnv, RedisEnv, S3Env } from "./sections.ts";
+export type {
+  AppEnv,
+  AuthEnv,
+  DatabaseEnv,
+  DevAuthEnv,
+  OtpEnv,
+  RealtimeEnv,
+  RedisEnv,
+  S3Env,
+} from "./sections.ts";

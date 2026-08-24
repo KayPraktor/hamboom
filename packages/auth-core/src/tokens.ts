@@ -26,12 +26,14 @@ export type TokenErrorCode =
 
 /** خطای توکن — کدِ نمادین دارد، ولی پیامش علتِ دقیق را به کلاینت **لو نمی‌دهد**. */
 export class TokenError extends Error {
-  constructor(
-    readonly code: TokenErrorCode,
-    message: string,
-  ) {
+  readonly code: TokenErrorCode;
+
+  // ⚠️ فیلدِ صریح، نه parameter property: `apps/api` این را زیرِ Node (strip-only) import می‌کند و
+  //    Node ۲۴ از parameter property پشتیبانی نمی‌کند (ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX).
+  constructor(code: TokenErrorCode, message: string) {
     super(message);
     this.name = "TokenError";
+    this.code = code;
   }
 }
 

@@ -117,3 +117,35 @@ export const s3EnvSchema = z.object({
   S3_BUCKET_SNAPSHOTS: z.string().min(1).default("hamboom-snapshots"),
 });
 export type S3Env = z.infer<typeof s3EnvSchema>;
+
+/**
+ * ── احراز هویتِ M3 (`apps/api` فاز ۵) ───────────────────────────────────
+ *
+ * ★ رازِ HS256 (PLAN §۴): auth-core آن را **param** می‌گیرد، از `process.env` نمی‌خواند. حداقلِ ۳۲
+ * کاراکتر تا کسی با کلیدِ کوتاه توکن جعل نکند. TTLها ثانیه‌اند و از **یک** signer می‌آیند (قفلِ exp).
+ */
+export const authEnvSchema = z.object({
+  JWT_SECRET: z.string().min(32, "حداقل ۳۲ کاراکتر لازم است (رازِ HS256)"),
+  /** عمرِ access token (JWT) — پیش‌فرض ۱۵ دقیقه. */
+  ACCESS_TOKEN_TTL_SECONDS: envInt(900),
+  /** عمرِ refresh token — پیش‌فرض ۳۰ روز. */
+  REFRESH_TOKEN_TTL_SECONDS: envInt(2_592_000),
+  /** عمرِ rt-tokenِ WS — پیش‌فرض ۶۰ ثانیه (سقفِ آینده ۲× همین است). */
+  RT_TOKEN_TTL_SECONDS: envInt(60),
+});
+export type AuthEnv = z.infer<typeof authEnvSchema>;
+
+/**
+ * ── OTP (`apps/api` فاز ۵) ──────────────────────────────────────────────
+ *
+ * ★ کد hash می‌شود و هرگز لاگ نمی‌شود (P7)؛ اینجا فقط سیاستِ زمان/تلاش/cooldown. `OTP_DEV_FIXED_CODE`
+ * فقط برای dev است — اگر ندهی، کد **تصادفی** است و از لاگِ MockSms خوانده می‌شود.
+ */
+export const otpEnvSchema = z.object({
+  OTP_TTL_SECONDS: envInt(120),
+  OTP_MAX_ATTEMPTS: envInt(5),
+  OTP_COOLDOWN_SECONDS: envInt(60),
+  /** کدِ ثابتِ dev (اختیاری) — فقط وقتی `APP_ENV=local`. وگرنه تصادفی. */
+  OTP_DEV_FIXED_CODE: z.string().regex(/^\d{6}$/, "باید ۶ رقم باشد").optional(),
+});
+export type OtpEnv = z.infer<typeof otpEnvSchema>;

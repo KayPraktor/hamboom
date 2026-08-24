@@ -38,12 +38,13 @@ export interface SessionStore {
 }
 
 export class RefreshError extends Error {
-  constructor(
-    readonly code: "invalid" | "expired" | "reuse",
-    message: string,
-  ) {
+  readonly code: "invalid" | "expired" | "reuse";
+
+  // ⚠️ فیلدِ صریح، نه parameter property (strip-only-سازگاری برای اجرای زیرِ Node در apps/api).
+  constructor(code: "invalid" | "expired" | "reuse", message: string) {
     super(message);
     this.name = "RefreshError";
+    this.code = code;
   }
 }
 

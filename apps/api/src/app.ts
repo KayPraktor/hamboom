@@ -1,22 +1,24 @@
 import { randomUUID } from "node:crypto";
 
+import { createMockSmsProvider, maskPhone } from "@hamboom/auth-core";
 import Fastify, { type FastifyInstance } from "fastify";
 import type pg from "pg";
 
-import { loadApiConfig, type ApiConfig } from "./config.ts";
+import { makeRequireAuth } from "./auth-guard.ts";
+import { loadApiConfig, secretBytes, type ApiConfig } from "./config.ts";
 import { registerErrorHandler } from "./errors.ts";
 import { loggerOptions } from "./logger.ts";
 import { createDbPool } from "./plugins/db.ts";
+import { registerAuthRoutes } from "./routes/auth.ts";
+import { registerBoardRoutes } from "./routes/boards.ts";
 
 /**
- * `buildApp()` — نمونه‌ی Fastifyِ **تست‌پذیر** (بدونِ `listen`). ماژول M3، گام ۵٫۱.
+ * `buildApp()` — نمونه‌ی Fastifyِ **تست‌پذیر** (بدونِ `listen`). ماژول M3، فاز ۵.
  *
- * ★ همه‌ی وابستگی‌ها **تزریق‌پذیر**اند (config، db) تا تست بدونِ دیتابیس/شبکه اجرا شود —
- * همان الگوی «binder قبل از سرور»ی M2 روی سطحِ HTTP. redactِ P7 در `loggerOptions` است و
- * مستقلاً در `logger.test.ts` روی pino آزموده می‌شود.
+ * ★ همه‌ی وابستگی‌ها تزریق‌پذیرند (config، db) تا تست بدونِ شبکه اجرا شود.
  */
 
-// ★ `app.db` — استخرِ pg. تزریقِ adapterهای فاز ۵٫۲ رویش سوار می‌شوند.
+// ★ `app.db` — استخرِ pg. adapterها رویش سوارند.
 declare module "fastify" {
   interface FastifyInstance {
     db: pg.Pool;
@@ -36,6 +38,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     logger: loggerOptions(config.LOG_LEVEL),
     genReqId: () => randomUUID(),
   });
+  app.decorateRequest("authUser", null);
 
   registerErrorHandler(app);
 
@@ -55,10 +58,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }
 
   // ── سلامت ──────────────────────────────────────────────────────────
-  // ⚠️ healthz فقط «سرور بالاست» (K8s liveness)؛ readyz وابستگی را می‌سنجد (readiness) —
-  //    همان تفکیکی که realtime در گام ۴٫۸ قفل کرد (در خاموشی readyz رد می‌کند، healthz نه).
   app.get("/healthz", () => ({ status: "ok" }));
-
   app.get("/readyz", async (_req, reply) => {
     try {
       await pool.query("SELECT 1");
@@ -67,6 +67,31 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       return reply.code(503).send({ status: "not_ready" });
     }
   });
+
+  // ── وابستگی‌های احراز/OTP ───────────────────────────────────────────
+  const secret = secretBytes(config);
+  // ⚠️ کدِ ثابت فقط در dev و اگر داده شده باشد؛ وگرنه تصادفی.
+  const fixedCode = config.APP_ENV === "local" ? config.OTP_DEV_FIXED_CODE : undefined;
+  // ★ MockSms کدِ خام را در لاگِ سرور چاپ می‌کند (فقط dev، P3: بدونِ حسابِ پیامکِ واقعی)؛ شماره ماسک.
+  const sms = createMockSmsProvider((phone, code) => {
+    app.log.warn(`[SMS mock — فقط dev] کدِ ورود ${code} → ${maskPhone(phone)}`);
+  });
+
+  registerAuthRoutes(app, {
+    pool,
+    sms,
+    otpConfig: {
+      ttlSeconds: config.OTP_TTL_SECONDS,
+      maxAttempts: config.OTP_MAX_ATTEMPTS,
+      cooldownSeconds: config.OTP_COOLDOWN_SECONDS,
+      fixedCode,
+    },
+    secret,
+    accessTtlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
+    refreshTtlSeconds: config.REFRESH_TOKEN_TTL_SECONDS,
+  });
+
+  registerBoardRoutes(app, { pool, requireAuth: makeRequireAuth(secret) });
 
   return app;
 }

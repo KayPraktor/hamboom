@@ -12,6 +12,14 @@ const TEST_CONFIG: ApiConfig = {
   DATABASE_URL: "postgres://unused@localhost/none", // db تزریق می‌شود، اتصال نمی‌خورد
   DATABASE_SSL: false,
   DATABASE_POOL_MAX: 1,
+  JWT_SECRET: "test_secret_at_least_thirty_two_chars_long",
+  ACCESS_TOKEN_TTL_SECONDS: 900,
+  REFRESH_TOKEN_TTL_SECONDS: 2_592_000,
+  RT_TOKEN_TTL_SECONDS: 60,
+  OTP_TTL_SECONDS: 120,
+  OTP_MAX_ATTEMPTS: 5,
+  OTP_COOLDOWN_SECONDS: 60,
+  OTP_DEV_FIXED_CODE: undefined,
 };
 
 /** استخرِ دروغینِ db — فقط `query`/`end`. تست بدونِ Postgres. */

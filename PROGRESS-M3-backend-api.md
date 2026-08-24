@@ -3,8 +3,9 @@
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۳۱ (2026-08-22)
 **فاز ۵ آغاز شد ✅ (۱۴۰۵/۰۵/۳۱)** — گام ۵٫۰ (اسکلتِ `apps/api` + گیتِ خودآزمونِ `apiBoundaries`) و گام ۵٫۱-migration
 (کلِ schemaی PLAN §۶ + دو FKِ ارثی) و گام ۵٫۱-buildApp (اسکلتِ `buildApp` + پلاگین‌های پایه؛ P5 int8 و P7 redact خودآزمون)
-کامل و روی Postgresِ واقعی اثبات‌شده. جزئیات در §فاز ۵ پایین. **قدمِ بعد: ۵٫۲ (adapterهای DBِ پورت‌ها).**
-⚠️ **دیتابیسِ dev نیمه-migrate است** (پایین؛ برای تست از `hamboom_migrate_test` استفاده می‌شود).
+کامل و روی Postgresِ واقعی اثبات‌شده. **و vertical sliceِ ۵٫۲–۵٫۴ (جریانِ OTP→بورد)** ساخته و **با curl روی سرورِ زنده
+اثبات شد** (پورت ۳۰۰۲). جزئیات در §فاز ۵ پایین. **قدمِ بعد: سخت‌سازیِ ۵٫۲–۵٫۴** (conformanceِ SessionStore + تستِ اتمیک + کوکی/rate-limit).
+⚠️ **دیتابیسِ dev نیمه-migrate است** (پایین؛ ولی جریانِ OTP→بورد به FKهای `0002` نیاز ندارد).
 
 **فاز ۰–۴ کامل ✅ (۱۴۰۵/۰۵/۲۸)** — `packages/auth-core` تمام شد: دو گیتِ امنیتیِ فاز ۱ (حفره‌ی `exp` + OD-1)
 بسته، به‌علاوه‌ی **refreshِ چرخشی** (reuse → سوزاندنِ خانواده) و **OTP** (hash، P7، ضدِ enumeration) — همه پشتِ
@@ -347,8 +348,27 @@ minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بال
 - ★★ **P5 روی Postgresِ واقعی هم اثبات شد** (نه فقط unit): `1500000::bigint` و `count(*)::bigint` هر دو `typeof number` برگشتند.
 - ⚠️ **موکول به گام‌های بعد:** پلاگین‌های `redis`/`s3`/`auth-guard`/`rate-limit`، و یکی‌شدنِ redactor با نسخه‌ی realtime (لیستِ مرکزی).
 
-### قدمِ بعد — گام ۵٫۲ (adapterهای DBِ پورت‌ها)
+### گام ۵٫۲–۵٫۴ — vertical sliceِ جریانِ OTP→بورد ✅ (۱۴۰۵/۰۶/۰۳)
 
-`BoardAccessReader` (کوئریِ JOINدارِ واحد)، **`SessionStore`** (★★ `find+markUsed` اتمی با `SELECT … FOR UPDATE` +
-**سوییتِ conformanceِ مشترک** روی هر دو پیاده‌سازیِ حافظه‌ای و DB — قیدِ صریحِ مالک ۱۴۰۵/۰۵/۳۱)، `OtpStore`، و AssetTransport.
-روی `hamboom_migrate_test`ِ migrate‌شده تست می‌شوند (ریستِ dev لازم نیست تا وقتی مالک بگوید).
+درخواستِ مالک: «می‌خوام دستی با curl تست کنم». برای اینکه جریانِ واقعی تست‌پذیر شود، برشِ عمودیِ ۵٫۲–۵٫۴ ساخته شد
+و **end-to-end روی سرورِ زنده (پورت ۳۰۰۲) با curl اثبات شد**:
+- **adapterهای DB** (`src/adapters/`): `createPgSessionStore` (★★ `findByHash` با `SELECT … FOR UPDATE`؛ اتمی وقتی با
+  `createPgSessionStore(tx)` صدا زده شود)، `createPgOtpStore` (phone→destination، آخرین مصرف‌نشده)، `createPgBoardAccessReader`
+  (کوئریِ JOINدارِ واحد؛ ⚠️ DP-4: `hasValidLink=false`، مسیرِ لینک تا گرنتِ ماندگار خاموش).
+- **`withTransaction`** + `Executor` در `plugins/db.ts` (اتمی‌بودنِ چندجدولی — سوالِ ۳ مالک).
+- **auth-guard** (`makeRequireAuth`): Bearer را با `verifyAccessToken` می‌سنجد، `req.authUser={sub}` (نقش نه — ADR-012).
+- **endpointها:** `POST /auth/otp/request` (همیشه ۲۰۰، ضدِ enumeration)، `POST /auth/otp/verify` (verify بیرونِ tx تا
+  attempts بماند؛ موفق → کاربر+فضای شخصی+نشست اتمیک → accessToken)، `POST /auth/refresh` (rotateSession در tx، اتمی)،
+  `POST /boards` (تک‌ردیفی، `created_by`)، `GET /boards/:id` (نقشِ موثر؛ ★ boardIdِ بدشکل → `BOARD_ID_MALFORMED`، یافته‌ی M2 #۱).
+- **config:** `authEnvSchema` (JWT_SECRET/TTLها) + `otpEnvSchema` در `@hamboom/config` + `.env`/`.env.example`.
+- **MockSms** کدِ خام را در لاگِ سرور چاپ می‌کند (فقط dev، P3؛ شماره ماسک). `apps/api/src/server.ts` + configِ `api` در `.claude/launch.json`.
+- ⚠️ **رفعِ لازم:** `auth-core` کلاس‌های خطا (`TokenError`/`RefreshError`) parameter property داشتند → **زیرِ Node
+  strip-only می‌شکنند**؛ به فیلدِ صریح تبدیل شدند (کدِ خودم، بدونِ تغییرِ رفتار). `errors.ts`ِ api هم همین.
+- **curlِ اثبات‌شده:** otp/request→`{ok:true}`؛ کد از لاگ؛ verify→`{accessToken,…,isNewUser:true}`؛ POST /boards→بورد؛
+  GET→`myRole:"owner"`؛ بی‌توکن→`401`. عنوانِ فارسی درست ذخیره شد (طول ۱۵). `pnpm verify` سبز (۸ گیت، ۸۰۱ پکیج).
+
+### قدمِ بعد — سخت‌سازیِ ۵٫۲–۵٫۴
+
+★★ **سوییتِ conformanceِ مشترکِ `SessionStore`** (memory + PG-in-tx) + **تستِ اتمیکِ واقعی** (دو rotateِ همزمان روی
+یک توکن → یکی reuse) — قیدِ صریحِ مالک، هنوز نوشته نشده. + کوکیِ HttpOnlyِ refresh، rate-limit، اعتبارسنجیِ zod،
+یکی‌شدنِ redactor. و دو موردِ باز: بلوکِ دفاعیِ `0002`، ریستِ dev. (assets `AssetValidationError` هم parameter property دارد — لمسِ آینده.)

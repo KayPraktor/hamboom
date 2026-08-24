@@ -52,3 +52,31 @@ export function createDbPool(config: DbPoolConfig): pg.Pool {
     max: config.poolMax,
   });
 }
+
+/** هرچه `query` دارد — استخر یا کلاینتِ **درونِ تراکنش**. adapterها این را می‌گیرند تا هم مستقل و هم اتمی کار کنند. */
+export type Executor = Pick<pg.Pool, "query"> | Pick<pg.PoolClient, "query">;
+
+/**
+ * یک واحدِ کار را در **یک تراکنش** اجرا می‌کند: BEGIN → fn → COMMIT، و روی هر خطا ROLLBACK.
+ *
+ * ★★ **قیدِ اتمی‌بودنِ فاز ۴→۵:** `rotateSession`ِ auth-core باید find+markUsed را در یک تراکنش
+ * ببیند وگرنه دو درخواستِ همزمان reuse detection را دور می‌زنند. مصرف‌کننده `createPgSessionStore(tx)`
+ * را با همین `tx` می‌سازد تا `SELECT … FOR UPDATE` واقعاً قفل کند.
+ */
+export async function withTransaction<T>(
+  pool: pg.Pool,
+  fn: (tx: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}

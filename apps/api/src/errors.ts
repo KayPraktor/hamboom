@@ -9,14 +9,24 @@ import type { FastifyError, FastifyInstance } from "fastify";
  * علتِ واقعی فقط در **لاگِ سرور** می‌مانَد (مثلِ AuthErrorِ realtime). requestId پلِ ردیابی است.
  */
 export class HttpError extends Error {
+  readonly statusCode: number;
+  readonly code: ApiErrorCode;
+  readonly details: Record<string, unknown> | undefined;
+
+  // ⚠️ فیلدهای صریح، **نه** parameter property: Node ۲۴ در اجرای مستقیمِ `.ts` (strip-only)
+  //    از parameter property پشتیبانی نمی‌کند (ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX). این کد
+  //    زیرِ `apps/api/src/server.ts` مستقیم اجرا می‌شود، پس باید strip-only-سازگار بماند.
   constructor(
-    readonly statusCode: number,
-    readonly code: ApiErrorCode,
+    statusCode: number,
+    code: ApiErrorCode,
     message: string,
-    readonly details?: Record<string, unknown>,
+    details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "HttpError";
+    this.statusCode = statusCode;
+    this.code = code;
+    this.details = details;
   }
 }
 
