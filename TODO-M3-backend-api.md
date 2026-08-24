@@ -395,7 +395,9 @@ Chromium، thumbnail) = **بعد از M3**.
 ## فاز ۵ — `apps/api` (Fastify) (تخمین: ۴–۶ روز)
 
 ### گام ۵٫۱ — اسکلتِ اپ + پلاگین‌ها + migration
-- [ ] `buildApp()` تست‌پذیر (بدونِ `listen`)؛ پلاگین‌ها: `db` (Kysely+pg، کوئرسِ int8)،
+- [~] (۵٫۱-buildApp، ۱۴۰۵/۰۵/۳۱ — پایه ✅: `buildApp` تزریق‌پذیر، `db`+کوئرسِ int8/P5 روی pg خام، redactor/P7، خطای یکسان،
+      `/healthz`+`/readyz`، ۸ تست + دو خط‌قرمزِ خودآزمون. **مانده:** `redis`/`s3`/`auth-guard`/`rate-limit`)
+      `buildApp()` تست‌پذیر (بدونِ `listen`)؛ پلاگین‌ها: `db` (Kysely+pg، کوئرسِ int8)،
       `redis`، `s3` (از `packages/storage`)، `auth-guard`، `rate-limit`، `request-id`،
       `error` (قالبِ خطای §۵ با `code`/`requestId`)؛ pino + redactorِ P7.
 - [x] ✅ (۵٫۱، ۱۴۰۵/۰۵/۳۱) migrationِ `0001_init.sql` — **کلِ schemaی [PLAN §۶](PLAN.md)** (users، auth_sessions،

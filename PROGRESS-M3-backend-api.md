@@ -2,8 +2,9 @@
 
 تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۳۱ (2026-08-22)
 **فاز ۵ آغاز شد ✅ (۱۴۰۵/۰۵/۳۱)** — گام ۵٫۰ (اسکلتِ `apps/api` + گیتِ خودآزمونِ `apiBoundaries`) و گام ۵٫۱-migration
-(کلِ schemaی PLAN §۶ + دو FKِ ارثی) کامل و روی دیتابیسِ تازه اثبات‌شده. جزئیات در §فاز ۵ پایین. **قدمِ بعد: ۵٫۱-buildApp**
-(پلاگین‌ها + `int8`→number + redactor). ⚠️ **دیتابیسِ dev نیمه-migrate است** (پایین).
+(کلِ schemaی PLAN §۶ + دو FKِ ارثی) و گام ۵٫۱-buildApp (اسکلتِ `buildApp` + پلاگین‌های پایه؛ P5 int8 و P7 redact خودآزمون)
+کامل و روی Postgresِ واقعی اثبات‌شده. جزئیات در §فاز ۵ پایین. **قدمِ بعد: ۵٫۲ (adapterهای DBِ پورت‌ها).**
+⚠️ **دیتابیسِ dev نیمه-migrate است** (پایین؛ برای تست از `hamboom_migrate_test` استفاده می‌شود).
 
 **فاز ۰–۴ کامل ✅ (۱۴۰۵/۰۵/۲۸)** — `packages/auth-core` تمام شد: دو گیتِ امنیتیِ فاز ۱ (حفره‌ی `exp` + OD-1)
 بسته، به‌علاوه‌ی **refreshِ چرخشی** (reuse → سوزاندنِ خانواده) و **OTP** (hash، P7، ضدِ enumeration) — همه پشتِ
@@ -332,8 +333,22 @@ minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بال
   نمی‌دهد. رفعِ پیشنهادی (نیازِ تاییدِ مالک، چون مخرب): `docker compose ... down -v && pnpm db:up && pnpm db:migrate`.
   دیتابیسِ اثبات (`hamboom_migrate_test`) دورریختنی است و می‌تواند drop شود.
 
-### قدمِ بعد — گام ۵٫۱-buildApp
+### گام ۵٫۱-buildApp — اسکلتِ اپ + پلاگین‌های پایه ✅ (۱۴۰۵/۰۵/۳۱)
 
-`buildApp()`ِ تست‌پذیر (بدونِ `listen`) + پلاگین‌ها: `db` (Kysely+pg، **کوئرسِ `int8`→number** P5)، `redis`، `s3`
-(از storage)، `auth-guard`، `rate-limit`، `request-id`، `error`، pino + **redactorِ P7** (لیستِ مرکزی در config، یکی با
-realtime). اولین تستِ api → برداشتنِ `--passWithNoTests`. `/healthz`/`/readyz`. سپس ۵٫۲ (adapterهای DBِ پورت‌ها).
+`buildApp()`ِ تست‌پذیر (بدونِ `listen`، همه‌ی وابستگی‌ها تزریق‌پذیر) با:
+- **پلاگینِ db** (`plugins/db.ts`): `createDbPool` + ★★ **کوئرسِ `int8`→number (P5/ADR-015)** با `pg.types.setTypeParser(20)`؛
+  ⚠️ **fail-loud روی سرریزِ `MAX_SAFE_INTEGER`** (نه گم‌شدنِ خاموشِ دقتِ ریالی). `app.db` decorate می‌شود.
+- **logger با redactِ P7** (`logger.ts`): pino هر مسیرِ حساس (authorization/cookie/token/code/…) را `[Redacted]` می‌کند.
+- **خطای یکسان** (`errors.ts`): `HttpError` + هندلر که شکلِ `apiError`ِ shared-types را می‌دهد؛ ناشناخته → `INTERNAL` بدونِ لو.
+- `/healthz` (liveness) و `/readyz` (db را ping می‌کند، ۵۰۳ اگر بیفتد) — تفکیکِ گام ۴٫۸ realtime.
+- **وابستگی‌ها:** fastify + pg + pino (`license:check` سبز، ۸۰۱ پکیج). `--passWithNoTests` برداشته شد (اولین تست‌های api).
+- **تست‌ها (۸ سبز):** integration با inject (healthz/readyz/۵۰۰-یکسان/HttpError/۴۰۴)، + ★ دو خط‌قرمزِ خودآزمون: **P5**
+  (سرریز → خطا) و **P7** (نشتِ عمدیِ توکن/کد → redact). هر دو با شکستنِ عمدی **قرمز** شدند (paths خالی / guard برداشته)، بعد rev.
+- ★★ **P5 روی Postgresِ واقعی هم اثبات شد** (نه فقط unit): `1500000::bigint` و `count(*)::bigint` هر دو `typeof number` برگشتند.
+- ⚠️ **موکول به گام‌های بعد:** پلاگین‌های `redis`/`s3`/`auth-guard`/`rate-limit`، و یکی‌شدنِ redactor با نسخه‌ی realtime (لیستِ مرکزی).
+
+### قدمِ بعد — گام ۵٫۲ (adapterهای DBِ پورت‌ها)
+
+`BoardAccessReader` (کوئریِ JOINدارِ واحد)، **`SessionStore`** (★★ `find+markUsed` اتمی با `SELECT … FOR UPDATE` +
+**سوییتِ conformanceِ مشترک** روی هر دو پیاده‌سازیِ حافظه‌ای و DB — قیدِ صریحِ مالک ۱۴۰۵/۰۵/۳۱)، `OtpStore`، و AssetTransport.
+روی `hamboom_migrate_test`ِ migrate‌شده تست می‌شوند (ریستِ dev لازم نیست تا وقتی مالک بگوید).
