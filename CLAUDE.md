@@ -53,8 +53,9 @@ pnpm format
 
 # زیرساخت لوکال (M2)
 pnpm db:up            # postgres + redis
-pnpm db:migrate       # migrationهای infra/sql/migrations — با گیت checksum
+pnpm db:migrate       # infra/sql/migrations سپس apps/api/migrations — یک رانر، گیت checksum (M3 گام ۵٫۱)
 pnpm db:smoke         # نوشتن/خواندن واقعی: bytea، ایندکس یکتا، snapshot
+pnpm db:fk-test       # ★ M3: رفتارِ واقعیِ CASCADE/SET NULL + اتمیک‌بودنِ تراکنش روی Postgresِ زنده (بعد از migrate)
 pnpm db:down
 
 # ★ سنجه‌های زیرساختِ واقعی (بیرون از pnpm verify — دیتابیسِ زنده لازم دارند)
