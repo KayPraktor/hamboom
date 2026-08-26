@@ -381,6 +381,14 @@ minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بال
 - **zod:** `schemas.ts` (otpRequest/otpVerify/createBoard) + `parseBody`؛ شماره‌ی بدفرمت → ۴۰۰ VALIDATION_ERROR (اثبات‌شده).
   ضدِ enumeration حفظ شد (فقط فرمت را می‌سنجد). config: `rateLimitEnvSchema` افزوده.
 
+### گام ۵٫۴ — پورتِ چهارم + /me + لیستِ بورد ✅ (۱۴۰۵/۰۶/۰۵)
+
+- ★★ **`GET /boards/:id/rt-token` (پورتِ چهارم):** نقشِ موثر → `signRtToken`. **اثباتِ اعتبار روی مسیرِ محصولی:**
+  توکنِ api با **همان `verifyRtToken`ِ مشترکِ** realtime (فاز ۷) **قبول شد** (role=owner) و برای **بوردِ دیگر رد شد**
+  (`wrong_board`). E2Eِ سرور-به-سرور = فاز ۷.
+- **`GET /me`** (پروفایل + تیم‌ها) و **`GET /boards`** (لیست، با گیتینگِ effectiveBoardRole). اثبات‌شده روی سرورِ زنده.
+- ⚠️ نکته: بندهای «بقیه‌ی endpointها»ی زیر که الان ساخته شدند (`/me`, rt-token) دیگر todo نیستند.
+
 ### قدمِ بعد
 
 - **بقیه‌ی endpointهای فاز ۵٫۳/۵٫۴** که برشِ عمودی نساخت: `/me`, `/teams`, `/folders`, بقیه‌ی CRUDِ بورد، `/boards/:id/access`,

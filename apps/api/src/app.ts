@@ -13,6 +13,7 @@ import { loggerOptions } from "./logger.ts";
 import { createDbPool } from "./plugins/db.ts";
 import { registerAuthRoutes } from "./routes/auth.ts";
 import { registerBoardRoutes } from "./routes/boards.ts";
+import { registerMeRoutes } from "./routes/me.ts";
 
 /**
  * `buildApp()` — نمونه‌ی Fastifyِ **تست‌پذیر** (بدونِ `listen`). ماژول M3، فاز ۵.
@@ -106,7 +107,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     },
   });
 
-  registerBoardRoutes(app, { pool, requireAuth: makeRequireAuth(secret) });
+  const requireAuth = makeRequireAuth(secret);
+  registerMeRoutes(app, { pool, requireAuth });
+  registerBoardRoutes(app, {
+    pool,
+    requireAuth,
+    secret,
+    rtTokenTtlSeconds: config.RT_TOKEN_TTL_SECONDS,
+  });
 
   return app;
 }

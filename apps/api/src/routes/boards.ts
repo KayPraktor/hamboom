@@ -1,4 +1,4 @@
-import { effectiveBoardRole } from "@hamboom/auth-core";
+import { effectiveBoardRole, signRtToken } from "@hamboom/auth-core";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
@@ -12,11 +12,35 @@ import { createBoardBody, parseBody } from "../schemas.ts";
 export interface BoardRouteDeps {
   pool: pg.Pool;
   requireAuth: preHandlerHookHandler;
+  /** رازِ HS256 و TTLِ rt-token — برای endpointِ پورتِ چهارم. */
+  secret: Uint8Array;
+  rtTokenTtlSeconds: number;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps): void {
+  // ── لیستِ بوردهای در دسترسِ کاربر ───────────────────────────────────
+  // ★ همان گیتینگِ effectiveBoardRole: مالک · عضوِ مستقیمِ بورد · عضوِ تیم فقط اگر access_mode='team'.
+  //   (جستجوی pg_trgm و صفحه‌بندیِ cursor: گامِ بعد.)
+  app.get("/boards", { preHandler: deps.requireAuth }, async (req) => {
+    const sub = requireSub(req);
+    const { rows } = await deps.pool.query(
+      `SELECT DISTINCT b.id, b.team_id, b.title, b.access_mode, b.element_count, b.last_activity_at
+         FROM boards b
+         LEFT JOIN team_members tm  ON tm.team_id  = b.team_id AND tm.user_id = $1
+         LEFT JOIN board_members bm ON bm.board_id = b.id      AND bm.user_id = $1
+        WHERE b.deleted_at IS NULL
+          AND (b.created_by = $1
+               OR bm.user_id IS NOT NULL
+               OR (b.access_mode = 'team' AND tm.user_id IS NOT NULL))
+        ORDER BY b.last_activity_at DESC
+        LIMIT 50`,
+      [sub],
+    );
+    return { boards: rows };
+  });
+
   // ── ساختِ بورد (editor+ در تیم) ─────────────────────────────────────
   app.post("/boards", { preHandler: deps.requireAuth }, async (req) => {
     const sub = requireSub(req);
@@ -90,5 +114,25 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     if (rows.length === 0) throw new HttpError(404, "BOARD_NOT_FOUND", "بورد یافت نشد.");
 
     return { ...rows[0], myRole: role };
+  });
+
+  // ── ★★ توکنِ اتصالِ realtime (پورتِ چهارم؛ [ADR-039](../../../ARCHITECTURE_DECISIONS.md#adr-039)) ──
+  // نقشِ **همین‌حالا** (effectiveBoardRole) داخلِ توکن؛ کلاینت برای هر تلاشِ اتصال یکی تازه می‌سازد.
+  // realtime همین را با auth-core می‌سنجد (فاز ۷) — همان verifyRtTokenِ مشترک.
+  app.get("/boards/:id/rt-token", { preHandler: deps.requireAuth }, async (req) => {
+    const sub = requireSub(req);
+    const { id } = req.params as { id: string };
+    if (!UUID_RE.test(id)) {
+      throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
+    }
+
+    const input = await createPgBoardAccessReader(deps.pool).read(sub, id);
+    if (input === null) throw new HttpError(404, "BOARD_NOT_FOUND", "بورد یافت نشد.");
+    const role = effectiveBoardRole(input);
+    if (role === null) throw new HttpError(403, "FORBIDDEN", "به این بورد دسترسی ندارید.");
+
+    // ★ signRtToken تنها امضاکننده است؛ `exp` را خودش از ثانیه می‌سازد (قفلِ exp، ADR-011).
+    const token = await signRtToken(deps.secret, { sub, boardId: id, role }, deps.rtTokenTtlSeconds);
+    return { token, expiresIn: deps.rtTokenTtlSeconds };
   });
 }
