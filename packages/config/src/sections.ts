@@ -161,3 +161,16 @@ export const apiServerEnvSchema = z.object({
   PORT: envInt(3002),
 });
 export type ApiServerEnv = z.infer<typeof apiServerEnvSchema>;
+
+/**
+ * ── محدودیتِ نرخِ `apps/api` ─────────────────────────────────────────────
+ *
+ * ⚠️ store پیش‌فرض **حافظه‌ای** است (تک‌نود). چندنودی → Redis (فاز بعد). سقفِ OTP سخت‌تر است چون
+ * درخواستِ OTP پیامک می‌فرستد (هزینه) و سطحِ حمله‌ی enumeration/spam دارد.
+ */
+export const rateLimitEnvSchema = z.object({
+  RATE_LIMIT_MAX: envInt(100),
+  RATE_LIMIT_WINDOW_SECONDS: envInt(60),
+  RATE_LIMIT_OTP_MAX: envInt(5),
+});
+export type RateLimitEnv = z.infer<typeof rateLimitEnvSchema>;

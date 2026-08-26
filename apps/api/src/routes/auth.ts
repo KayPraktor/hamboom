@@ -11,14 +11,17 @@ import {
   type SmsProvider,
 } from "@hamboom/auth-core";
 import type { ApiErrorCode } from "@hamboom/shared-types";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import type pg from "pg";
 
 import { createPgOtpStore } from "../adapters/otp-store.ts";
 import { createPgSessionStore } from "../adapters/session-store.ts";
 import { HttpError } from "../errors.ts";
 import { withTransaction } from "../plugins/db.ts";
+import { otpRequestBody, otpVerifyBody, parseBody } from "../schemas.ts";
 import { findOrCreateUserByPhone } from "../services/accounts.ts";
+
+const REFRESH_COOKIE = "refresh_token";
 
 export interface AuthRouteDeps {
   pool: pg.Pool;
@@ -27,9 +30,22 @@ export interface AuthRouteDeps {
   secret: Uint8Array;
   accessTtlSeconds: number;
   refreshTtlSeconds: number;
+  /** `local` → کوکیِ ناامن + بازتابِ refresh در بدنه (curlِ دستی)؛ وگرنه فقط کوکیِ Secure. */
+  appEnv: string;
+  otpRateLimit: { max: number; timeWindow: number };
 }
 
-/** خطای verifyOtpِ ناموفق → کدِ HTTP. */
+/** ★ refresh را در کوکیِ HttpOnly می‌گذارد — JS مرورگر نمی‌تواند بخواندش (ضدِ XSS-سرقتِ توکن). */
+function setRefreshCookie(reply: FastifyReply, deps: AuthRouteDeps, token: string): void {
+  reply.setCookie(REFRESH_COOKIE, token, {
+    httpOnly: true,
+    secure: deps.appEnv !== "local", // production: فقط https
+    sameSite: "lax",
+    path: "/auth",
+    maxAge: deps.refreshTtlSeconds,
+  });
+}
+
 function otpFailure(reason: Extract<OtpResult, { ok: false }>["reason"]): HttpError {
   const map: Record<typeof reason, { code: ApiErrorCode; msg: string }> = {
     no_challenge: { code: "OTP_INVALID", msg: "کدی برای این شماره درخواست نشده." },
@@ -42,31 +58,25 @@ function otpFailure(reason: Extract<OtpResult, { ok: false }>["reason"]): HttpEr
 }
 
 export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): void {
-  // ── درخواستِ OTP — ★ همیشه ۲۰۰ (ضدِ enumeration) ────────────────────
-  app.post("/auth/otp/request", async (req) => {
-    const body = req.body as { phone?: unknown } | undefined;
-    if (typeof body?.phone !== "string" || body.phone.length < 5) {
-      throw new HttpError(400, "VALIDATION_ERROR", "شماره‌ی موبایل لازم است.");
-    }
-    // requestOtp خودش همیشه موفق است؛ نبودِ کاربر لو نمی‌رود. کد hash می‌شود و خام فقط به sms می‌رود.
-    await requestOtp(createPgOtpStore(deps.pool), deps.sms, body.phone, deps.otpConfig);
-    return { ok: true };
-  });
+  // ── درخواستِ OTP — ★ همیشه ۲۰۰ (ضدِ enumeration)، با محدودیتِ نرخِ سخت‌تر ──
+  app.post(
+    "/auth/otp/request",
+    { config: { rateLimit: { max: deps.otpRateLimit.max, timeWindow: deps.otpRateLimit.timeWindow } } },
+    async (req) => {
+      const { phone } = parseBody(otpRequestBody, req.body);
+      await requestOtp(createPgOtpStore(deps.pool), deps.sms, phone, deps.otpConfig);
+      return { ok: true };
+    },
+  );
 
   // ── verify → کاربر/نشست/توکن ────────────────────────────────────────
-  app.post("/auth/otp/verify", async (req) => {
-    const body = req.body as { phone?: unknown; code?: unknown } | undefined;
-    if (typeof body?.phone !== "string" || typeof body?.code !== "string") {
-      throw new HttpError(400, "VALIDATION_ERROR", "شماره و کد لازم است.");
-    }
-    const { phone, code } = body;
+  app.post("/auth/otp/verify", async (req, reply) => {
+    const { phone, code } = parseBody(otpVerifyBody, req.body);
 
-    // ⚠️ verify **بیرونِ** تراکنشِ ساختِ کاربر: incrementAttempts روی خطا باید **بماند**، وگرنه
-    //    قفلِ max-attempts هرگز فعال نمی‌شود. موفقیت → چالش consume می‌شود (روی همان استخر).
+    // ⚠️ verify بیرونِ tx تا incrementAttempts روی خطا بماند (قفلِ max-attempts).
     const result = await verifyOtp(createPgOtpStore(deps.pool), phone, code, deps.otpConfig);
     if (!result.ok) throw otpFailure(result.reason);
 
-    // موفق → کاربر/تیم/نشست اتمیک.
     const created = await withTransaction(deps.pool, async (tx) => {
       const account = await findOrCreateUserByPhone(tx, phone);
       const refreshToken = await startSession(createPgSessionStore(tx), account.userId, {
@@ -85,30 +95,28 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
       [created.account.userId],
     );
 
-    // ⚠️ dev: refreshToken در بدنه برای curlِ دستی؛ در production کوکیِ HttpOnly (سخت‌سازیِ ۵٫۳).
+    setRefreshCookie(reply, deps, created.refreshToken);
     return {
       accessToken,
-      refreshToken: created.refreshToken,
+      // ★ فقط در dev بدنه هم refresh دارد (curl)؛ در production کوکیِ HttpOnly تنها راه است.
+      refreshToken: deps.appEnv === "local" ? created.refreshToken : undefined,
       isNewUser: created.account.isNewUser,
       personalTeamId: created.account.personalTeamId,
       user: rows[0] ?? null,
     };
   });
 
-  // ── refresh چرخشی (اتمی + reuse detection) ──────────────────────────
+  // ── refresh چرخشی (اتمی + reuse detection) — از کوکی، یا بدنه در dev ──
   //
-  // ⚠️ **چرا `withTransaction` اینجا کافی نیست:** `rotateSession` هنگام تشخیصِ reuse **اول
-  //    `burnFamily` را صدا می‌زند و بعد throw می‌کند**. اگر throw به rollbackِ ساده برسد،
-  //    سوزاندنِ خانواده هم برمی‌گردد و امنیت می‌شکند (روی Postgresِ واقعی در تستِ دستی دیده شد؛
-  //    memory store چون تراکنشی نیست این را نمی‌دید). پس تراکنش را **دستی** مدیریت می‌کنیم:
-  //    reuse → **COMMIT** (سوزاندن بماند) سپس خطا؛ invalid/expired → ROLLBACK (چیزی ننوشته‌ایم).
-  //    find+markUsed+insert همچنان در یک تراکنش‌اند، پس `SELECT … FOR UPDATE` واقعاً سریالی می‌کند.
-  app.post("/auth/refresh", async (req) => {
-    const body = req.body as { refreshToken?: unknown } | undefined;
-    if (typeof body?.refreshToken !== "string") {
-      throw new HttpError(400, "VALIDATION_ERROR", "refreshToken لازم است.");
+  // ⚠️ تراکنش **دستی** (نه withTransaction): در reuse باید `burnFamily` را **commit** کنیم بعد خطا
+  //    (اگر throw به rollback برسد، سوزاندن برمی‌گردد — باگی که تستِ دستیِ مالک روی PG گرفت).
+  app.post("/auth/refresh", async (req, reply) => {
+    const cookieToken = req.cookies[REFRESH_COOKIE];
+    const bodyToken = (req.body as { refreshToken?: unknown } | undefined)?.refreshToken;
+    const raw = cookieToken ?? (typeof bodyToken === "string" ? bodyToken : undefined);
+    if (raw === undefined) {
+      throw new HttpError(400, "VALIDATION_ERROR", "refresh token لازم است (کوکی یا بدنه).");
     }
-    const raw = body.refreshToken;
 
     const client = await deps.pool.connect();
     try {
@@ -121,7 +129,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
       } catch (error) {
         if (error instanceof RefreshError) {
           if (error.code === "reuse") {
-            await client.query("COMMIT"); // ★ سوزاندنِ خانواده باید بماند
+            await client.query("COMMIT"); // سوزاندنِ خانواده باید بماند
+            reply.clearCookie(REFRESH_COOKIE, { path: "/auth" });
             throw new HttpError(401, "TOKEN_REUSED", "استفاده‌ی مجدد شناسایی شد؛ کلِ نشست باطل شد.");
           }
           await client.query("ROLLBACK");
@@ -132,7 +141,11 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
       }
       await client.query("COMMIT");
       const accessToken = await signAccessToken(deps.secret, rotated.sub, deps.accessTtlSeconds);
-      return { accessToken, refreshToken: rotated.refreshToken };
+      setRefreshCookie(reply, deps, rotated.refreshToken);
+      return {
+        accessToken,
+        refreshToken: deps.appEnv === "local" ? rotated.refreshToken : undefined,
+      };
     } finally {
       client.release();
     }

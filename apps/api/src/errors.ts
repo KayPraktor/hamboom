@@ -49,6 +49,19 @@ export function registerErrorHandler(app: FastifyInstance): void {
       return;
     }
 
+    // ★ خطای محدودیتِ نرخِ `@fastify/rate-limit` از همین‌جا رد می‌شود (statusCode=429)؛ به شکلِ
+    //    یکسانِ apiError نگاشتش می‌کنیم، وگرنه به ۵۰۰ INTERNALِ پایین می‌افتد.
+    if (err.statusCode === 429) {
+      reply.code(429).send({
+        error: {
+          code: "RATE_LIMITED",
+          message: "درخواستِ بیش از حد؛ کمی بعد دوباره تلاش کن.",
+          requestId,
+        },
+      });
+      return;
+    }
+
     // خطای اعتبارسنجیِ fastify/zod → ۴۰۰ بدونِ لو دادنِ ساختار.
     if (err.validation) {
       reply.code(400).send({

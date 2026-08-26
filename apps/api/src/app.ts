@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import fastifyCookie from "@fastify/cookie";
+import fastifyRateLimit from "@fastify/rate-limit";
 import { createMockSmsProvider, maskPhone } from "@hamboom/auth-core";
 import Fastify, { type FastifyInstance } from "fastify";
 import type pg from "pg";
@@ -41,6 +43,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.decorateRequest("authUser", null);
 
   registerErrorHandler(app);
+
+  // کوکی (برای refreshِ HttpOnly) + محدودیتِ نرخ. قبل از routeها تا سراسری اعمال شوند.
+  await app.register(fastifyCookie);
+  // ★ خطای ۴۲۹ از راهِ setErrorHandler به شکلِ یکسانِ apiError نگاشت می‌شود (errors.ts).
+  await app.register(fastifyRateLimit, {
+    max: config.RATE_LIMIT_MAX,
+    timeWindow: config.RATE_LIMIT_WINDOW_SECONDS * 1000,
+  });
 
   const ownsPool = options.db === undefined;
   const pool =
@@ -89,6 +99,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     secret,
     accessTtlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
     refreshTtlSeconds: config.REFRESH_TOKEN_TTL_SECONDS,
+    appEnv: config.APP_ENV,
+    otpRateLimit: {
+      max: config.RATE_LIMIT_OTP_MAX,
+      timeWindow: config.RATE_LIMIT_WINDOW_SECONDS * 1000,
+    },
   });
 
   registerBoardRoutes(app, { pool, requireAuth: makeRequireAuth(secret) });

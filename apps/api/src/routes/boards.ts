@@ -7,6 +7,7 @@ import { createPgBoardAccessReader } from "../adapters/board-access-reader.ts";
 import { requireSub } from "../auth-guard.ts";
 import { HttpError } from "../errors.ts";
 import { withTransaction } from "../plugins/db.ts";
+import { createBoardBody, parseBody } from "../schemas.ts";
 
 export interface BoardRouteDeps {
   pool: pg.Pool;
@@ -19,20 +20,18 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
   // ── ساختِ بورد (editor+ در تیم) ─────────────────────────────────────
   app.post("/boards", { preHandler: deps.requireAuth }, async (req) => {
     const sub = requireSub(req);
-    const body = req.body as { title?: unknown; teamId?: unknown } | undefined;
-    const title =
-      typeof body?.title === "string" && body.title.trim().length > 0 ? body.title.trim() : null;
+    const { title, teamId: requestedTeamId } = parseBody(createBoardBody, req.body);
 
     const board = await withTransaction(deps.pool, async (tx) => {
       // تیم: یا داده‌شده (با بررسیِ عضویت) یا فضای شخصیِ کاربر.
       let teamId: string;
-      if (typeof body?.teamId === "string") {
+      if (requestedTeamId !== undefined) {
         const m = await tx.query("SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2", [
-          body.teamId,
+          requestedTeamId,
           sub,
         ]);
         if (m.rows.length === 0) throw new HttpError(403, "FORBIDDEN", "عضوِ این تیم نیستید.");
-        teamId = body.teamId;
+        teamId = requestedTeamId;
       } else {
         const t = await tx.query<{ id: string }>(
           "SELECT id FROM teams WHERE owner_user_id = $1 AND is_personal = true AND deleted_at IS NULL LIMIT 1",
@@ -44,7 +43,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
 
       // ★ ساختِ بورد تک‌ردیفی است: `created_by` مالک را در همان INSERT تعیین می‌کند → بوردِ بی‌مالک ناممکن.
       const boardId = randomUUID();
-      if (title !== null) {
+      if (title !== undefined) {
         await tx.query(
           "INSERT INTO boards (id, team_id, created_by, title) VALUES ($1, $2, $3, $4)",
           [boardId, teamId, sub, title],

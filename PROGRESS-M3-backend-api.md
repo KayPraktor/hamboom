@@ -367,8 +367,23 @@ minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بال
 - **curlِ اثبات‌شده:** otp/request→`{ok:true}`؛ کد از لاگ؛ verify→`{accessToken,…,isNewUser:true}`؛ POST /boards→بورد؛
   GET→`myRole:"owner"`؛ بی‌توکن→`401`. عنوانِ فارسی درست ذخیره شد (طول ۱۵). `pnpm verify` سبز (۸ گیت، ۸۰۱ پکیج).
 
-### قدمِ بعد — سخت‌سازیِ ۵٫۲–۵٫۴
+### گام ۵٫۲ — سخت‌سازی ✅ (۱۴۰۵/۰۶/۰۳)
 
-★★ **سوییتِ conformanceِ مشترکِ `SessionStore`** (memory + PG-in-tx) + **تستِ اتمیکِ واقعی** (دو rotateِ همزمان روی
-یک توکن → یکی reuse) — قیدِ صریحِ مالک، هنوز نوشته نشده. + کوکیِ HttpOnlyِ refresh، rate-limit، اعتبارسنجیِ zod،
-یکی‌شدنِ redactor. و دو موردِ باز: بلوکِ دفاعیِ `0002`، ریستِ dev. (assets `AssetValidationError` هم parameter property دارد — لمسِ آینده.)
+- ★★ **conformanceِ مشترک + اتمیک‌بودن** (کامیتِ جدا): سوییتِ مشترکِ `SessionStore`/`OtpStore` روی memory (verify) و
+  PG (`db:store-test`)؛ + **تستِ قطعیِ FOR UPDATE** (findByHashِ دومِ همزمان باید بلاک شود) که با شکستنِ عمدیِ
+  `FOR UPDATE` **قطعاً قرمز** می‌شود + تستِ end-to-endِ ۱۰-چرخشِ همزمان. (خانواده‌ی باگِ seq.)
+- ★ **رفعِ باگِ reuse** (کامیتِ `5aa59fb`، از تستِ دستیِ مالک): در reuse باید `burnFamily` را **commit** کرد نه rollback.
+- **کوکیِ HttpOnly برای refresh:** verify/refresh کوکیِ `refresh_token` (HttpOnly، path=/auth، Secure در production) ست
+  می‌کنند؛ `/auth/refresh` از کوکی می‌خواند (یا بدنه در dev). روی سرورِ زنده اثبات شد (چرخش فقط با کوکی).
+- **rate-limit:** `@fastify/rate-limit`؛ سقفِ سراسری ۱۰۰ + سقفِ سخت‌ترِ ۵ روی `/auth/otp/request`. ⚠️ **باگی که زنده
+  گرفتم:** خطای ۴۲۹ از `setErrorHandler` رد می‌شد و به ۵۰۰ می‌افتاد؛ شاخه‌ی `statusCode===429 → RATE_LIMITED` اضافه شد.
+  روی سرورِ زنده اثبات شد (req ۶+ → ۴۲۹). store حافظه‌ای (تک‌نود)؛ چندنودی → Redis (فاز بعد).
+- **zod:** `schemas.ts` (otpRequest/otpVerify/createBoard) + `parseBody`؛ شماره‌ی بدفرمت → ۴۰۰ VALIDATION_ERROR (اثبات‌شده).
+  ضدِ enumeration حفظ شد (فقط فرمت را می‌سنجد). config: `rateLimitEnvSchema` افزوده.
+
+### قدمِ بعد
+
+- **بقیه‌ی endpointهای فاز ۵٫۳/۵٫۴** که برشِ عمودی نساخت: `/me`, `/teams`, `/folders`, بقیه‌ی CRUDِ بورد، `/boards/:id/access`,
+  ★ `GET /boards/:id/rt-token` (پورتِ ۴)، `GET /boards/:id/snapshot`، endpointهای asset. + OpenAPI (۵٫۵).
+- **موارد باز (غیربلوکه):** یکی‌شدنِ redactor با realtime؛ بلوکِ دفاعیِ `0002`؛ ریستِ dev؛ `AssetValidationError`ِ
+  parameter property (لمسِ آینده)؛ rate-limitِ Redis-backed برای چندنودی.
