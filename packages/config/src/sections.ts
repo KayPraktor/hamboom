@@ -149,3 +149,15 @@ export const otpEnvSchema = z.object({
   OTP_DEV_FIXED_CODE: z.string().regex(/^\d{6}$/, "باید ۶ رقم باشد").optional(),
 });
 export type OtpEnv = z.infer<typeof otpEnvSchema>;
+
+/**
+ * ── پورتِ سرورِ `apps/api` ───────────────────────────────────────────────
+ *
+ * ★ نامش عمداً `PORT` است (نه `API_PORT`): ابزارهای میزبانی/preview پورتِ آزاد را با متغیرِ
+ * استانداردِ `PORT` تزریق می‌کنند. پیش‌فرض ۳۰۰۲ (کنارِ realtimeِ ۳۰۰۱) برای اجرای دستی.
+ * چون فقط `config` حق خواندنِ `process.env` را دارد، server.ts پورت را از این‌جا می‌گیرد نه مستقیم.
+ */
+export const apiServerEnvSchema = z.object({
+  PORT: envInt(3002),
+});
+export type ApiServerEnv = z.infer<typeof apiServerEnvSchema>;

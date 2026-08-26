@@ -20,6 +20,7 @@ const TEST_CONFIG: ApiConfig = {
   OTP_MAX_ATTEMPTS: 5,
   OTP_COOLDOWN_SECONDS: 60,
   OTP_DEV_FIXED_CODE: undefined,
+  PORT: 3002,
 };
 
 /** استخرِ دروغینِ db — فقط `query`/`end`. تست بدونِ Postgres. */

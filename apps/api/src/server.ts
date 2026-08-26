@@ -1,19 +1,17 @@
 import { buildApp } from "./app.ts";
+import { loadApiConfig } from "./config.ts";
 
 /**
- * نقطه‌ی ورودِ سرورِ api (dev). ماژول M3، گام ۵٫۱.
+ * نقطه‌ی ورودِ سرورِ api (dev). ماژول M3، فاز ۵.
  *
- * ⚠️ **فعلاً فقط `/healthz` و `/readyz`.** endpointهای auth/user/team/board
- * (فازهای ۵٫۲–۵٫۴) هنوز نیامده‌اند.
- *
- * پورت فعلاً ثابت است (۳۰۰۲، کنارِ realtimeِ ۳۰۰۱)؛ `API_PORT`ِ config در گامِ بعد.
+ * ★ پورت از config می‌آید (`PORT`، پیش‌فرض ۳۰۰۲) — نه hard-code. ابزارِ preview/میزبانی پورتِ آزاد
+ * را با `PORT` تزریق می‌کند و سرور همان را می‌گیرد، پس با اجرای دستیِ همزمان تداخل نمی‌کند.
  */
-const PORT = 3002;
-
-const app = await buildApp();
+const config = loadApiConfig();
+const app = await buildApp({ config });
 
 try {
-  await app.listen({ port: PORT, host: "0.0.0.0" });
+  await app.listen({ port: config.PORT, host: "0.0.0.0" });
 } catch (err) {
   app.log.error(err);
   process.exit(1);

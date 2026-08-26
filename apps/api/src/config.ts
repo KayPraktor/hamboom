@@ -1,4 +1,5 @@
 import {
+  apiServerEnvSchema,
   appEnvSchema,
   authEnvSchema,
   databaseEnvSchema,
@@ -12,7 +13,11 @@ import {
  *
  * ★ تایپ از `loadEnv` استخراج می‌شود (نه import مستقیمِ `zod`).
  */
-const apiEnvSchema = appEnvSchema.and(databaseEnvSchema).and(authEnvSchema).and(otpEnvSchema);
+const apiEnvSchema = appEnvSchema
+  .and(databaseEnvSchema)
+  .and(authEnvSchema)
+  .and(otpEnvSchema)
+  .and(apiServerEnvSchema);
 
 export function loadApiConfig() {
   return loadEnv(apiEnvSchema);

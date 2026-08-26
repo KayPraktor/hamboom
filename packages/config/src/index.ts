@@ -18,6 +18,7 @@ export { ConfigError, loadEnv } from "./load.ts";
 export type { EnvSource } from "./load.ts";
 
 export {
+  apiServerEnvSchema,
   appEnvSchema,
   authEnvSchema,
   databaseEnvSchema,
@@ -28,6 +29,7 @@ export {
   s3EnvSchema,
 } from "./sections.ts";
 export type {
+  ApiServerEnv,
   AppEnv,
   AuthEnv,
   DatabaseEnv,
