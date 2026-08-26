@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@hamboom/auth-core':
+        specifier: workspace:*
+        version: link:packages/auth-core
       '@hamboom/canvas-sync':
         specifier: workspace:*
         version: link:packages/canvas-sync

@@ -31,6 +31,7 @@
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
     "db:smoke": "node --env-file-if-exists=.env scripts/db-smoke.ts",
     "db:fk-test": "node --env-file-if-exists=.env scripts/db-fk-test.ts",
+    "db:store-test": "node --env-file-if-exists=.env scripts/db-store-conformance.ts",
     "storage:smoke": "node --env-file-if-exists=.env packages/storage/smoke/round-trip.ts",
     "assets:smoke": "node --env-file-if-exists=.env packages/assets/smoke/round-trip.ts",
     "rt:durability": "node --env-file-if-exists=.env scripts/rt-durability.ts",
@@ -44,6 +45,7 @@
     "rt:dev": "node scripts/rt-dev-server.ts"
   },
   "devDependencies": {
+    "@hamboom/auth-core": "workspace:*",
     "@hamboom/canvas-sync": "workspace:*",
     "@hamboom/config": "workspace:*",
     "@hamboom/eslint-config": "workspace:*",
