@@ -395,3 +395,20 @@ minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بال
   ★ `GET /boards/:id/rt-token` (پورتِ ۴)، `GET /boards/:id/snapshot`، endpointهای asset. + OpenAPI (۵٫۵).
 - **موارد باز (غیربلوکه):** یکی‌شدنِ redactor با realtime؛ بلوکِ دفاعیِ `0002`؛ ریستِ dev؛ `AssetValidationError`ِ
   parameter property (لمسِ آینده)؛ rate-limitِ Redis-backed برای چندنودی.
+
+### گام ۵٫۳ — کاربر + تیم + فولدر ✅ (۱۴۰۵/۰۶/۰۶)
+
+- **`PATCH /me`** (displayName/locale، با COALESCE).
+- **تیم:** `POST /teams` (اتمیک: team+owner+usage_counters؛ ۴۰۹ روی slugِ تکراری)، `GET`/`PATCH /teams/:id`،
+  `GET /teams/:id/members`، `PATCH`/`DELETE /teams/:id/members/:userId` (مالک محافظت‌شده)، `POST /teams/:id/invites`
+  (توکنِ hash، dev: در بدنه/لاگ)، `POST /invites/:token/accept` (اتمیک، `FOR UPDATE`).
+- **فولدر:** `GET`/`POST /teams/:id/folders`، `PATCH`/`DELETE /folders/:id`.
+- **دسترسی:** سرویسِ `requireTeamRole` (رتبه‌ی نقش؛ ★ غیرعضو → ۴۰۴ نه ۴۰۳، تا وجودِ تیم لو نرود) + گاردِ `assertUuid`
+  روی پارامترهای مسیر (وگرنه کوئریِ uuid روی PG می‌ترکد). همه با zod.
+- **اثباتِ زنده (دو کاربر):** A تیم/فولدر/دعوت ساخت → B پذیرفت و عضو شد → اعضا (owner/member) → نقشِ B→admin →
+  PATCH /me. `pnpm verify` سبز.
+
+### قدمِ بعدِ واقعی
+
+بقیه‌ی CRUDِ بورد (PATCH/DELETE/restore/duplicate/favorite/جستجوی pg_trgm)، `/boards/:id/access` (اشتراک+linkToken،
+که DP-4 را زنده می‌کند)، `GET /boards/:id/snapshot` (از storage)، endpointهای asset، و OpenAPI (۵٫۵).

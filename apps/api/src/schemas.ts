@@ -26,6 +26,56 @@ export const createBoardBody = zod.object({
   teamId: zod.string().uuid("teamId باید UUID باشد").optional(),
 });
 
+export const patchMeBody = zod.object({
+  displayName: zod.string().trim().min(1).max(80).optional(),
+  locale: zod.enum(["fa", "en"]).optional(),
+});
+
+/** نقش‌های قابلِ‌تخصیص در تیم — نه `owner` (سازنده است، انتقالِ مالکیت جداست). */
+const assignableTeamRole = zod.enum(["admin", "member", "guest"]);
+
+export const createTeamBody = zod.object({
+  name: zod.string().trim().min(1).max(120),
+  slug: zod
+    .string()
+    .regex(/^[a-z0-9-]{2,50}$/, "slug فقط حروفِ کوچکِ لاتین/عدد/خط‌تیره، ۲ تا ۵۰ نویسه")
+    .optional(),
+});
+
+export const patchTeamBody = zod.object({
+  name: zod.string().trim().min(1).max(120).optional(),
+});
+
+export const patchMemberRoleBody = zod.object({ role: assignableTeamRole });
+
+export const createInviteBody = zod
+  .object({
+    phone: iranMobile.optional(),
+    email: zod.string().email("ایمیل نامعتبر").optional(),
+    role: assignableTeamRole,
+  })
+  .refine((d) => d.phone !== undefined || d.email !== undefined, {
+    message: "شماره یا ایمیل لازم است",
+  });
+
+export const createFolderBody = zod.object({
+  name: zod.string().trim().min(1).max(120),
+  parentId: zod.string().uuid().optional(),
+});
+
+export const patchFolderBody = zod.object({
+  name: zod.string().trim().min(1).max(120).optional(),
+});
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** پارامترِ مسیر را UUID می‌سنجد یا `VALIDATION_ERROR` — وگرنه کوئریِ `uuid` روی PG می‌ترکد (۵۰۰). */
+export function assertUuid(value: string, label = "شناسه"): void {
+  if (!UUID_RE.test(value)) {
+    throw new HttpError(400, "VALIDATION_ERROR", `${label} باید UUID باشد.`);
+  }
+}
+
 /** بدنه را اعتبارسنجی می‌کند یا `VALIDATION_ERROR` می‌اندازد (اولین پیامِ خطا). */
 export function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body ?? {});

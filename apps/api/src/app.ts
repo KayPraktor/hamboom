@@ -13,7 +13,9 @@ import { loggerOptions } from "./logger.ts";
 import { createDbPool } from "./plugins/db.ts";
 import { registerAuthRoutes } from "./routes/auth.ts";
 import { registerBoardRoutes } from "./routes/boards.ts";
+import { registerFolderRoutes } from "./routes/folders.ts";
 import { registerMeRoutes } from "./routes/me.ts";
+import { registerTeamRoutes } from "./routes/teams.ts";
 
 /**
  * `buildApp()` — نمونه‌ی Fastifyِ **تست‌پذیر** (بدونِ `listen`). ماژول M3، فاز ۵.
@@ -109,6 +111,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   const requireAuth = makeRequireAuth(secret);
   registerMeRoutes(app, { pool, requireAuth });
+  registerTeamRoutes(app, {
+    pool,
+    requireAuth,
+    appEnv: config.APP_ENV,
+    inviteTtlSeconds: 7 * 24 * 60 * 60, // ۷ روز
+  });
+  registerFolderRoutes(app, { pool, requireAuth });
   registerBoardRoutes(app, {
     pool,
     requireAuth,
