@@ -7,6 +7,7 @@ import {
   verifyOtp,
   type OtpConfig,
   type OtpResult,
+  type RotateResult,
   type SmsProvider,
 } from "@hamboom/auth-core";
 import type { ApiErrorCode } from "@hamboom/shared-types";
@@ -95,6 +96,13 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
   });
 
   // ── refresh چرخشی (اتمی + reuse detection) ──────────────────────────
+  //
+  // ⚠️ **چرا `withTransaction` اینجا کافی نیست:** `rotateSession` هنگام تشخیصِ reuse **اول
+  //    `burnFamily` را صدا می‌زند و بعد throw می‌کند**. اگر throw به rollbackِ ساده برسد،
+  //    سوزاندنِ خانواده هم برمی‌گردد و امنیت می‌شکند (روی Postgresِ واقعی در تستِ دستی دیده شد؛
+  //    memory store چون تراکنشی نیست این را نمی‌دید). پس تراکنش را **دستی** مدیریت می‌کنیم:
+  //    reuse → **COMMIT** (سوزاندن بماند) سپس خطا؛ invalid/expired → ROLLBACK (چیزی ننوشته‌ایم).
+  //    find+markUsed+insert همچنان در یک تراکنش‌اند، پس `SELECT … FOR UPDATE` واقعاً سریالی می‌کند.
   app.post("/auth/refresh", async (req) => {
     const body = req.body as { refreshToken?: unknown } | undefined;
     if (typeof body?.refreshToken !== "string") {
@@ -102,23 +110,31 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
     }
     const raw = body.refreshToken;
 
-    let rotated;
+    const client = await deps.pool.connect();
     try {
-      // ★★ کلِ find+markUsed+insert در یک تراکنش → SELECT FOR UPDATE واقعاً قفل می‌کند.
-      rotated = await withTransaction(deps.pool, async (tx) =>
-        rotateSession(createPgSessionStore(tx), raw, { ttlSeconds: deps.refreshTtlSeconds }),
-      );
-    } catch (error) {
-      if (error instanceof RefreshError) {
-        if (error.code === "reuse") {
-          throw new HttpError(401, "TOKEN_REUSED", "استفاده‌ی مجدد شناسایی شد؛ کلِ نشست باطل شد.");
+      await client.query("BEGIN");
+      let rotated: RotateResult;
+      try {
+        rotated = await rotateSession(createPgSessionStore(client), raw, {
+          ttlSeconds: deps.refreshTtlSeconds,
+        });
+      } catch (error) {
+        if (error instanceof RefreshError) {
+          if (error.code === "reuse") {
+            await client.query("COMMIT"); // ★ سوزاندنِ خانواده باید بماند
+            throw new HttpError(401, "TOKEN_REUSED", "استفاده‌ی مجدد شناسایی شد؛ کلِ نشست باطل شد.");
+          }
+          await client.query("ROLLBACK");
+          throw new HttpError(401, "UNAUTHORIZED", "refresh نامعتبر یا منقضی است.");
         }
-        throw new HttpError(401, "UNAUTHORIZED", "refresh نامعتبر یا منقضی است.");
+        await client.query("ROLLBACK");
+        throw error;
       }
-      throw error;
+      await client.query("COMMIT");
+      const accessToken = await signAccessToken(deps.secret, rotated.sub, deps.accessTtlSeconds);
+      return { accessToken, refreshToken: rotated.refreshToken };
+    } finally {
+      client.release();
     }
-
-    const accessToken = await signAccessToken(deps.secret, rotated.sub, deps.accessTtlSeconds);
-    return { accessToken, refreshToken: rotated.refreshToken };
   });
 }
