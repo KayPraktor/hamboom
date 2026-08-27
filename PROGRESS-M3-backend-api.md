@@ -1,11 +1,30 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
-تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۵/۳۱ (2026-08-22)
-**فاز ۵ آغاز شد ✅ (۱۴۰۵/۰۵/۳۱)** — گام ۵٫۰ (اسکلتِ `apps/api` + گیتِ خودآزمونِ `apiBoundaries`) و گام ۵٫۱-migration
-(کلِ schemaی PLAN §۶ + دو FKِ ارثی) و گام ۵٫۱-buildApp (اسکلتِ `buildApp` + پلاگین‌های پایه؛ P5 int8 و P7 redact خودآزمون)
-کامل و روی Postgresِ واقعی اثبات‌شده. **و vertical sliceِ ۵٫۲–۵٫۴ (جریانِ OTP→بورد)** ساخته و **با curl روی سرورِ زنده
-اثبات شد** (پورت ۳۰۰۲). جزئیات در §فاز ۵ پایین. **قدمِ بعد: سخت‌سازیِ ۵٫۲–۵٫۴** (conformanceِ SessionStore + تستِ اتمیک + کوکی/rate-limit).
-⚠️ **دیتابیسِ dev نیمه-migrate است** (پایین؛ ولی جریانِ OTP→بورد به FKهای `0002` نیاز ندارد).
+تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۶/۰۷ (2026-08-27)
+
+## ★ وضعیتِ فاز ۵ (`apps/api`) — سطحِ REST تقریباً کامل
+
+**تمام‌شده (همه با curl روی سرورِ زنده — پورت ۳۰۰۲ — اثبات‌شده، `pnpm verify` سبز، ۱۶ کامیت):**
+
+| زیرگام | چه ساخته شد |
+|---|---|
+| **۵٫۰** | اسکلتِ `apps/api` + گیتِ خودآزمونِ `apiBoundaries` (P4، سه‌لایه، شکستنِ عمدی) |
+| **۵٫۱ schema** | رانرِ دو-پوشه‌ای (DP-1) + کلِ schemaی PLAN §۶ + دو FKِ ارثی؛ ★ `db:fk-test` (CASCADE/SET NULL/اتمیک، واقعی) |
+| **۵٫۱ buildApp** | `buildApp()`ِ تزریق‌پذیر + پلاگینِ db (**int8→number/P5**، fail-loud) + logger (**redact/P7**) + خطای یکسان + `/healthz`/`/readyz` |
+| **۵٫۲ auth** | adapterهای DB (`OtpStore`/`SessionStore`/`BoardAccessReader`/AssetTransport) · endpointهای otp/verify/refresh · ★★ **atomic rotate** (`FOR UPDATE` + `db:store-test`ِ خودآزمون + conformanceِ PG↔memory) · رفعِ **باگِ reuse** (commit-on-reuse، از تستِ دستی) · کوکیِ HttpOnly · rate-limit · zod |
+| **۵٫۳** | `PATCH /me` · تیم (CRUD/members/invites) · فولدر (CRUD) · `requireTeamRole` |
+| **۵٫۴** | CRUDِ کاملِ بورد (patch/delete/restore/duplicate/favorite/جستجوی pg_trgm) · ★★ **`GET /boards/:id/rt-token` (پورتِ چهارم، با `verifyRtToken` اثبات‌شده)** · **access/share + DP-4 گرنتِ ماندگار** (ابطالِ خودکار اثبات‌شده) · عضوِ مستقیمِ بورد |
+
+**⛔ باقی‌مانده‌ی فاز ۵:** `GET /boards/:id/snapshot` (octet-stream از storage) و **endpointهای asset** (presign/commit/GET)
+— هر دو به **storage/MinIO** نیاز دارند و ⚠️ **MinIO روی این ماشین بالا نمی‌آید** (تداخلِ پورت ۹۰۰۰). سپس **OpenAPI (گام ۵٫۵)**.
+
+**✅ دیتابیسِ dev کامل-migrate شد** (`0001`+`0002`+`0003`): دادهٔ یتیمِ متریکِ M2 پاک و رانر بقیه را اعمال کرد؛ «ریستِ dev» بسته شد.
+
+**بعد از فاز ۵:** فاز ۶ (`packages/sdk`) · فاز ۷ (تزریقِ auth-core/storage به `apps/realtime` + اجرای دوباره‌ی ۷ سنجه) ·
+فاز ۸ (`apps/web`) · فاز ۹ (نوار ابزار) · فاز ۱۱ (ظرفیت/تحویل).
+
+⚠️ **موارد باز (غیربلوکه):** یکی‌شدنِ redactor با realtime · بلوکِ دفاعیِ `0002` · `AssetValidationError`ِ parameter
+property · rate-limitِ Redis-backed برای چندنودی · MinIO (برای snapshot/asset).
 
 **فاز ۰–۴ کامل ✅ (۱۴۰۵/۰۵/۲۸)** — `packages/auth-core` تمام شد: دو گیتِ امنیتیِ فاز ۱ (حفره‌ی `exp` + OD-1)
 بسته، به‌علاوه‌ی **refreshِ چرخشی** (reuse → سوزاندنِ خانواده) و **OTP** (hash، P7، ضدِ enumeration) — همه پشتِ
