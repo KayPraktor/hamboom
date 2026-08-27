@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import fastifyCookie from "@fastify/cookie";
 import fastifyRateLimit from "@fastify/rate-limit";
+import { createAssetService } from "@hamboom/assets";
 import { createMockSmsProvider, maskPhone } from "@hamboom/auth-core";
 import type { ObjectStore } from "@hamboom/storage";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -12,7 +13,8 @@ import { loadApiConfig, secretBytes, type ApiConfig } from "./config.ts";
 import { registerErrorHandler } from "./errors.ts";
 import { loggerOptions } from "./logger.ts";
 import { createDbPool } from "./plugins/db.ts";
-import { createSnapshotObjectStore } from "./plugins/s3.ts";
+import { createAssetObjectStore, createSnapshotObjectStore } from "./plugins/s3.ts";
+import { registerAssetRoutes } from "./routes/assets.ts";
 import { registerAuthRoutes } from "./routes/auth.ts";
 import { registerBoardAccessRoutes } from "./routes/board-access.ts";
 import { registerBoardRoutes } from "./routes/boards.ts";
@@ -119,6 +121,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   // ── Object Storage (P4: فقط از راهِ @hamboom/storage) ───────────────
   // یک store به‌ازای هر باکت؛ تزریق‌پذیر تا تست بدونِ MinIO اجرا شود.
   const snapshots = options.snapshots ?? createSnapshotObjectStore(config);
+  const assetStore = options.assets ?? createAssetObjectStore(config);
+  // ★ fileId از نوعِ uuid ساخته می‌شود چون کلیدِ اصلیِ جدولِ `files` است.
+  const assetService = createAssetService({
+    objectStore: assetStore,
+    maxBytes: config.UPLOAD_MAX_BYTES,
+    newFileId: () => randomUUID(),
+  });
 
   const requireAuth = makeRequireAuth(secret);
   registerMeRoutes(app, { pool, requireAuth });
@@ -137,6 +146,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     snapshots,
   });
   registerBoardAccessRoutes(app, { pool, requireAuth });
+  registerAssetRoutes(app, {
+    pool,
+    requireAuth,
+    assets: assetService,
+    assetStore,
+    assetBucket: config.S3_BUCKET_ASSETS,
+  });
 
   return app;
 }

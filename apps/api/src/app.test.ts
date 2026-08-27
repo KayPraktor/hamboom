@@ -34,6 +34,7 @@ const TEST_CONFIG: ApiConfig = {
   S3_PRESIGN_TTL_SECONDS: 900,
   S3_BUCKET_ASSETS: "hamboom-assets",
   S3_BUCKET_SNAPSHOTS: "hamboom-snapshots",
+  UPLOAD_MAX_BYTES: 10 * 1024 * 1024,
 };
 
 /** استخرِ دروغینِ db — فقط `query`/`end`. تست بدونِ Postgres. */
@@ -131,6 +132,49 @@ describe("GET /boards/:id/snapshot — گاردها", () => {
     });
     expect(res.statusCode).toBe(400);
     expect((res.json() as ErrBody).error.code).toBe("BOARD_ID_MALFORMED");
+    await app.close();
+  });
+});
+
+/**
+ * گاردهای endpointهای دارایی — سیم‌کشیِ سریع (بدونِ DB/MinIO).
+ * جریانِ کاملِ presign→upload→commit→GET (بایت‌های واقعی، دی‌دوپ، sha غلط) روی سرورِ زنده اثبات شد.
+ */
+describe("asset endpoints — گاردها", () => {
+  const SECRET = new TextEncoder().encode(TEST_CONFIG.JWT_SECRET);
+  const UID = "22222222-2222-2222-2222-222222222222";
+  const bearer = async (sub: string): Promise<string> =>
+    `Bearer ${await signAccessToken(SECRET, sub, 900)}`;
+
+  it("presign بدونِ توکن → ۴۰۱", async () => {
+    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const res = await app.inject({ method: "POST", url: `/boards/${UID}/assets/presign`, payload: {} });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("★ presign با boardId بدشکل → ۴۰۰ BOARD_ID_MALFORMED (قبل از parse بدنه)", async () => {
+    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const res = await app.inject({
+      method: "POST",
+      url: "/boards/not-a-uuid/assets/presign",
+      headers: { authorization: await bearer(UID) },
+      payload: { mimeType: "image/png", sizeBytes: 10, sha256: "0".repeat(64) },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as ErrBody).error.code).toBe("BOARD_ID_MALFORMED");
+    await app.close();
+  });
+
+  it("GET /assets/بدشکل → ۴۰۴ NOT_FOUND (بدونِ لوِ وجود)", async () => {
+    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const res = await app.inject({
+      method: "GET",
+      url: "/assets/not-a-uuid",
+      headers: { authorization: await bearer(UID) },
+    });
+    expect(res.statusCode).toBe(404);
+    expect((res.json() as ErrBody).error.code).toBe("NOT_FOUND");
     await app.close();
   });
 });

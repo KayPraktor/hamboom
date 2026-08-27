@@ -28,6 +28,7 @@ export {
   realtimeEnvSchema,
   redisEnvSchema,
   s3EnvSchema,
+  uploadEnvSchema,
 } from "./sections.ts";
 export type {
   ApiServerEnv,
@@ -40,4 +41,5 @@ export type {
   RealtimeEnv,
   RedisEnv,
   S3Env,
+  UploadEnv,
 } from "./sections.ts";

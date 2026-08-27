@@ -174,3 +174,15 @@ export const rateLimitEnvSchema = z.object({
   RATE_LIMIT_OTP_MAX: envInt(5),
 });
 export type RateLimitEnv = z.infer<typeof rateLimitEnvSchema>;
+
+/**
+ * ── سقفِ آپلودِ دارایی (`apps/api` فاز ۵) ─────────────────────────────────
+ *
+ * ★ کفِ مطلقِ سراسریِ سمتِ سرور برای هر آپلود. presign علاوه بر این یک سقفِ **تنگ‌تر per-file**
+ * (اندازه‌ی اعلامیِ همان فایل) روی policyِ POST می‌گذارد که MinIO سمتِ سرور اعمالش می‌کند (probe ۳٫۰)؛
+ * این عدد سقفی است که اعلامِ کلاینت هم از آن بالاتر نمی‌رود. پیش‌فرض ۱۰MB.
+ */
+export const uploadEnvSchema = z.object({
+  UPLOAD_MAX_BYTES: envInt(10 * 1024 * 1024),
+});
+export type UploadEnv = z.infer<typeof uploadEnvSchema>;

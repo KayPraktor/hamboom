@@ -7,6 +7,7 @@ import {
   otpEnvSchema,
   rateLimitEnvSchema,
   s3EnvSchema,
+  uploadEnvSchema,
 } from "@hamboom/config";
 
 /**
@@ -22,7 +23,8 @@ const apiEnvSchema = appEnvSchema
   .and(otpEnvSchema)
   .and(apiServerEnvSchema)
   .and(rateLimitEnvSchema)
-  .and(s3EnvSchema);
+  .and(s3EnvSchema)
+  .and(uploadEnvSchema);
 
 export function loadApiConfig() {
   return loadEnv(apiEnvSchema);
