@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import fastifyCookie from "@fastify/cookie";
 import fastifyRateLimit from "@fastify/rate-limit";
 import { createMockSmsProvider, maskPhone } from "@hamboom/auth-core";
+import type { ObjectStore } from "@hamboom/storage";
 import Fastify, { type FastifyInstance } from "fastify";
 import type pg from "pg";
 
@@ -11,6 +12,7 @@ import { loadApiConfig, secretBytes, type ApiConfig } from "./config.ts";
 import { registerErrorHandler } from "./errors.ts";
 import { loggerOptions } from "./logger.ts";
 import { createDbPool } from "./plugins/db.ts";
+import { createSnapshotObjectStore } from "./plugins/s3.ts";
 import { registerAuthRoutes } from "./routes/auth.ts";
 import { registerBoardAccessRoutes } from "./routes/board-access.ts";
 import { registerBoardRoutes } from "./routes/boards.ts";
@@ -35,6 +37,10 @@ export interface BuildAppOptions {
   config?: ApiConfig;
   /** استخرِ db تزریق‌پذیر برای تست (وگرنه از config ساخته می‌شود و در onClose بسته می‌شود). */
   db?: pg.Pool;
+  /** ObjectStoreِ باکتِ snapshots — تزریق‌پذیر تا تست بدونِ MinIO اجرا شود (وگرنه از config). */
+  snapshots?: ObjectStore;
+  /** ObjectStoreِ باکتِ assets — تزریق‌پذیر تا تست بدونِ MinIO اجرا شود (وگرنه از config). */
+  assets?: ObjectStore;
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -110,6 +116,10 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     },
   });
 
+  // ── Object Storage (P4: فقط از راهِ @hamboom/storage) ───────────────
+  // یک store به‌ازای هر باکت؛ تزریق‌پذیر تا تست بدونِ MinIO اجرا شود.
+  const snapshots = options.snapshots ?? createSnapshotObjectStore(config);
+
   const requireAuth = makeRequireAuth(secret);
   registerMeRoutes(app, { pool, requireAuth });
   registerTeamRoutes(app, {
@@ -124,6 +134,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     requireAuth,
     secret,
     rtTokenTtlSeconds: config.RT_TOKEN_TTL_SECONDS,
+    snapshots,
   });
   registerBoardAccessRoutes(app, { pool, requireAuth });
 

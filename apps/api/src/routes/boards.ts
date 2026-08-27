@@ -1,4 +1,5 @@
 import { effectiveBoardRole, signRtToken } from "@hamboom/auth-core";
+import type { ObjectStore } from "@hamboom/storage";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
@@ -16,6 +17,8 @@ export interface BoardRouteDeps {
   /** رازِ HS256 و TTLِ rt-token — برای endpointِ پورتِ چهارم. */
   secret: Uint8Array;
   rtTokenTtlSeconds: number;
+  /** ObjectStoreِ باکتِ snapshots — بوتِ سریعِ بورد (`GET /boards/:id/snapshot`). */
+  snapshots: ObjectStore;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -137,6 +140,37 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     if (rows.length === 0) throw new HttpError(404, "BOARD_NOT_FOUND", "بورد یافت نشد.");
 
     return { ...rows[0], myRole: role };
+  });
+
+  // ── snapshotِ بوت (octet-stream از انبار) — viewer+ ──────────────────
+  // بایت‌ها در باکتِ snapshots اند، متادیتا در `board_snapshots` (storage_key). کلاینت این را
+  // یک‌بار برای بوتِ سریع می‌گیرد و بعد تتمه را از WS همگام می‌کند (ADR-031).
+  app.get("/boards/:id/snapshot", { preHandler: deps.requireAuth }, async (req, reply) => {
+    const sub = requireSub(req);
+    const { id } = req.params as { id: string };
+    if (!UUID_RE.test(id)) {
+      throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
+    }
+    await requireBoardRole(deps.pool, sub, id, "viewer");
+
+    const { rows } = await deps.pool.query<{ storage_key: string }>(
+      "SELECT storage_key FROM board_snapshots WHERE board_id = $1 ORDER BY seq_upto DESC LIMIT 1",
+      [id],
+    );
+    // بوردی که هنوز فشرده نشده snapshot ندارد — ۲۰۴، و کلاینت از راهِ WS از صفر می‌سازد.
+    if (rows.length === 0) return reply.code(204).send();
+
+    const bytes = await deps.snapshots.getObject(rows[0]!.storage_key);
+    if (bytes === null) {
+      // ردیفِ کاتالوگ هست ولی بایت نیست — با ترتیبِ امنِ compactor نباید رخ دهد. fail-loud در لاگ،
+      // ولی تاب‌آور در پاسخ: کلاینت از WS بوت می‌کند تا فایلِ گم‌شده کلِ بورد را نشکند.
+      req.log.warn({ boardId: id }, "snapshot catalog row without bytes in store");
+      return reply.code(204).send();
+    }
+    return reply
+      .header("content-type", "application/octet-stream")
+      .header("cache-control", "no-store")
+      .send(Buffer.from(bytes));
   });
 
   // ── ویرایشِ بورد (editor+) ──────────────────────────────────────────
