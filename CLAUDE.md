@@ -158,6 +158,14 @@ threshold گذاشت؛ گذاشتنشان بیرونِ گیت یعنی تکرا�
 > (سرویس ویندوز) ۵۴۳۲ را گرفته. در `.env` محلی تنظیم شده؛ `.env.example` و compose
 > روی پیش‌فرض PLAN (۵۴۳۲) ماندند تا روی ماشین تمیز همان PLAN کار کند.
 
+> **MinIO روی این ماشین ۹۸۰۰/۹۸۰۱ است، نه ۹۰۰۰/۹۰۰۱** (M3 گام ۵٫۴) — پورت‌های ۹۰۰۰/۹۰۰۱
+> در **رنجِ excludedِ ویندوز** (Hyper-V) افتاده‌اند (`netsh interface ipv4 show excludedportrange
+> protocol=tcp` → ۸۹۰۶–۹۱۰۵)، پس `docker` نمی‌تواند bind کند («socket... forbidden»)، حتی وقتی
+> هیچ‌کس listen نمی‌کند. ⚠️ این رنج **بعد از ری‌استارت جابه‌جا می‌شود** — اگر باز شد، یک پورتِ
+> بیرونِ رنج انتخاب کن. در `.env` محلی: `MINIO_PORT`/`MINIO_CONSOLE_PORT`/`S3_ENDPOINT`؛ compose و
+> `.env.example` روی پیش‌فرض PLAN (۹۰۰۰) ماندند. **`docker compose up` حالا `minio-init` را هم دارد**
+> (ساختِ باکت‌های assets/snapshots، P3).
+
 ### ⚠️ اگر `pnpm verify` روی `test` افتاد، اول محیط را ببین
 
 در گام ۲٫۳ **هر ۸ پکیج** با `FATAL ERROR: ... out of memory` افتادند در حالی که

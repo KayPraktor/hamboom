@@ -4,7 +4,7 @@
 
 ## ★ وضعیتِ فاز ۵ (`apps/api`) — سطحِ REST تقریباً کامل
 
-**تمام‌شده (همه با curl روی سرورِ زنده — پورت ۳۰۰۲ — اثبات‌شده، `pnpm verify` سبز، ۱۶ کامیت):**
+**تمام‌شده (همه با curl/سرورِ زنده اثبات‌شده، `pnpm verify` سبز، ۱۹ کامیت):**
 
 | زیرگام | چه ساخته شد |
 |---|---|
@@ -14,9 +14,14 @@
 | **۵٫۲ auth** | adapterهای DB (`OtpStore`/`SessionStore`/`BoardAccessReader`/AssetTransport) · endpointهای otp/verify/refresh · ★★ **atomic rotate** (`FOR UPDATE` + `db:store-test`ِ خودآزمون + conformanceِ PG↔memory) · رفعِ **باگِ reuse** (commit-on-reuse، از تستِ دستی) · کوکیِ HttpOnly · rate-limit · zod |
 | **۵٫۳** | `PATCH /me` · تیم (CRUD/members/invites) · فولدر (CRUD) · `requireTeamRole` |
 | **۵٫۴** | CRUDِ کاملِ بورد (patch/delete/restore/duplicate/favorite/جستجوی pg_trgm) · ★★ **`GET /boards/:id/rt-token` (پورتِ چهارم، با `verifyRtToken` اثبات‌شده)** · **access/share + DP-4 گرنتِ ماندگار** (ابطالِ خودکار اثبات‌شده) · عضوِ مستقیمِ بورد |
+| **۵٫۴ storage** ✅جدید | ★ **`GET /boards/:id/snapshot`** (octet-stream: کاتالوگِ `board_snapshots` → بایت از باکتِ snapshots؛ ۲۰۴ِ تاب‌آور روی نبودِ ردیف/بایت) · ★★ **endpointهای asset** (presign/commit/GET با ۳۰۲؛ commit **sha256 را روی بایتِ واقعی بازمحاسبه** می‌کند، به ادعای کلاینت اعتماد نمی‌شود؛ **دی‌دوپِ سطحِ تیمِ بعد از تاییدِ sha**) · `minio-init` (ساختِ باکت‌ها، P3) · `uploadEnvSchema` |
 
-**⛔ باقی‌مانده‌ی فاز ۵:** `GET /boards/:id/snapshot` (octet-stream از storage) و **endpointهای asset** (presign/commit/GET)
-— هر دو به **storage/MinIO** نیاز دارند و ⚠️ **MinIO روی این ماشین بالا نمی‌آید** (تداخلِ پورت ۹۰۰۰). سپس **OpenAPI (گام ۵٫۵)**.
+**⛔ باقی‌مانده‌ی فاز ۵:** فقط **OpenAPI (گام ۵٫۵)** — schemaهای zod → OpenAPI 3.1 → `docs/api.md` + `/api/v1/docs` + `Idempotency-Key`.
+
+**✅ MinIO باز شد (۱۴۰۵/۰۶/۰۷):** «بالا نمی‌آید»ی قبلی **تداخلِ پورت نبود**، بلکه **رنجِ excludedِ ویندوز** بود (`netsh
+... excludedportrange`: ۸۹۰۶–۹۱۰۵ هم ۹۰۰۰ هم ۹۰۰۱ را می‌گیرد — Hyper-V، بعد از ری‌استارت جابه‌جا می‌شود؛ برای همین در فاز ۳
+کار می‌کرد و بعد نه). ⚠️ **رفع روی این ماشین: در `.env`ِ محلی `MINIO_PORT=9800`/`MINIO_CONSOLE_PORT=9801` + `S3_ENDPOINT=
+http://localhost:9800`** (همان الگوی ۵۴۳۳ برای DB — `.env.example`/compose روی پیش‌فرضِ PLAN ۹۰۰۰ ماندند). `storage:smoke` ۱۱/۱۱ سبز روی پورتِ نو.
 
 **✅ دیتابیسِ dev کامل-migrate شد** (`0001`+`0002`+`0003`): دادهٔ یتیمِ متریکِ M2 پاک و رانر بقیه را اعمال کرد؛ «ریستِ dev» بسته شد.
 
@@ -456,7 +461,28 @@ minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بال
 - ✅ **دیتابیسِ dev بالاخره کامل-migrate شد** (`0002`+`0003`): دادهٔ یتیمِ متریکِ M2 (۲۳۲۴ ردیف در دو جدولِ لاگ)
   با `TRUNCATE … CASCADE` پاک شد (دورریختنی)، بعد رانر `0002`/`0003` را اعمال کرد. مشکلِ «ریستِ dev» بسته شد.
 
+### گام ۵٫۴ — snapshot + asset (storage روی MinIO) ✅ (۱۴۰۵/۰۶/۰۷)
+
+★ **اول MinIO باز شد** (بالا، §وضعیت: رنجِ excludedِ ویندوز، نه تداخل؛ رفع = پورتِ ۹۸۰۰ در `.env`ِ محلی). بعد:
+
+- **`GET /boards/:id/snapshot`** (`routes/boards.ts`، viewer+): کاتالوگِ `board_snapshots` (`latest` = `seq_upto DESC`)
+  → `storage_key` → `ObjectStore.getObject` از باکتِ snapshots → `application/octet-stream`. بایت‌ها در S3اند، متادیتا در
+  PG (ADR-031). **تاب‌آور:** بی‌ردیف → ۲۰۴ (کلاینت از WS بوت می‌کند)؛ ردیف با بایتِ گم‌شده → warn-log + ۲۰۴ (فایلِ
+  گم‌شده بوم را نمی‌شکند). `plugins/s3.ts`: `ObjectStore` به‌ازای هر باکت از `@hamboom/storage` (P4)، **تزریق‌پذیر** در
+  `buildApp` (تستِ بی‌MinIO).
+- **endpointهای asset** (`routes/assets.ts`، PLAN §۵٫۲): `POST /boards/:boardId/assets/presign` (editor+) → رکوردِ
+  pendingِ `files` + presigned POST؛ `POST .../assets/:fileId/commit` (editor+) → ★★ **`validateUploaded` sha256 را روی
+  بایتِ واقعی بازمحاسبه، نوع را sniff، اندازه را headObject** (به ادعا اعتماد نمی‌شود)، سپس `ready`؛ `GET /assets/:fileId`
+  (viewer+) → ۳۰۲ به presignGet (دسترسی از راهِ بوردِ فایل). **دی‌دوپِ سطحِ تیم بعد از تاییدِ sha** (نه ادعای presign —
+  ناامن بود): فایلِ readyِ همسان → repoint + حذفِ ابجکتِ تکراری، fileId ثابت. `uploadEnvSchema` (UPLOAD_MAX_BYTES).
+  کدها: `NOT_FOUND`/`VALIDATION_ERROR`ِ موجود (بدونِ لمسِ shared-types، ADR-021).
+- **`minio-init`** به compose (P3: باکت‌ها روی ماشینِ تازه؛ `mc mb --ignore-existing`، idempotent، `$$VAR` برای shell).
+- **گیت:** ۵ تستِ سیم‌کشیِ خودآزمون در `app.test.ts` (۴۰۱/بدشکل→کدِ درست) داخلِ verify. ★★ **اثباتِ زنده روی PG+MinIOِ
+  واقعی:** snapshot ۶/۶ (بایتِ بیت‌به‌بیت، دو شاخه‌ی ۲۰۴، بیگانه ۴۰۳، بدشکل ۴۰۰) · asset ۱۰/۱۰ (presign→آپلودِ واقعی→
+  commit→GET۳۰۲→دانلودِ بیت‌به‌بیت، دی‌دوپ+حذفِ یتیم، sha غلط→۴۲۲، بیگانه ۴۰۳، بدشکل ۴۰۴). `pnpm verify` سبز (۸ گیت).
+
 ### قدمِ بعد
 
-`GET /boards/:id/snapshot` (octet-stream از storage/S3 — به MinIO نیاز دارد)، endpointهای asset (presign/commit/GET)، و
-OpenAPI (گام ۵٫۵). ⚠️ moارد باز: یکی‌شدنِ redactor، بلوکِ دفاعیِ `0002`، `AssetValidationError`ِ parameter property.
+فقط **OpenAPI (گام ۵٫۵)** مانده تا فاز ۵ بسته شود: zod→OpenAPI 3.1 → `docs/api.md` + `/api/v1/docs` + `Idempotency-Key`
+روی POSTهای ساختِ منبع. بعدش فاز ۶ (`sdk`). ⚠️ موارد باز (غیربلوکه): یکی‌شدنِ redactor با realtime · بلوکِ دفاعیِ
+`0002` · `AssetValidationError`ِ parameter property (لمسِ آینده‌ی assets) · rate-limitِ Redis-backed برای چندنودی.
