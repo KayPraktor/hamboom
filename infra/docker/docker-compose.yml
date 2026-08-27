@@ -71,8 +71,7 @@ services:
   # ── Object Storage سازگار با S3 — افزوده‌ی M3 گام ۳٫۰ (probe/storage) ──────
   # PLAN §۳ این را برای M5 گذاشته بود، ولی M3 برای `packages/storage` زودتر لازمش
   # دارد. ⚠️ عمداً **بدونِ healthcheck**: تصویرِ minio ابزارِ سلامتِ داخلِ کانتینر را
-  # تضمین نمی‌کند؛ خودِ probe/کلاینت آمادگی را با retry می‌سنجد. **minio-init (۳ باکت)
-  # به گام ۳٫۳ (assets) موکول شد** — probeِ ۳٫۰ باکتِ خودش را می‌سازد.
+  # تضمین نمی‌کند؛ خودِ probe/کلاینت آمادگی را با retry می‌سنجد.
   minio:
     image: minio/minio:latest
     container_name: hamboom-minio
@@ -87,6 +86,29 @@ services:
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - miniodata:/data
+
+  # ── minio-init — ساختِ باکت‌های assets/snapshots (M3 گام ۵٫۴) ──────────────
+  # P3: «docker compose up کافی باشد». روی ماشینِ تازه باکت‌ها هنوز نیستند و اولین
+  # آپلود/بوت می‌شکست. یک‌بار اجرا و خارج (`restart: no`). ⚠️ `$$VAR` تا **shell** بسطش
+  # دهد از env کانتینر، نه compose. `--ignore-existing` idempotent است.
+  minio-init:
+    image: minio/mc:latest
+    container_name: hamboom-minio-init
+    depends_on:
+      - minio
+    restart: "no"
+    environment:
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-hamboom_minio}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-hamboom_minio_dev_pw}
+      S3_BUCKET_ASSETS: ${S3_BUCKET_ASSETS:-hamboom-assets}
+      S3_BUCKET_SNAPSHOTS: ${S3_BUCKET_SNAPSHOTS:-hamboom-snapshots}
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 \"$$S3_ACCESS_KEY_ID\" \"$$S3_SECRET_ACCESS_KEY\"; do echo 'waiting for minio...'; sleep 1; done;
+      mc mb --ignore-existing local/\"$$S3_BUCKET_ASSETS\";
+      mc mb --ignore-existing local/\"$$S3_BUCKET_SNAPSHOTS\";
+      echo 'buckets ready';
+      "
 
 volumes:
   pgdata:
