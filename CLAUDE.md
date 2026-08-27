@@ -216,10 +216,11 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   - **`shared-types`:** claimهای `rtToken` → به `shared-types` (تاییدِ ADR-021، ۱۴۰۵/۰۵/۲۴)؛
     `CommentPin` عمداً در `ydoc-schema` مانْد؛ فقط DTOهای **مصرف‌کننده‌دار** اضافه می‌شوند، نه کلِ §۵٫۱.
   - ⚠️ **رفعِ سه یافته‌ی M2 که به `canvas-core`/`canvas-sync` دست می‌زند تک‌تک تاییدِ مالک می‌خواهد** (گام ۸٫۵).
-  - **وضعیت الان:** فاز ۰–۴ کامل ✅ — فاز ۳: `packages/storage` + `StorageSnapshotStore` + `packages/assets`
-    (sha256 روی بایت‌های واقعی؛ منطق الان، endpointها فاز ۵). فاز ۴: `packages/auth-core` — JWT (قفلِ سه‌سده‌ی
-    `exp`)، `effectiveBoardRole` (OD-1/OD-3)، `BoardAuthority`، refreshِ چرخشی (reuse→سوزاندنِ خانواده)، OTP (P7).
-    همه منطق+پورت؛ DBِ پورت‌ها فاز ۵. ADR-042/043/044. `pnpm verify` سبز. قدمِ بعد: **فاز ۵ (`apps/api`)**.
+  - **وضعیت الان:** فاز ۰–۵ کامل ✅ — فاز ۳ (`storage`/`assets`)، فاز ۴ (`auth-core`: JWT/قفلِ `exp`/
+    `effectiveBoardRole`/refreshِ چرخشی/OTP)، و **فاز ۵ (`apps/api`) تمام شد (۱۴۰۵/۰۶/۰۸):** کلِ سطحِ REST
+    (auth/user/team/folder/board/access/**asset**/rt-token/**snapshot**) + migrationِ کاملِ schema + پیاده‌سازیِ DBِ
+    پورت‌ها + **OpenAPI 3.1** (`/openapi.json`,`/api/v1/docs`) + **Idempotency-Key**. MinIO باز شد (پورتِ ۹۸۰۰، رنجِ
+    excludedِ ویندوز). `pnpm verify` سبز. **قدمِ بعد: فاز ۶ (`packages/sdk`)** — کلاینتِ typed از `shared-types`.
 - **★★★ M2 (`realtime-sync`) تمام و تحویل شد** (۱۴۰۵/۰۵/۲۳) — هر ۳۰ گامِ
   [TODO.md](TODO.md) تیک خورده. نقطه‌ی ورودِ M3: [`docs/m3-handoff.md`](docs/m3-handoff.md)
   (چهار پورت، دو موردِ به‌ارث‌رسیده، چهار یافته‌ی M2، سقف‌های اندازه‌گیری‌شده).

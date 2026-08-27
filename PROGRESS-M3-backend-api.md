@@ -1,10 +1,10 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
-تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۶/۰۷ (2026-08-27)
+تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۶/۰۸ (2026-08-28)
 
-## ★ وضعیتِ فاز ۵ (`apps/api`) — سطحِ REST تقریباً کامل
+## ★★ فاز ۵ (`apps/api`) — ✅ **کامل شد** (۱۴۰۵/۰۶/۰۸)
 
-**تمام‌شده (همه با curl/سرورِ زنده اثبات‌شده، `pnpm verify` سبز، ۱۹ کامیت):**
+**تمام‌شده (همه با curl/سرورِ زنده اثبات‌شده، `pnpm verify` سبز، ۶ کامیتِ این session روی origin):**
 
 | زیرگام | چه ساخته شد |
 |---|---|
@@ -14,9 +14,11 @@
 | **۵٫۲ auth** | adapterهای DB (`OtpStore`/`SessionStore`/`BoardAccessReader`/AssetTransport) · endpointهای otp/verify/refresh · ★★ **atomic rotate** (`FOR UPDATE` + `db:store-test`ِ خودآزمون + conformanceِ PG↔memory) · رفعِ **باگِ reuse** (commit-on-reuse، از تستِ دستی) · کوکیِ HttpOnly · rate-limit · zod |
 | **۵٫۳** | `PATCH /me` · تیم (CRUD/members/invites) · فولدر (CRUD) · `requireTeamRole` |
 | **۵٫۴** | CRUDِ کاملِ بورد (patch/delete/restore/duplicate/favorite/جستجوی pg_trgm) · ★★ **`GET /boards/:id/rt-token` (پورتِ چهارم، با `verifyRtToken` اثبات‌شده)** · **access/share + DP-4 گرنتِ ماندگار** (ابطالِ خودکار اثبات‌شده) · عضوِ مستقیمِ بورد |
-| **۵٫۴ storage** ✅جدید | ★ **`GET /boards/:id/snapshot`** (octet-stream: کاتالوگِ `board_snapshots` → بایت از باکتِ snapshots؛ ۲۰۴ِ تاب‌آور روی نبودِ ردیف/بایت) · ★★ **endpointهای asset** (presign/commit/GET با ۳۰۲؛ commit **sha256 را روی بایتِ واقعی بازمحاسبه** می‌کند، به ادعای کلاینت اعتماد نمی‌شود؛ **دی‌دوپِ سطحِ تیمِ بعد از تاییدِ sha**) · `minio-init` (ساختِ باکت‌ها، P3) · `uploadEnvSchema` |
+| **۵٫۴ storage** | ★ **`GET /boards/:id/snapshot`** (octet-stream: کاتالوگِ `board_snapshots` → بایت از باکتِ snapshots؛ ۲۰۴ِ تاب‌آور روی نبودِ ردیف/بایت) · ★★ **endpointهای asset** (presign/commit/GET با ۳۰۲؛ commit **sha256 را روی بایتِ واقعی بازمحاسبه** می‌کند، به ادعای کلاینت اعتماد نمی‌شود؛ **دی‌دوپِ سطحِ تیمِ بعد از تاییدِ sha**) · `minio-init` (ساختِ باکت‌ها، P3) · `uploadEnvSchema` |
+| **۵٫۵** ✅جدید | ★ **OpenAPI 3.1** از همان zodِ منبعِ حقیقت (`z.toJSONSchema`، بدونِ وابستگیِ نو) — `GET /openapi.json` + `GET /api/v1/docs` (مرورگرِ self-hosted، P2) + `scripts/gen-openapi.ts` → `docs/api.md`/`docs/openapi.json` · **گاردِ دریفت** (هر مسیرِ ثبت‌شده مستند است) · **Idempotency-Key** روی POSTِ احرازشده (replay + in-flight de-dup، تک‌نود/۲۴h) · تستِ قطعیِ rate-limit (عبور از سقفِ OTP → ۴۲۹، با شکستنِ عمدی قرمز) |
 
-**⛔ باقی‌مانده‌ی فاز ۵:** فقط **OpenAPI (گام ۵٫۵)** — schemaهای zod → OpenAPI 3.1 → `docs/api.md` + `/api/v1/docs` + `Idempotency-Key`.
+**✅ فاز ۵ کامل شد** — کلِ سطحِ REST (auth/user/team/folder/board/access/asset/rt-token/snapshot) + OpenAPI + Idempotency.
+**قدمِ بعد: فاز ۶ (`packages/sdk`)** — کلاینتِ typed از `shared-types`، تستِ قراردادی در برابرِ `buildApp()`ِ واقعی.
 
 **✅ MinIO باز شد (۱۴۰۵/۰۶/۰۷):** «بالا نمی‌آید»ی قبلی **تداخلِ پورت نبود**، بلکه **رنجِ excludedِ ویندوز** بود (`netsh
 ... excludedportrange`: ۸۹۰۶–۹۱۰۵ هم ۹۰۰۰ هم ۹۰۰۱ را می‌گیرد — Hyper-V، بعد از ری‌استارت جابه‌جا می‌شود؛ برای همین در فاز ۳
@@ -481,8 +483,27 @@ minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بال
   واقعی:** snapshot ۶/۶ (بایتِ بیت‌به‌بیت، دو شاخه‌ی ۲۰۴، بیگانه ۴۰۳، بدشکل ۴۰۰) · asset ۱۰/۱۰ (presign→آپلودِ واقعی→
   commit→GET۳۰۲→دانلودِ بیت‌به‌بیت، دی‌دوپ+حذفِ یتیم، sha غلط→۴۲۲، بیگانه ۴۰۳، بدشکل ۴۰۴). `pnpm verify` سبز (۸ گیت).
 
-### قدمِ بعد
+### گام ۵٫۵ — OpenAPI + Idempotency-Key ✅ (۱۴۰۵/۰۶/۰۸) — فاز ۵ بسته شد
 
-فقط **OpenAPI (گام ۵٫۵)** مانده تا فاز ۵ بسته شود: zod→OpenAPI 3.1 → `docs/api.md` + `/api/v1/docs` + `Idempotency-Key`
-روی POSTهای ساختِ منبع. بعدش فاز ۶ (`sdk`). ⚠️ موارد باز (غیربلوکه): یکی‌شدنِ redactor با realtime · بلوکِ دفاعیِ
-`0002` · `AssetValidationError`ِ parameter property (لمسِ آینده‌ی assets) · rate-limitِ Redis-backed برای چندنودی.
+- **OpenAPI 3.1 از zodِ منبعِ حقیقت** (خط‌قرمزِ ۳ی `shared-types`: «یک تعریف، سه خروجی»): `openapi.ts` با
+  `z.toJSONSchema` (بومیِ zod v4 — **بدونِ وابستگیِ نو**، P1) `components.schemas` را از DTOها می‌سازد و یک
+  **منیفستِ مسیر** (`ROUTES`) را به paths تبدیل می‌کند. `routes/docs.ts`: `GET /openapi.json` + `GET /api/v1/docs`
+  (مرورگرِ درون‌خطیِ **self-hosted** — P2، بدونِ CDN؛ در مرورگرِ واقعی رندر شد). `scripts/gen-openapi.ts`
+  (`pnpm openapi:gen`) → `docs/api.md` + `docs/openapi.json`.
+- ★ **گاردِ دریفت:** هوکِ `onRoute` هر مسیرِ ثبت‌شده را جمع می‌کند؛ تست ثابت می‌کند `registered == documented`
+  (دوطرفه) — هیچ endpointی بی‌سند نمی‌مانَد. + تستِ ساختاری (هر operation پاسخ دارد، هر `$ref` resolve می‌شود).
+- **Idempotency-Key** (`idempotency.ts`، هوکِ سراسری): روی POSTِ **احرازشده‌ی** دارای هدر، همان کلید → پاسخِ
+  کش‌شده + `idempotent-replay: true` (منبعِ دوم ساخته نمی‌شود)؛ **in-flight de-dup** تا double-submitِ هم‌زمان هم یک
+  اجرا شود. کلید = هشِ توکن + مسیر + کلید. حافظه‌ای + ۲۴h (تک‌نود؛ Redis = فاز بعد).
+- **تستِ قطعیِ rate-limit:** عبور از سقفِ OTP → ۴۲۹؛ ★ با بردنِ سقف به ۱۰۰۰ **قرمز** شد (خودآزمون). `TEST_CONFIG`/`fakeDb`
+  به `test-fixtures.ts` درآمد (اشتراکِ سه فایلِ تست).
+- **گیت:** +۹ تستِ verify (۵ openapi، ۴ idempotency). ★★ **اثباتِ زنده ۹/۹:** `/openapi.json` (3.1.0)، `/api/v1/docs`
+  در مرورگر رندر شد، POST /boards با کلیدِ یکسان **دقیقاً یک ردیف** ساخت و دومی کش برگرداند، بدونِ کلید دو ردیفِ متفاوت.
+  `pnpm verify` سبز (۸ گیت).
+
+### قدمِ بعد — فاز ۶ (`packages/sdk`)
+
+کلاینتِ typedِ fetch از `shared-types` روی همه‌ی endpointها؛ قالبِ خطای §۵؛ صفحه‌بندیِ cursor؛ access در حافظه +
+refreshِ خودکار روی ۴۰۱. معیار: تستِ قراردادی در برابرِ `buildApp()`ِ **واقعی** (نه mock)؛ typeها از shared-types.
+⚠️ موارد باز (غیربلوکه): یکی‌شدنِ redactor با realtime · بلوکِ دفاعیِ `0002` · `AssetValidationError`ِ parameter
+property · rate-limit/idempotencyِ Redis-backed برای چندنودی.

@@ -451,10 +451,14 @@ Chromium، thumbnail) = **بعد از M3**.
       ۱٫۳ روی مسیرِ محصولی)؛ توکنِ بوردِ دیگر رد؛ جستجوی فارسیِ عنوان کار می‌کند؛ `boardId`ِ
       بدشکل کدِ **خودش** را می‌گیرد نه `FORBIDDEN`.
 
-### گام ۵٫۵ — OpenAPI + محدودیت‌ها
-- [ ] schemaهای zod → OpenAPI 3.1 → `docs/api.md` + `/api/v1/docs`؛ rate-limitِ سراسری/OTP؛
-      `Idempotency-Key` روی POSTهای ساختِ منبع.
-- **معیار پذیرش:** OpenAPI معتبر تولید می‌شود؛ rate-limit با تستِ عبور از سقف **قرمز** می‌دهد.
+### گام ۵٫۵ — OpenAPI + محدودیت‌ها ✅ (۱۴۰۵/۰۶/۰۸)
+- [x] schemaهای zod → OpenAPI 3.1 (`z.toJSONSchema`، بدونِ وابستگیِ نو) → `docs/api.md` + `docs/openapi.json`
+      (`pnpm openapi:gen`) + `GET /openapi.json` + `GET /api/v1/docs` (self-hosted، P2)؛ ★ گاردِ دریفت (هر مسیر مستند)؛
+      rate-limitِ سراسری/OTP (از ۵٫۲)؛ **`Idempotency-Key`** روی POSTِ احرازشده (replay + in-flight de-dup، ۲۴h).
+- **معیار پذیرش:** ✅ OpenAPI 3.1 معتبر تولید و زنده serve شد (۹/۹)؛ تستِ rate-limit با عبور از سقف **۴۲۹** می‌دهد
+      و با بردنِ سقف به ۱۰۰۰ **قرمز** شد (خودآزمون). `pnpm verify` سبز.
+
+> ✅ **فاز ۵ (`apps/api`) کامل شد (۱۴۰۵/۰۶/۰۸).** کلِ سطحِ REST + OpenAPI + Idempotency. قدمِ بعد: **فاز ۶ (`packages/sdk`)**.
 
 ---
 
