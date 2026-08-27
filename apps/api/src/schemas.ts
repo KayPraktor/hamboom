@@ -31,6 +31,12 @@ export const patchMeBody = zod.object({
   locale: zod.enum(["fa", "en"]).optional(),
 });
 
+export const patchBoardBody = zod.object({
+  title: zod.string().trim().min(1).max(200).optional(),
+  // `null` یعنی «از فولدر خارج شود».
+  folderId: zod.string().uuid().nullable().optional(),
+});
+
 /** نقش‌های قابلِ‌تخصیص در تیم — نه `owner` (سازنده است، انتقالِ مالکیت جداست). */
 const assignableTeamRole = zod.enum(["admin", "member", "guest"]);
 

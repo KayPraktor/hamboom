@@ -412,3 +412,17 @@ minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بال
 
 بقیه‌ی CRUDِ بورد (PATCH/DELETE/restore/duplicate/favorite/جستجوی pg_trgm)، `/boards/:id/access` (اشتراک+linkToken،
 که DP-4 را زنده می‌کند)، `GET /boards/:id/snapshot` (از storage)، endpointهای asset، و OpenAPI (۵٫۵).
+
+### گام ۵٫۴ (ادامه) — CRUDِ کاملِ بورد ✅ (۱۴۰۵/۰۶/۰۶)
+
+- `PATCH /boards/:id` (title/folderId، editor+؛ SETِ افتراقی؛ اعتبارِ فولدرِ هم‌تیم)، `DELETE` (نرم، owner)،
+  `POST .../restore` (owner؛ چون reader بوردِ حذف‌شده را نمی‌بیند، `assertDeletedBoardOwner` جدا)، `POST .../duplicate`
+  (editor+؛ فقط متادیتا — محتوای Y.Doc = کپیِ snapshot، فاز بعد)، `POST`/`DELETE .../favorite` (viewer+).
+- `GET /boards` سرشار شد: `?q=` (ILIKE روی ایندکسِ `gin_trgm`)، `?folderId=`، `?favorite=true` + پرچمِ `is_favorite`.
+- **سرویسِ `requireBoardRole`** (نقشِ موثرِ مشترک + رتبه). **اثباتِ زنده:** rename→favorite→list?favorite→search(`rena`→
+  renamed)→duplicate(`… (کپی)`)→delete(۲۰۴)→GET(۴۰۴)→restore. `pnpm verify` سبز.
+
+### قدمِ بعد — ★ DP-4
+
+`/boards/:id/access` (حالتِ اشتراک + linkToken + اعضای مستقیمِ بورد) و `POST /public/boards/resolve` — **این‌جا DP-4
+تصمیم می‌شود** (مهمانِ لینک چطور در بازبینیِ زنده دیده شود؛ پیشنهاد: گرنتِ ماندگار). سپس snapshot، asset، OpenAPI.
