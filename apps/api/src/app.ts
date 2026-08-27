@@ -11,6 +11,7 @@ import type pg from "pg";
 import { makeRequireAuth } from "./auth-guard.ts";
 import { loadApiConfig, secretBytes, type ApiConfig } from "./config.ts";
 import { registerErrorHandler } from "./errors.ts";
+import { registerIdempotency } from "./idempotency.ts";
 import { loggerOptions } from "./logger.ts";
 import { createDbPool } from "./plugins/db.ts";
 import { createAssetObjectStore, createSnapshotObjectStore } from "./plugins/s3.ts";
@@ -18,6 +19,7 @@ import { registerAssetRoutes } from "./routes/assets.ts";
 import { registerAuthRoutes } from "./routes/auth.ts";
 import { registerBoardAccessRoutes } from "./routes/board-access.ts";
 import { registerBoardRoutes } from "./routes/boards.ts";
+import { registerDocsRoutes } from "./routes/docs.ts";
 import { registerFolderRoutes } from "./routes/folders.ts";
 import { registerMeRoutes } from "./routes/me.ts";
 import { registerTeamRoutes } from "./routes/teams.ts";
@@ -32,6 +34,8 @@ import { registerTeamRoutes } from "./routes/teams.ts";
 declare module "fastify" {
   interface FastifyInstance {
     db: pg.Pool;
+    /** فهرستِ مسیرهای ثبت‌شده (`METHOD url`) — گاردِ دریفتِ OpenAPI با این می‌سنجد. */
+    registeredRoutes: string[];
   }
 }
 
@@ -54,6 +58,15 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
   app.decorateRequest("authUser", null);
 
+  // ★ گاردِ دریفتِ OpenAPI: هر مسیرِ ثبت‌شده جمع می‌شود تا تست ثابت کند همه مستندند.
+  //   قبل از ثبتِ هر route اضافه می‌شود (onRoute فقط routeهای بعد از خودش را می‌بیند). HEAD حذف.
+  const registeredRoutes: string[] = [];
+  app.addHook("onRoute", (route) => {
+    const methods = Array.isArray(route.method) ? route.method : [route.method];
+    for (const m of methods) if (m !== "HEAD") registeredRoutes.push(`${m} ${route.url}`);
+  });
+  app.decorate("registeredRoutes", registeredRoutes);
+
   registerErrorHandler(app);
 
   // کوکی (برای refreshِ HttpOnly) + محدودیتِ نرخ. قبل از routeها تا سراسری اعمال شوند.
@@ -63,6 +76,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     max: config.RATE_LIMIT_MAX,
     timeWindow: config.RATE_LIMIT_WINDOW_SECONDS * 1000,
   });
+
+  // Idempotency-Key روی POSTهای احرازشده (گام ۵٫۵) — قبل از routeها تا سراسری اعمال شود.
+  registerIdempotency(app, { ttlMs: 24 * 60 * 60 * 1000 });
 
   const ownsPool = options.db === undefined;
   const pool =
@@ -89,6 +105,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       return reply.code(503).send({ status: "not_ready" });
     }
   });
+
+  // ── مستندات (عمومی، بدونِ احراز): OpenAPI 3.1 + مرورگرِ سبک ──────────
+  registerDocsRoutes(app);
 
   // ── وابستگی‌های احراز/OTP ───────────────────────────────────────────
   const secret = secretBytes(config);

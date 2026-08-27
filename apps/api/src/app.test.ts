@@ -1,46 +1,9 @@
 import { signAccessToken } from "@hamboom/auth-core";
-import type pg from "pg";
 import { describe, expect, it } from "vitest";
 
 import { buildApp } from "./app.ts";
-import type { ApiConfig } from "./config.ts";
 import { HttpError } from "./errors.ts";
-
-const TEST_CONFIG: ApiConfig = {
-  NODE_ENV: "test",
-  APP_ENV: "local",
-  LOG_LEVEL: "fatal", // آرام در تست
-  DATABASE_URL: "postgres://unused@localhost/none", // db تزریق می‌شود، اتصال نمی‌خورد
-  DATABASE_SSL: false,
-  DATABASE_POOL_MAX: 1,
-  JWT_SECRET: "test_secret_at_least_thirty_two_chars_long",
-  ACCESS_TOKEN_TTL_SECONDS: 900,
-  REFRESH_TOKEN_TTL_SECONDS: 2_592_000,
-  RT_TOKEN_TTL_SECONDS: 60,
-  OTP_TTL_SECONDS: 120,
-  OTP_MAX_ATTEMPTS: 5,
-  OTP_COOLDOWN_SECONDS: 60,
-  OTP_DEV_FIXED_CODE: undefined,
-  PORT: 3002,
-  RATE_LIMIT_MAX: 100,
-  RATE_LIMIT_WINDOW_SECONDS: 60,
-  RATE_LIMIT_OTP_MAX: 5,
-  // S3 — نمونه‌ی S3Client تنبل است (تا درخواستی نیاید اتصال نمی‌خورد)، پس تست شبکه نمی‌زند.
-  S3_ENDPOINT: "http://localhost:9999",
-  S3_REGION: "ir-thr-at1",
-  S3_ACCESS_KEY_ID: "unused",
-  S3_SECRET_ACCESS_KEY: "unused",
-  S3_FORCE_PATH_STYLE: true,
-  S3_PRESIGN_TTL_SECONDS: 900,
-  S3_BUCKET_ASSETS: "hamboom-assets",
-  S3_BUCKET_SNAPSHOTS: "hamboom-snapshots",
-  UPLOAD_MAX_BYTES: 10 * 1024 * 1024,
-};
-
-/** استخرِ دروغینِ db — فقط `query`/`end`. تست بدونِ Postgres. */
-function fakeDb(queryImpl: () => Promise<{ rows: unknown[] }>): pg.Pool {
-  return { query: queryImpl, end: (): Promise<void> => Promise.resolve() } as unknown as pg.Pool;
-}
+import { fakeDb, TEST_CONFIG } from "./test-fixtures.ts";
 
 interface ErrBody {
   error: { code: string; message: string; requestId: string };
