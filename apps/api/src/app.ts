@@ -12,6 +12,7 @@ import { registerErrorHandler } from "./errors.ts";
 import { loggerOptions } from "./logger.ts";
 import { createDbPool } from "./plugins/db.ts";
 import { registerAuthRoutes } from "./routes/auth.ts";
+import { registerBoardAccessRoutes } from "./routes/board-access.ts";
 import { registerBoardRoutes } from "./routes/boards.ts";
 import { registerFolderRoutes } from "./routes/folders.ts";
 import { registerMeRoutes } from "./routes/me.ts";
@@ -124,6 +125,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     secret,
     rtTokenTtlSeconds: config.RT_TOKEN_TTL_SECONDS,
   });
+  registerBoardAccessRoutes(app, { pool, requireAuth });
 
   return app;
 }

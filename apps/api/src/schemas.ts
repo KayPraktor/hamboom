@@ -37,6 +37,27 @@ export const patchBoardBody = zod.object({
   folderId: zod.string().uuid().nullable().optional(),
 });
 
+// حالت‌های دسترسیِ بورد — هم‌تراز با `boardAccessModes`ِ shared-types (بدونِ link_comment).
+const boardAccessMode = zod.enum(["private", "team", "link_view", "link_edit"]);
+
+export const putAccessBody = zod.object({
+  accessMode: boardAccessMode,
+  /** اگر true، توکنِ لینک از نو ساخته می‌شود (لینکِ قبلی و مهمان‌هایش باطل). */
+  regenerate: zod.boolean().optional(),
+});
+
+export const resolveLinkBody = zod.object({ linkToken: zod.string().min(10) });
+
+// نقش‌های قابلِ‌تخصیصِ بورد — بدونِ `commenter` (نقشِ بی‌اثرِ فعلی، گام ۲٫۲).
+const assignableBoardRole = zod.enum(["owner", "editor", "viewer"]);
+
+export const addBoardMemberBody = zod.object({
+  userId: zod.string().uuid("userId باید UUID باشد"),
+  role: assignableBoardRole,
+});
+
+export const patchBoardMemberRoleBody = zod.object({ role: assignableBoardRole });
+
 /** نقش‌های قابلِ‌تخصیص در تیم — نه `owner` (سازنده است، انتقالِ مالکیت جداست). */
 const assignableTeamRole = zod.enum(["admin", "member", "guest"]);
 

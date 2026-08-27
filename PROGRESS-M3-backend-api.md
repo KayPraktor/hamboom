@@ -422,7 +422,22 @@ minio-init (۳ باکت)، w/h (decoder)، `UPLOAD_MAX_BYTES`، دو FKِ بال
 - **سرویسِ `requireBoardRole`** (نقشِ موثرِ مشترک + رتبه). **اثباتِ زنده:** rename→favorite→list?favorite→search(`rena`→
   renamed)→duplicate(`… (کپی)`)→delete(۲۰۴)→GET(۴۰۴)→restore. `pnpm verify` سبز.
 
-### قدمِ بعد — ★ DP-4
+### گام ۵٫۴ — دسترسی/اشتراک + DP-4 حل شد ✅ (۱۴۰۵/۰۶/۰۷)
 
-`/boards/:id/access` (حالتِ اشتراک + linkToken + اعضای مستقیمِ بورد) و `POST /public/boards/resolve` — **این‌جا DP-4
-تصمیم می‌شود** (مهمانِ لینک چطور در بازبینیِ زنده دیده شود؛ پیشنهاد: گرنتِ ماندگار). سپس snapshot، asset، OpenAPI.
+★ **DP-4 با گرنتِ ماندگار (تاییدِ مالک):** جدولِ `board_link_grants` (migration `0003`؛ board+user، PK، هر دو FK CASCADE)
+که به `link_token_hash`ِ **فعلی** گره خورده. `BoardAccessReader` حالا `hasValidLink` را با یک JOIN می‌سازد
+(گرنت موجود **و** token با `boards.link_token_hash` بخواند) — **امضای پورت دست‌نخورده** (فاز ۴/۷ نمی‌شکند).
+
+- **endpointها** (`routes/board-access.ts`): `GET /boards/:id/access` (viewer+، حالت+اعضا)، `PUT /boards/:id/access`
+  (owner؛ تولید/ابطالِ لینک، `linkToken` فقط همین‌بار برمی‌گردد)، `POST /public/boards/resolve` (کاربرِ احرازشده،
+  گرنت upsert)، `POST`/`PATCH`/`DELETE /boards/:id/members` (owner).
+- ★★ **اثباتِ زنده (شاملِ ابطال):** B بی‌دسترسی→۴۰۳ · A لینک ساخت → B resolve → **myRole:viewer** (گرنت کار می‌کند) ·
+  A لینک را regenerate کرد → B دوباره → **۴۰۳** (توکنِ گرنت با لینکِ نو نمی‌خواند = **ابطالِ خودکار**) · عضوِ مستقیم:
+  A، B را editor کرد → **myRole:editor**. یعنی realtime فاز ۷ هم مهمانِ لینک را درست می‌بیند/می‌بندد.
+- ✅ **دیتابیسِ dev بالاخره کامل-migrate شد** (`0002`+`0003`): دادهٔ یتیمِ متریکِ M2 (۲۳۲۴ ردیف در دو جدولِ لاگ)
+  با `TRUNCATE … CASCADE` پاک شد (دورریختنی)، بعد رانر `0002`/`0003` را اعمال کرد. مشکلِ «ریستِ dev» بسته شد.
+
+### قدمِ بعد
+
+`GET /boards/:id/snapshot` (octet-stream از storage/S3 — به MinIO نیاز دارد)، endpointهای asset (presign/commit/GET)، و
+OpenAPI (گام ۵٫۵). ⚠️ moارد باز: یکی‌شدنِ redactor، بلوکِ دفاعیِ `0002`، `AssetValidationError`ِ parameter property.
