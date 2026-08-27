@@ -346,10 +346,11 @@ Chromium، thumbnail) = **بعد از M3**.
       unit (۲۰ سبز: sniff + service). `pnpm verify` سبز.
 
 **⛔ به فاز ۵ (`apps/api`) موکول شد:**
-- [ ] endpointهای HTTP: `POST /assets/presign`، `/commit` (مصرفِ `validateUploaded` + **ثبتِ رکورد**)،
-      `GET /assets/:id` (۳۰۲ به `resolve`).
-- [ ] جدولِ `files` + migration + دی‌دوپِ `sha256`ِ سطحِ تیم + `UPLOAD_MAX_BYTES` در config + سیم‌کشیِ `ctx` از توکن.
-- [ ] `w`/`h` (decoder — نمایشی نه امنیتی، مالک موکول کرد) + minio-init (۳ باکت).
+- [x] ✅ (۵٫۴، ۱۴۰۵/۰۶/۰۷) endpointهای HTTP: `POST /boards/:boardId/assets/presign`، `.../commit` (مصرفِ
+      `validateUploaded` + **ثبتِ رکورد**)، `GET /assets/:fileId` (۳۰۲ به `resolve`). زنده روی MinIO اثبات (۱۰/۱۰).
+- [x] ✅ (۵٫۴) جدولِ `files` (از `0001_init`) + دی‌دوپِ `sha256`ِ سطحِ تیم (**بعد از تاییدِ sha، نه ادعا**) +
+      `UPLOAD_MAX_BYTES` (`uploadEnvSchema`) + سیم‌کشیِ `ctx` از توکن (`{teamId, boardId, uploadedBy}`).
+- [x] ✅ (۵٫۴) minio-init (باکت‌های assets/snapshots، P3، idempotent). **`w`/`h`** هنوز موکول (decoder — نمایشی نه امنیتی).
 - [ ] `resolve()`ِ سمتِ کلاینت **هرگز reject نمی‌کند** (فاز ۸/۶) — فایلِ گمشده کلِ بورد را نمی‌شکند.
 
 ---
@@ -440,7 +441,8 @@ Chromium، thumbnail) = **بعد از M3**.
 - [ ] ★★ **`GET /boards/:id/rt-token`** — JWTِ ۶۰ثانیه‌ای با `{sub, boardId, role, exp}`
       از `effectiveBoardRole`. این پورتِ چهارم است. کلاینت برای **هر تلاشِ اتصال** یکی
       تازه می‌سازد ([ADR-039](ARCHITECTURE_DECISIONS.md#adr-039)).
-- [ ] `GET /boards/:id/snapshot` (octet-stream، بوتِ سریع از `board_snapshots`).
+- [x] ✅ (۵٫۴، ۱۴۰۵/۰۶/۰۷) `GET /boards/:id/snapshot` (octet-stream، بوتِ سریع از `board_snapshots` → بایت از
+      باکتِ snapshots؛ ۲۰۴ِ تاب‌آور روی نبودِ ردیف/بایت). زنده روی MinIO اثبات (۶/۶).
 - [ ] ★★ **یافته‌ی M2 شماره ۱ (handoff §۴):** خطای «شکلِ» `boardId` کدِ خودش را داشته
       باشد — `board_id` نوعِ `uuid` است و ورودیِ بدشکل نباید `FORBIDDEN`ِ گنگ بدهد. یک
       کدِ خطای صریح در enum (فاز ۲) + اعتبارسنجیِ UUID در api **و** پیامِ بهترِ realtime
