@@ -8,6 +8,10 @@ import {
   boardMember,
   boardRoles,
   boardSummary,
+  createBoardBody,
+  createInviteBody,
+  folder,
+  putAccessBody,
   rtTokenClaims,
   team,
   teamMember,
@@ -119,5 +123,31 @@ describe("rtTokenClaims — قراردادِ توکنِ WS (ADR-042، گام ۲�
     expect(rtTokenClaims.safeParse({ ...ok, role: "boss" }).success).toBe(false);
     expect(rtTokenClaims.safeParse({ ...ok, sub: "" }).success).toBe(false);
     expect(rtTokenClaims.safeParse({ ...ok, exp: "soon" }).success).toBe(false);
+  });
+});
+
+describe("DTOها/بدنه‌های گام ۶ (sdk مصرف‌کننده)", () => {
+  it("folder: معتبر می‌گذرد، parentId nullable", () => {
+    const f = { id: ID, teamId: ID, name: "طرح‌ها", parentId: null, createdAt: DATE };
+    expect(folder.parse(f)).toEqual(f);
+    expect(folder.safeParse({ ...f, parentId: ID }).success).toBe(true);
+    expect(folder.safeParse({ ...f, name: 5 }).success).toBe(false);
+  });
+
+  it("createBoardBody: هر دو فیلد اختیاری؛ teamIdِ غیر-uuid رد", () => {
+    expect(createBoardBody.parse({})).toEqual({});
+    expect(createBoardBody.safeParse({ title: "x", teamId: ID }).success).toBe(true);
+    expect(createBoardBody.safeParse({ teamId: "not-uuid" }).success).toBe(false);
+  });
+
+  it("createInviteBody: شماره یا ایمیل لازم؛ بدونِ هیچ‌کدام رد", () => {
+    expect(createInviteBody.safeParse({ phone: "09121234567", role: "member" }).success).toBe(true);
+    expect(createInviteBody.safeParse({ role: "member" }).success).toBe(false); // نه شماره نه ایمیل
+    expect(createInviteBody.safeParse({ phone: "09121234567", role: "owner" }).success).toBe(false); // owner قابلِ‌تخصیص نیست
+  });
+
+  it("putAccessBody: accessMode از boardAccessMode؛ link_comment رد", () => {
+    expect(putAccessBody.safeParse({ accessMode: "link_edit", regenerate: true }).success).toBe(true);
+    expect(putAccessBody.safeParse({ accessMode: "link_comment" }).success).toBe(false);
   });
 });

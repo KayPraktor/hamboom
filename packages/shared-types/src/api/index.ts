@@ -30,6 +30,9 @@ export type { TeamMember, Team } from "./team.ts";
 export { board, boardSummary, boardMember } from "./board.ts";
 export type { Board, BoardSummary, BoardMember } from "./board.ts";
 
+export { folder } from "./folder.ts";
+export type { Folder } from "./folder.ts";
+
 export { apiErrorCodes, apiErrorCode, apiError } from "./error.ts";
 export type { ApiErrorCode, ApiError } from "./error.ts";
 
@@ -38,3 +41,38 @@ export type { RtTokenClaims } from "./rt-token.ts";
 
 export { assetPresignRequest, assetPresignResponse } from "./asset.ts";
 export type { AssetPresignRequest, AssetPresignResponse } from "./asset.ts";
+
+export {
+  otpRequestBody,
+  otpVerifyBody,
+  patchMeBody,
+  createTeamBody,
+  patchTeamBody,
+  patchMemberRoleBody,
+  createInviteBody,
+  createFolderBody,
+  patchFolderBody,
+  createBoardBody,
+  patchBoardBody,
+  putAccessBody,
+  resolveLinkBody,
+  addBoardMemberBody,
+  patchBoardMemberRoleBody,
+} from "./requests.ts";
+export type {
+  OtpRequestBody,
+  OtpVerifyBody,
+  PatchMeBody,
+  CreateTeamBody,
+  PatchTeamBody,
+  PatchMemberRoleBody,
+  CreateInviteBody,
+  CreateFolderBody,
+  PatchFolderBody,
+  CreateBoardBody,
+  PatchBoardBody,
+  PutAccessBody,
+  ResolveLinkBody,
+  AddBoardMemberBody,
+  PatchBoardMemberRoleBody,
+} from "./requests.ts";

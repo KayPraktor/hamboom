@@ -4,8 +4,11 @@ import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type pg from "pg";
 
 import { requireSub } from "../auth-guard.ts";
+import { toFolder, type FolderRow } from "../dto.ts";
 import { HttpError } from "../errors.ts";
 import { assertUuid, createFolderBody, parseBody, patchFolderBody } from "../schemas.ts";
+
+const FOLDER_COLUMNS = "id, team_id, parent_id, name, created_at";
 import { requireTeamRole } from "../services/teams.ts";
 
 export interface FolderRouteDeps {
@@ -30,12 +33,12 @@ export function registerFolderRoutes(app: FastifyInstance, deps: FolderRouteDeps
     const { teamId } = req.params as { teamId: string };
     assertUuid(teamId, "شناسه‌ی تیم");
     await requireTeamRole(deps.pool, teamId, sub, "member");
-    const { rows } = await deps.pool.query(
-      `SELECT id, team_id, parent_id, name, position, created_at
+    const { rows } = await deps.pool.query<FolderRow>(
+      `SELECT ${FOLDER_COLUMNS}
          FROM folders WHERE team_id = $1 AND deleted_at IS NULL ORDER BY position, name`,
       [teamId],
     );
-    return { folders: rows };
+    return { folders: rows.map(toFolder) };
   });
 
   // ── ساختِ فولدر (member+) ────────────────────────────────────────────
@@ -61,11 +64,11 @@ export function registerFolderRoutes(app: FastifyInstance, deps: FolderRouteDeps
       parentId ?? null,
       name,
     ]);
-    const { rows } = await deps.pool.query(
-      "SELECT id, team_id, parent_id, name, position, created_at FROM folders WHERE id = $1",
+    const { rows } = await deps.pool.query<FolderRow>(
+      `SELECT ${FOLDER_COLUMNS} FROM folders WHERE id = $1`,
       [id],
     );
-    return rows[0];
+    return toFolder(rows[0]!);
   });
 
   // ── ویرایشِ فولدر (member+ همان تیم) ─────────────────────────────────
@@ -79,11 +82,11 @@ export function registerFolderRoutes(app: FastifyInstance, deps: FolderRouteDeps
     if (name !== undefined) {
       await deps.pool.query("UPDATE folders SET name = $1 WHERE id = $2", [name, id]);
     }
-    const { rows } = await deps.pool.query(
-      "SELECT id, team_id, parent_id, name FROM folders WHERE id = $1",
+    const { rows } = await deps.pool.query<FolderRow>(
+      `SELECT ${FOLDER_COLUMNS} FROM folders WHERE id = $1`,
       [id],
     );
-    return rows[0];
+    return toFolder(rows[0]!);
   });
 
   // ── حذفِ نرمِ فولدر (member+) ─────────────────────────────────────────

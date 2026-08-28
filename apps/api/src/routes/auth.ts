@@ -16,6 +16,7 @@ import type pg from "pg";
 
 import { createPgOtpStore } from "../adapters/otp-store.ts";
 import { createPgSessionStore } from "../adapters/session-store.ts";
+import { toUser, USER_COLUMNS, type UserRow } from "../dto.ts";
 import { HttpError } from "../errors.ts";
 import { withTransaction } from "../plugins/db.ts";
 import { otpRequestBody, otpVerifyBody, parseBody } from "../schemas.ts";
@@ -90,8 +91,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
       created.account.userId,
       deps.accessTtlSeconds,
     );
-    const { rows } = await deps.pool.query(
-      "SELECT id, phone, display_name, locale FROM users WHERE id = $1",
+    const { rows } = await deps.pool.query<UserRow>(
+      `SELECT ${USER_COLUMNS} FROM users WHERE id = $1`,
       [created.account.userId],
     );
 
@@ -102,7 +103,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
       refreshToken: deps.appEnv === "local" ? created.refreshToken : undefined,
       isNewUser: created.account.isNewUser,
       personalTeamId: created.account.personalTeamId,
-      user: rows[0] ?? null,
+      user: rows[0] ? toUser(rows[0]) : null,
     };
   });
 

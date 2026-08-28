@@ -1,9 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 
+import type { BoardAccessMode } from "@hamboom/shared-types";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type pg from "pg";
 
 import { requireSub } from "../auth-guard.ts";
+import { toBoardMember, type BoardMemberRow } from "../dto.ts";
 import { HttpError } from "../errors.ts";
 import {
   addBoardMemberBody,
@@ -30,17 +32,21 @@ export function registerBoardAccessRoutes(app: FastifyInstance, deps: BoardAcces
     assertUuid(id, "شناسه‌ی بورد");
     await requireBoardRole(deps.pool, sub, id, "viewer");
 
-    const board = await deps.pool.query<{ access_mode: string; link_active: boolean }>(
+    const board = await deps.pool.query<{ access_mode: BoardAccessMode; link_active: boolean }>(
       "SELECT access_mode, (link_token_hash IS NOT NULL) AS link_active FROM boards WHERE id = $1",
       [id],
     );
-    const members = await deps.pool.query(
-      `SELECT bm.user_id, bm.role, u.display_name
+    const members = await deps.pool.query<BoardMemberRow>(
+      `SELECT u.id, u.display_name, u.presence_color, bm.role, bm.added_by, bm.added_at
          FROM board_members bm JOIN users u ON u.id = bm.user_id
         WHERE bm.board_id = $1 ORDER BY bm.added_at`,
       [id],
     );
-    return { ...board.rows[0], members: members.rows };
+    return {
+      accessMode: board.rows[0]!.access_mode,
+      linkActive: board.rows[0]!.link_active,
+      members: members.rows.map(toBoardMember),
+    };
   });
 
   // ── تنظیمِ حالتِ اشتراک + تولید/ابطالِ لینک (owner) ──────────────────

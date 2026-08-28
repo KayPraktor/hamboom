@@ -5,6 +5,7 @@ import {
   board,
   boardMember,
   boardSummary,
+  folder,
   paginated,
   rtTokenClaims,
   team,
@@ -60,6 +61,7 @@ const COMPONENT_SCHEMAS: Record<string, z.ZodType> = {
   Board: board,
   BoardSummary: boardSummary,
   BoardMember: boardMember,
+  Folder: folder,
   RtTokenClaims: rtTokenClaims,
   AssetPresignRequest: assetPresignRequest,
   AssetPresignResponse: assetPresignResponse,
@@ -124,8 +126,8 @@ const ROUTES: RouteDoc[] = [
 
   // ── فولدر ──
   { method: "get", path: "/teams/:teamId/folders", tag: "folders", summary: "فولدرهای تیم" },
-  { method: "post", path: "/teams/:teamId/folders", tag: "folders", summary: "ساختِ فولدر", body: "CreateFolderBody", ok: { code: 201 } },
-  { method: "patch", path: "/folders/:id", tag: "folders", summary: "ویرایشِ فولدر", body: "PatchFolderBody" },
+  { method: "post", path: "/teams/:teamId/folders", tag: "folders", summary: "ساختِ فولدر", body: "CreateFolderBody", ok: { code: 201, schema: "Folder" } },
+  { method: "patch", path: "/folders/:id", tag: "folders", summary: "ویرایشِ فولدر", body: "PatchFolderBody", ok: { schema: "Folder" } },
   { method: "delete", path: "/folders/:id", tag: "folders", summary: "حذفِ فولدر", ok: { code: 204 } },
 
   // ── بورد ──

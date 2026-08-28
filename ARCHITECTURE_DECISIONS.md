@@ -61,6 +61,7 @@
 | [ADR-042](#adr-042) | claimهای `rtToken` به `shared-types` — جایگزینِ قیدِ rtTokenِ ADR-031 | پذیرفته‌شده |
 | [ADR-043](#adr-043) | `BoardRole` منبعِ حقیقتش به `shared-types` می‌رود (لمسِ `ydoc-schema`) | پذیرفته‌شده |
 | [ADR-044](#adr-044) | آپلودِ دارایی با presigned POST + `content-length-range` (نه PUT) | پذیرفته‌شده |
+| [ADR-045](#adr-045) | پاسخِ api دقیقاً شکلِ DTOی `shared-types` را می‌دهد (لایه‌ی serialize) | پذیرفته‌شده |
 
 ---
 
@@ -1379,6 +1380,37 @@ endpointِ `/assets/presign` شکلِ **`{ url, fields }`** می‌دهند (ف�
 - ⚠️ **قیدِ [ADR-013](#adr-013) هنوز برقرار:** روی MinIO تایید شد؛ رفتارِ دقیقِ آروان هنگامِ دیپلوی (M5)
   باید تایید شود. `content-length-range` استانداردِ S3 است، پس محتمل‌ترین گزینه‌ی قابل‌حمل.
 - **PLAN §۵٫۲ به‌روز شد** (یادداشتِ ۱): پاسخِ `/assets/presign` = `{ fileId, url, fields }`.
+
+---
+
+<a id="adr-045"></a>
+## ADR-045 — پاسخِ api دقیقاً شکلِ DTOی `shared-types` را می‌دهد (لایه‌ی serialize)
+
+**وضعیت:** پذیرفته‌شده (تاییدِ مالک ۱۴۰۵/۰۶/۰۸، هنگامِ فاز ۶ — گزینه A) · **جایگزین‌های ردشده:**
+باریک‌کردنِ DTOها به snake_case · تعریفِ typeِ موازیِ snake_case در sdk
+
+**تصمیم:** هر endpointِ REST که یک موجودیت (User/Team/Board/Folder/…) برمی‌گرداند، ردیفِ خامِ DB را از یک
+**لایه‌ی serialize** ([`apps/api/src/dto.ts`](apps/api/src/dto.ts)) می‌گذراند که آن را به شکلِ **دقیقِ** DTOی
+camelCaseِ `@hamboom/shared-types` درمی‌آورد. ردیفِ خامِ snake_case هرگز مستقیم برنمی‌گردد.
+
+**دلیل:** `shared-types` قراردادِ مشترک است ([ADR-021](#adr-021)) و OpenAPI از همان تولید می‌شود ([گام ۵٫۵]).
+ولی تا فاز ۶ api ردیفِ خام می‌داد (`team_id`، `display_name`، بدونِ `createdBy`/`memberCount`)، پس **قرارداد
+دروغ بود**: کلاینتی که `Board` می‌گرفت `board.teamId === undefined` می‌دید. چرا بی‌صدا مانده بود؟ curlِ فاز ۵
+فقط **مقدار** را چک کرده بود نه **شکل**، و گاردِ دریفتِ OpenAPI **مسیر** را می‌سنجد نه **بدنه**. سه گزینه بود؛
+تنها «api را به قرارداد برسان» هم sdk را صادق می‌کند هم OpenAPI را، **بی‌آنکه قرارداد را کوچک کند** یا typeِ
+موازی بسازد. هزینه‌ی پذیرفته‌شده: یک نگاشتِ per-entity در `dto.ts` و چند JOIN/subquery بیشتر (`createdBy` با
+JOINِ سازنده، `memberCount`، `isFavorite`ِ per-user).
+
+**پیامدها:**
+
+- ★ **تنها نقطه‌ی نگاشتِ ردیف→DTO `apps/api/src/dto.ts` است.** endpointِ تازه که موجودیت می‌دهد **باید** از
+  mapper رد شود، نه اینکه `rows[0]` را برگرداند. تاریخ‌ها ISO string (نه `Date`)، bigint (docSizeBytes/memberCount) عدد.
+- ★ **گیتِ صادق‌بودن: `pnpm sdk:contract`** هر پاسخ را با zodِ `shared-types` **parse** می‌کند — همان چیزی که
+  curl نمی‌گرفت. اگر روزی endpointی دوباره ردیفِ خام بدهد، این تست **قرمز** می‌شود.
+- envelopeهای api-محور (پاسخِ verify/me/access) خودشان قرارداد جدا نیستند، ولی **موجودیت‌های داخلشان** DTO اند.
+- **`Folder` به `shared-types` افزوده شد** (sdk مصرف‌کننده‌اش شد — همان الگوی «قرارداد وقتی مصرف‌کننده پیدا کرد»).
+- ⚠️ فیلدهای «آینده»ی DTO در M3 مقدارِ صادقِ پیش‌فرض دارند: `avatarUrl`/`thumbnailUrl`/`templateId` → `null`،
+  `linkToken`ِ پاسخِ بورد → `null` (توکنِ خام فقط یک‌بار در `PUT /access`). با آمدنِ آواتار/قالب/worker پُر می‌شوند.
 
 ---
 

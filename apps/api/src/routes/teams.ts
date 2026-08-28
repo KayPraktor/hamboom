@@ -4,6 +4,7 @@ import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type pg from "pg";
 
 import { requireSub } from "../auth-guard.ts";
+import { toTeam, toTeamMember, type TeamMemberRow, type TeamRow } from "../dto.ts";
 import { HttpError } from "../errors.ts";
 import { withTransaction } from "../plugins/db.ts";
 import {
@@ -52,11 +53,13 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
       await tx.query("INSERT INTO usage_counters (team_id) VALUES ($1) ON CONFLICT DO NOTHING", [
         teamId,
       ]);
-      const { rows } = await tx.query(
-        "SELECT id, slug, name, is_personal, created_at FROM teams WHERE id = $1",
+      const { rows } = await tx.query<TeamRow>(
+        `SELECT t.id, t.slug, t.name, 'owner' AS my_role,
+                (SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count, t.created_at
+           FROM teams t WHERE t.id = $1`,
         [teamId],
       );
-      return rows[0];
+      return toTeam(rows[0]!);
     });
   });
 
@@ -66,11 +69,14 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
     const { id } = req.params as { id: string };
     assertUuid(id, "شناسه‌ی تیم");
     const role = await requireTeamRole(deps.pool, id, sub, "member");
-    const { rows } = await deps.pool.query(
-      "SELECT id, slug, name, is_personal, created_at FROM teams WHERE id = $1 AND deleted_at IS NULL",
-      [id],
+    const { rows } = await deps.pool.query<TeamRow>(
+      `SELECT t.id, t.slug, t.name, $2::text AS my_role,
+              (SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count, t.created_at
+         FROM teams t WHERE t.id = $1 AND t.deleted_at IS NULL`,
+      [id, role],
     );
-    return { ...rows[0], myRole: role };
+    if (rows.length === 0) throw new HttpError(404, "TEAM_NOT_FOUND", "تیم یافت نشد.");
+    return toTeam(rows[0]!);
   });
 
   // ── ویرایشِ تیم (admin+) ─────────────────────────────────────────────
@@ -78,7 +84,7 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
     const sub = requireSub(req);
     const { id } = req.params as { id: string };
     assertUuid(id, "شناسه‌ی تیم");
-    await requireTeamRole(deps.pool, id, sub, "admin");
+    const role = await requireTeamRole(deps.pool, id, sub, "admin");
     const { name } = parseBody(patchTeamBody, req.body);
     if (name !== undefined) {
       await deps.pool.query("UPDATE teams SET name = $1, updated_at = now() WHERE id = $2", [
@@ -86,11 +92,13 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
         id,
       ]);
     }
-    const { rows } = await deps.pool.query(
-      "SELECT id, slug, name, is_personal FROM teams WHERE id = $1",
-      [id],
+    const { rows } = await deps.pool.query<TeamRow>(
+      `SELECT t.id, t.slug, t.name, $2::text AS my_role,
+              (SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count, t.created_at
+         FROM teams t WHERE t.id = $1`,
+      [id, role],
     );
-    return rows[0];
+    return toTeam(rows[0]!);
   });
 
   // ── فهرستِ اعضا (member+) ────────────────────────────────────────────
@@ -99,13 +107,13 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
     const { id } = req.params as { id: string };
     assertUuid(id, "شناسه‌ی تیم");
     await requireTeamRole(deps.pool, id, sub, "member");
-    const { rows } = await deps.pool.query(
-      `SELECT tm.user_id, tm.role, tm.joined_at, u.display_name
+    const { rows } = await deps.pool.query<TeamMemberRow>(
+      `SELECT u.id, u.display_name, u.presence_color, tm.role, tm.joined_at, tm.invited_by
          FROM team_members tm JOIN users u ON u.id = tm.user_id
         WHERE tm.team_id = $1 ORDER BY tm.joined_at`,
       [id],
     );
-    return { members: rows };
+    return { members: rows.map(toTeamMember) };
   });
 
   // ── تغییرِ نقشِ عضو (admin+) ─────────────────────────────────────────

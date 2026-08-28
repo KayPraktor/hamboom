@@ -1,11 +1,19 @@
 import { effectiveBoardRole, signRtToken } from "@hamboom/auth-core";
 import type { ObjectStore } from "@hamboom/storage";
+import type { BoardAccessMode, BoardRole, BoardSummary, TeamRole } from "@hamboom/shared-types";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
 
 import { createPgBoardAccessReader } from "../adapters/board-access-reader.ts";
 import { requireSub } from "../auth-guard.ts";
+import {
+  BOARD_FULL_SELECT,
+  toBoard,
+  toBoardSummary,
+  type BoardRow,
+  type BoardSummaryRow,
+} from "../dto.ts";
 import { HttpError } from "../errors.ts";
 import { withTransaction } from "../plugins/db.ts";
 import { assertUuid, createBoardBody, parseBody, patchBoardBody } from "../schemas.ts";
@@ -48,12 +56,29 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
         ? "JOIN board_favorites fav ON fav.board_id = b.id AND fav.user_id = $1"
         : "LEFT JOIN board_favorites fav ON fav.board_id = b.id AND fav.user_id = $1";
 
-    const { rows } = await deps.pool.query(
-      `SELECT DISTINCT b.id, b.team_id, b.folder_id, b.title, b.access_mode, b.element_count,
-              b.last_activity_at, (fav.board_id IS NOT NULL) AS is_favorite
+    // ★ ورودی‌های effectiveBoardRole per-row می‌آیند تا myRoleِ هر بورد در JS (بی‌کوئریِ اضافه) حساب شود
+    //   — همان تابعِ مشترکِ auth-core (یک منبعِ حقیقتِ دسترسی، ADR-012).
+    const { rows } = await deps.pool.query<
+      BoardSummaryRow & {
+        access_mode: BoardAccessMode;
+        is_board_owner: boolean;
+        is_staff: boolean | null;
+        direct_role: BoardRole | null;
+        team_role: TeamRole | null;
+        has_valid_link: boolean;
+      }
+    >(
+      `SELECT DISTINCT b.id, b.title, b.folder_id, b.last_activity_at,
+              (fav.board_id IS NOT NULL) AS is_favorite,
+              b.access_mode, (b.created_by = $1) AS is_board_owner, u.is_staff,
+              bm.role AS direct_role, tm.role AS team_role,
+              (lg.link_token_hash IS NOT NULL AND b.link_token_hash IS NOT NULL
+               AND lg.link_token_hash = b.link_token_hash) AS has_valid_link
          FROM boards b
-         LEFT JOIN team_members tm  ON tm.team_id  = b.team_id AND tm.user_id = $1
-         LEFT JOIN board_members bm ON bm.board_id = b.id      AND bm.user_id = $1
+         LEFT JOIN users u              ON u.id = $1
+         LEFT JOIN team_members tm      ON tm.team_id  = b.team_id AND tm.user_id = $1
+         LEFT JOIN board_members bm     ON bm.board_id = b.id      AND bm.user_id = $1
+         LEFT JOIN board_link_grants lg ON lg.board_id = b.id      AND lg.user_id = $1
          ${favoriteJoin}
         WHERE b.deleted_at IS NULL
           AND (b.created_by = $1
@@ -64,7 +89,20 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
         LIMIT 50`,
       params,
     );
-    return { boards: rows };
+    const boards = rows
+      .map((r) => {
+        const role = effectiveBoardRole({
+          isStaff: r.is_staff ?? false,
+          isBoardOwner: r.is_board_owner,
+          accessMode: r.access_mode,
+          directRole: r.direct_role,
+          teamRole: r.team_role,
+          hasValidLink: r.has_valid_link,
+        });
+        return role === null ? null : toBoardSummary(r, role);
+      })
+      .filter((b): b is BoardSummary => b !== null);
+    return { boards };
   });
 
   // ── ساختِ بورد (editor+ در تیم) ─────────────────────────────────────
@@ -106,11 +144,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
         ]);
       }
 
-      const { rows } = await tx.query(
-        "SELECT id, team_id, title, access_mode, created_by, created_at FROM boards WHERE id = $1",
-        [boardId],
-      );
-      return rows[0];
+      const { rows } = await tx.query<BoardRow>(BOARD_FULL_SELECT, [sub, boardId]);
+      return toBoard(rows[0]!, "owner"); // سازنده مالک است
     });
 
     return board;
@@ -132,14 +167,9 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     const role = effectiveBoardRole(input);
     if (role === null) throw new HttpError(403, "FORBIDDEN", "به این بورد دسترسی ندارید.");
 
-    const { rows } = await deps.pool.query(
-      `SELECT id, team_id, title, access_mode, element_count, created_at, updated_at
-         FROM boards WHERE id = $1 AND deleted_at IS NULL`,
-      [id],
-    );
+    const { rows } = await deps.pool.query<BoardRow>(BOARD_FULL_SELECT, [sub, id]);
     if (rows.length === 0) throw new HttpError(404, "BOARD_NOT_FOUND", "بورد یافت نشد.");
-
-    return { ...rows[0], myRole: role };
+    return toBoard(rows[0]!, role);
   });
 
   // ── snapshotِ بوت (octet-stream از انبار) — viewer+ ──────────────────
@@ -178,7 +208,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     const sub = requireSub(req);
     const { id } = req.params as { id: string };
     if (!UUID_RE.test(id)) throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
-    await requireBoardRole(deps.pool, sub, id, "editor");
+    const role = await requireBoardRole(deps.pool, sub, id, "editor");
     const { title, folderId } = parseBody(patchBoardBody, req.body);
 
     if (folderId !== undefined && folderId !== null) {
@@ -209,11 +239,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
         params,
       );
     }
-    const { rows } = await deps.pool.query(
-      "SELECT id, team_id, folder_id, title, access_mode FROM boards WHERE id = $1",
-      [id],
-    );
-    return rows[0];
+    const { rows } = await deps.pool.query<BoardRow>(BOARD_FULL_SELECT, [sub, id]);
+    return toBoard(rows[0]!, role);
   });
 
   // ── حذفِ نرمِ بورد (owner) ───────────────────────────────────────────
@@ -233,11 +260,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     if (!UUID_RE.test(id)) throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
     await assertDeletedBoardOwner(deps.pool, sub, id);
     await deps.pool.query("UPDATE boards SET deleted_at = NULL, updated_at = now() WHERE id = $1", [id]);
-    const { rows } = await deps.pool.query(
-      "SELECT id, team_id, folder_id, title, access_mode FROM boards WHERE id = $1",
-      [id],
-    );
-    return rows[0];
+    const { rows } = await deps.pool.query<BoardRow>(BOARD_FULL_SELECT, [sub, id]);
+    return toBoard(rows[0]!, "owner");
   });
 
   // ── تکثیرِ بورد (editor+) — فقط متادیتا؛ محتوای Y.Doc = فاز بعد (کپیِ snapshot از storage) ──
@@ -257,11 +281,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
       "INSERT INTO boards (id, team_id, folder_id, title, created_by) VALUES ($1, $2, $3, $4, $5)",
       [newId, s.team_id, s.folder_id, `${s.title} (کپی)`, sub],
     );
-    const { rows } = await deps.pool.query(
-      "SELECT id, team_id, folder_id, title, access_mode, created_at FROM boards WHERE id = $1",
-      [newId],
-    );
-    return rows[0];
+    const { rows } = await deps.pool.query<BoardRow>(BOARD_FULL_SELECT, [sub, newId]);
+    return toBoard(rows[0]!, "owner"); // سازنده‌ی کپی مالک است
   });
 
   // ── نشان‌کردن / برداشتنِ نشان (viewer+) ──────────────────────────────

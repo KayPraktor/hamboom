@@ -92,5 +92,5 @@
 
 شکلِ کاملِ هر schema در [`docs/openapi.json`](openapi.json) است (تولیدشده از zod با `z.toJSONSchema`):
 
-`ApiError` · `User` · `UserPublic` · `Team` · `TeamMember` · `Board` · `BoardSummary` · `BoardMember` · `RtTokenClaims` · `AssetPresignRequest` · `AssetPresignResponse` · `Paginated` · `OtpRequestBody` · `OtpVerifyBody` · `CreateBoardBody` · `PatchBoardBody` · `CreateTeamBody` · `PatchTeamBody` · `PatchMemberRoleBody` · `CreateInviteBody` · `CreateFolderBody` · `PatchFolderBody` · `PatchMeBody` · `PutAccessBody` · `ResolveLinkBody` · `AddBoardMemberBody` · `PatchBoardMemberRoleBody`
+`ApiError` · `User` · `UserPublic` · `Team` · `TeamMember` · `Board` · `BoardSummary` · `BoardMember` · `Folder` · `RtTokenClaims` · `AssetPresignRequest` · `AssetPresignResponse` · `Paginated` · `OtpRequestBody` · `OtpVerifyBody` · `CreateBoardBody` · `PatchBoardBody` · `CreateTeamBody` · `PatchTeamBody` · `PatchMemberRoleBody` · `CreateInviteBody` · `CreateFolderBody` · `PatchFolderBody` · `PatchMeBody` · `PutAccessBody` · `ResolveLinkBody` · `AddBoardMemberBody` · `PatchBoardMemberRoleBody`
 
