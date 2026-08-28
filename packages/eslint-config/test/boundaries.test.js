@@ -12,6 +12,7 @@ import {
   canvasSyncBoundaries,
   processEnvDiscipline,
   realtimeBoundaries,
+  sdkBoundaries,
   storageBoundaries,
   ydocSchemaBoundaries,
 } from "../boundaries.js";
@@ -276,6 +277,38 @@ describe("لایه‌ی ۱ — الگوهای مرزی", () => {
     });
   });
 
+  describe("sdkBoundaries — کلاینتِ نازک؛ لایه‌های سرور/UI/Yjs/HTTP-lib ممنوع (M3 فاز ۶)", () => {
+    const config = sdkBoundaries();
+
+    it.each([
+      // لایه‌های سرور — sdk فقط با HTTP حرف می‌زند، مستقیم به این‌ها وصل نمی‌شود.
+      "@hamboom/storage",
+      "@hamboom/auth-core",
+      "@hamboom/assets",
+      // مدلِ Yjs/بوم — sdk با DTOها کار می‌کند، نه سند.
+      "@hamboom/ydoc-schema",
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      // UI — کارِ apps/web که این را wrap می‌کند.
+      "react",
+      "react-dom",
+      "@excalidraw/excalidraw",
+      // کتابخانه‌ی HTTP — sdk از fetchِ سراسری استفاده می‌کند.
+      "axios",
+      "ky",
+      "@aws-sdk/client-s3",
+      // اپِ دیگر را هم import نمی‌کند (APPS_PATTERN — به‌ویژه دورِ باطلِ @hamboom/api).
+      "@hamboom/api",
+    ])("می‌گیرد: %s", (specifier) => {
+      expect(isForbidden(config, specifier)).toBe(true);
+    });
+
+    // ★ تنها مجازِ sdk: shared-types (منبعِ typeها). بستنش یعنی sdk نمی‌تواند کارش را بکند.
+    it("مزاحمِ @hamboom/shared-types نمی‌شود", () => {
+      expect(isForbidden(config, "@hamboom/shared-types")).toBe(false);
+    });
+  });
+
   /**
    * تطبیقِ گلاب در `no-restricted-imports` خلافِ شهودِ رایج است: `*` **از `/`
    * عبور می‌کند**. این در گام ۰٫۲ probe شد و اینجا pin می‌شود تا کسی بعداً
@@ -324,6 +357,8 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     ["packages/auth-core", 'import { Pool } from "pg";'],
     // ★ apps/api: importِ خامِ `@aws-sdk` باید خطا بخورد (به S3 فقط از راهِ storage، P4).
     ["apps/api", 'import { S3Client } from "@aws-sdk/client-s3";'],
+    // ★ sdk: importِ لایه‌ی سرور (@hamboom/storage) باید خطا بخورد — sdk فقط با HTTP حرف می‌زند.
+    ["packages/sdk", 'import { createS3ObjectStore } from "@hamboom/storage";'],
   ])("%s نقضِ واقعی را خطا می‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
     expect(messages.some((m) => m.ruleId === "no-restricted-imports")).toBe(true);
@@ -352,6 +387,11 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     [
       "apps/api",
       'import { createS3ObjectStore } from "@hamboom/storage";\nexport const c = createS3ObjectStore;',
+    ],
+    // ★ sdk مجاز است `@hamboom/shared-types` را ببیند (منبعِ typeها — تنها وابستگی‌اش).
+    [
+      "packages/sdk",
+      'import type { Board } from "@hamboom/shared-types";\nexport const b: Board | null = null;',
     ],
   ])("%s importِ مجاز را خطا نمی‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
@@ -500,6 +540,24 @@ describe("لایه‌ی ۳ — وابستگی‌های اعلام‌شده در 
     expect(deps).not.toContain("@hamboom/canvas-core");
     expect(deps).not.toContain("@hamboom/canvas-sync");
     expect(deps).not.toContain("@hamboom/sdk");
+  });
+
+  // ★ sdk کلاینتِ نازک است: فقط shared-types، نه لایه‌های سرور/UI/HTTP-lib.
+  it("sdk فقط @hamboom/shared-types را اعلام کرده", () => {
+    const deps = declaredDeps("packages/sdk");
+    expect(deps).toContain("@hamboom/shared-types");
+    expect(deps.filter((d) => d.startsWith("@aws-sdk/"))).toEqual([]);
+    for (const forbidden of [
+      "@hamboom/storage",
+      "@hamboom/auth-core",
+      "@hamboom/assets",
+      "@hamboom/api",
+      "react",
+      "axios",
+      "ky",
+    ]) {
+      expect(deps).not.toContain(forbidden);
+    }
   });
 });
 

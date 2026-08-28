@@ -581,3 +581,44 @@ export function apiBoundaries() {
       "(sdk کلاینتِ api است — دورِ باطل). مجاز: storage/auth-core/assets/config/shared-types + pg/ioredis/fastify/kysely.",
   });
 }
+
+/**
+ * `packages/sdk` — کلاینتِ typedِ REST، افزوده‌ی M3 فاز ۶.
+ *
+ * ★ **کلاینتِ نازکِ framework-agnostic:** فقط `fetch`ِ سراسری + DTOهای `shared-types` (منبعِ واحد، بدونِ
+ * تعریفِ موازی). نه UI (`react`/`@excalidraw` — کارِ `apps/web` که این را wrap می‌کند)، نه لایه‌های سرور
+ * (`storage`/`auth-core`/`assets`)، نه مدلِ Yjs/بوم (`ydoc-schema`/`canvas-*`)، نه کتابخانه‌ی HTTP
+ * (`axios`/`ky`). مجاز: `@hamboom/shared-types`.
+ *
+ * ⚠️ **دورِ باطل:** sdk هرگز `@hamboom/api` را در `src` نمی‌بیند (APPS_PATTERN می‌بنددش). تستِ قراردادی که
+ * در برابرِ `buildApp()`ِ واقعی می‌زند **بیرونِ `src/`** است (گیت روی `src/**` باریک است).
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function sdkBoundaries() {
+  return packageBoundaries({
+    forbid: [
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/ydoc-schema",
+      "@hamboom/storage",
+      "@hamboom/auth-core",
+      "@hamboom/assets",
+      "react",
+      "react-dom",
+      "@excalidraw/*",
+      "@aws-sdk/*",
+      "ws",
+      "pg",
+      "ioredis",
+      "fastify",
+      "kysely",
+      "axios",
+      "ky",
+    ],
+    reason:
+      "sdk کلاینتِ نازکِ REST است: فقط fetchِ سراسری + DTOهای shared-types. نه UI (react/excalidraw — کارِ " +
+      "apps/web)، نه لایه‌های سرور (storage/auth-core/assets)، نه Yjs/بوم (ydoc-schema/canvas)، نه کتابخانه‌ی " +
+      "HTTP (axios/ky). مجاز: shared-types.",
+  });
+}

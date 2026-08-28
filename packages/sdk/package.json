@@ -1,0 +1,28 @@
+{
+  "name": "@hamboom/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "کلاینتِ typedِ REST برای apps/api — از shared-types، بدونِ تعریفِ موازی (M3 فاز ۶)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@hamboom/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@hamboom/eslint-config": "workspace:*",
+    "@hamboom/tsconfig": "workspace:*",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
