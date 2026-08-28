@@ -216,11 +216,13 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   - **`shared-types`:** claimهای `rtToken` → به `shared-types` (تاییدِ ADR-021، ۱۴۰۵/۰۵/۲۴)؛
     `CommentPin` عمداً در `ydoc-schema` مانْد؛ فقط DTOهای **مصرف‌کننده‌دار** اضافه می‌شوند، نه کلِ §۵٫۱.
   - ⚠️ **رفعِ سه یافته‌ی M2 که به `canvas-core`/`canvas-sync` دست می‌زند تک‌تک تاییدِ مالک می‌خواهد** (گام ۸٫۵).
-  - **وضعیت الان:** فاز ۰–۵ کامل ✅ — فاز ۳ (`storage`/`assets`)، فاز ۴ (`auth-core`: JWT/قفلِ `exp`/
-    `effectiveBoardRole`/refreshِ چرخشی/OTP)، و **فاز ۵ (`apps/api`) تمام شد (۱۴۰۵/۰۶/۰۸):** کلِ سطحِ REST
-    (auth/user/team/folder/board/access/**asset**/rt-token/**snapshot**) + migrationِ کاملِ schema + پیاده‌سازیِ DBِ
-    پورت‌ها + **OpenAPI 3.1** (`/openapi.json`,`/api/v1/docs`) + **Idempotency-Key**. MinIO باز شد (پورتِ ۹۸۰۰، رنجِ
-    excludedِ ویندوز). `pnpm verify` سبز. **قدمِ بعد: فاز ۶ (`packages/sdk`)** — کلاینتِ typed از `shared-types`.
+  - **وضعیت الان:** فاز ۰–۶ کامل ✅ — فاز ۳ (`storage`/`assets`)، فاز ۴ (`auth-core`)، **فاز ۵ (`apps/api`)** (کلِ
+    سطحِ REST + migration + OpenAPI 3.1 + Idempotency؛ MinIO روی پورتِ ۹۸۰۰)، و **فاز ۶ (`packages/sdk`) تمام شد
+    (۱۴۰۵/۰۶/۰۸):** کلاینتِ typedِ REST از `shared-types` (access در حافظه، ۴۰۱→refresh→retry، `SdkError`)، گیتِ
+    `sdkBoundaries`، و تستِ قراردادی در برابرِ `buildApp()`ِ واقعی (`pnpm sdk:contract`). ★★ **[ADR-045](ARCHITECTURE_DECISIONS.md#adr-045):**
+    api حالا پاسخ را از لایه‌ی serialize (`apps/api/src/dto.ts`) به شکلِ **دقیقِ DTOی shared-types** می‌دهد (نه ردیفِ خام) —
+    یافته‌ی فاز ۶ که چون sdk قبل از web است زود گرفته شد. `pnpm verify` سبز. **قدمِ بعد: فاز ۷** (تزریقِ auth-core/storage
+    به `apps/realtime` + اجرای دوباره‌ی ۷ سنجه).
 - **★★★ M2 (`realtime-sync`) تمام و تحویل شد** (۱۴۰۵/۰۵/۲۳) — هر ۳۰ گامِ
   [TODO.md](TODO.md) تیک خورده. نقطه‌ی ورودِ M3: [`docs/m3-handoff.md`](docs/m3-handoff.md)
   (چهار پورت، دو موردِ به‌ارث‌رسیده، چهار یافته‌ی M2، سقف‌های اندازه‌گیری‌شده).

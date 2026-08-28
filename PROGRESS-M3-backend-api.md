@@ -18,7 +18,19 @@
 | **۵٫۵** ✅جدید | ★ **OpenAPI 3.1** از همان zodِ منبعِ حقیقت (`z.toJSONSchema`، بدونِ وابستگیِ نو) — `GET /openapi.json` + `GET /api/v1/docs` (مرورگرِ self-hosted، P2) + `scripts/gen-openapi.ts` → `docs/api.md`/`docs/openapi.json` · **گاردِ دریفت** (هر مسیرِ ثبت‌شده مستند است) · **Idempotency-Key** روی POSTِ احرازشده (replay + in-flight de-dup، تک‌نود/۲۴h) · تستِ قطعیِ rate-limit (عبور از سقفِ OTP → ۴۲۹، با شکستنِ عمدی قرمز) |
 
 **✅ فاز ۵ کامل شد** — کلِ سطحِ REST (auth/user/team/folder/board/access/asset/rt-token/snapshot) + OpenAPI + Idempotency.
-**قدمِ بعد: فاز ۶ (`packages/sdk`)** — کلاینتِ typed از `shared-types`، تستِ قراردادی در برابرِ `buildApp()`ِ واقعی.
+
+## ★★ فاز ۶ (`packages/sdk`) — ✅ **کامل شد** (۱۴۰۵/۰۶/۰۸)
+
+**کلاینتِ typedِ REST از `shared-types`** (`createClient`) روی همه‌ی endpointها؛ access در حافظه + **۴۰۱→refresh→retry**
+خودکار؛ §۵ error → `SdkError`؛ گیتِ `sdkBoundaries` (سه‌لایه، با شکستنِ عمدی قرمز شد). ۸ تستِ واحد (fetchِ دروغین) داخلِ
+verify + **تستِ قراردادی در برابرِ `buildApp()`ِ واقعی** (`pnpm sdk:contract`، ۸/۸ روی DBِ واقعی).
+
+★★ **یافته‌ی بزرگِ فاز ۶ — و چرا sdk قبل از web است:** api **ردیفِ خامِ snake_case** می‌داد (`team_id`)، ولی قرارداد و
+OpenAPI **camelCaseِ پرمحتوا** (`teamId`, `createdBy`). یعنی قرارداد **دروغ** بود و curlِ فاز ۵ (که مقدار را چک می‌کرد
+نه شکل) و گاردِ دریفت (که مسیر را می‌سنجد نه بدنه) بی‌صدا از رویش رد شده بودند. **تاییدِ مالک: api را به قرارداد برسان**
+([ADR-045](ARCHITECTURE_DECISIONS.md#adr-045)) → لایه‌ی serialize (`apps/api/src/dto.ts`)، بدنه‌های درخواست + `Folder` به
+`shared-types`، و **تستِ قراردادی هر پاسخ را با zod parse می‌کند** (گیتی که curl نداشت). **قدمِ بعد: فاز ۷** — تزریقِ
+`auth-core`/`storage` به `apps/realtime` + اجرای دوباره‌ی هر ۷ سنجه.
 
 **✅ MinIO باز شد (۱۴۰۵/۰۶/۰۷):** «بالا نمی‌آید»ی قبلی **تداخلِ پورت نبود**، بلکه **رنجِ excludedِ ویندوز** بود (`netsh
 ... excludedportrange`: ۸۹۰۶–۹۱۰۵ هم ۹۰۰۰ هم ۹۰۰۱ را می‌گیرد — Hyper-V، بعد از ری‌استارت جابه‌جا می‌شود؛ برای همین در فاز ۳

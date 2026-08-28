@@ -464,8 +464,12 @@ Chromium، thumbnail) = **بعد از M3**.
 
 ## فاز ۶ — `packages/sdk` (تخمین: ۱ روز)
 
-### گام ۶٫۱ — کلاینتِ typed از `shared-types`
-- [ ] fetchِ typed روی همه‌ی endpointها؛ قالبِ خطای §۵؛ صفحه‌بندیِ cursor؛ نگه‌داشتنِ
+### گام ۶٫۱ — کلاینتِ typed از `shared-types` ✅ (۱۴۰۵/۰۶/۰۸)
+> **نتیجه:** `packages/sdk` ساخته شد؛ `createClient` روی همه‌ی endpointها، §۵ error → `SdkError`، access در
+> حافظه + ۴۰۱→refresh→retry، گیتِ `sdkBoundaries` (سه‌لایه، خودآزمون). ★★ **یافته‌ی بزرگ:** api ردیفِ خام
+> می‌داد نه DTO — با تاییدِ مالک [ADR-045](ARCHITECTURE_DECISIONS.md#adr-045) لایه‌ی serialize (`dto.ts`) +
+> بدنه‌ها/`Folder` به `shared-types`. تستِ قراردادیِ `pnpm sdk:contract` هر پاسخ را با zod parse می‌کند (۸/۸).
+- [x] fetchِ typed روی همه‌ی endpointها؛ قالبِ خطای §۵؛ صفحه‌بندیِ cursor؛ نگه‌داشتنِ
       access در حافظه + refreshِ خودکار روی ۴۰۱؛ `canvas-core → sdk ❌` (قاعده‌ی PLAN §۲).
 - **معیار پذیرش:** یک تستِ قراردادی که sdk را در برابرِ `buildApp()`ِ واقعی (نه mock)
       می‌زند؛ typeها از shared-types می‌آیند، نه تعریفِ موازی؛ `license:check` سبز.
