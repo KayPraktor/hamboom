@@ -62,6 +62,7 @@
 | [ADR-043](#adr-043) | `BoardRole` منبعِ حقیقتش به `shared-types` می‌رود (لمسِ `ydoc-schema`) | پذیرفته‌شده |
 | [ADR-044](#adr-044) | آپلودِ دارایی با presigned POST + `content-length-range` (نه PUT) | پذیرفته‌شده |
 | [ADR-045](#adr-045) | پاسخِ api دقیقاً شکلِ DTOی `shared-types` را می‌دهد (لایه‌ی serialize) | پذیرفته‌شده |
+| [ADR-046](#adr-046) | `BoardAccessReader`ِ pg در یک پکیجِ مشترک — api و realtime یک منبع | پذیرفته‌شده |
 
 ---
 
@@ -1411,6 +1412,34 @@ JOINِ سازنده، `memberCount`، `isFavorite`ِ per-user).
 - **`Folder` به `shared-types` افزوده شد** (sdk مصرف‌کننده‌اش شد — همان الگوی «قرارداد وقتی مصرف‌کننده پیدا کرد»).
 - ⚠️ فیلدهای «آینده»ی DTO در M3 مقدارِ صادقِ پیش‌فرض دارند: `avatarUrl`/`thumbnailUrl`/`templateId` → `null`،
   `linkToken`ِ پاسخِ بورد → `null` (توکنِ خام فقط یک‌بار در `PUT /access`). با آمدنِ آواتار/قالب/worker پُر می‌شوند.
+
+---
+
+<a id="adr-046"></a>
+## ADR-046 — `BoardAccessReader`ِ pg در یک پکیجِ مشترک (api و realtime یک منبع)
+
+**وضعیت:** پذیرفته‌شده (تاییدِ مالک ۱۴۰۵/۰۶/۰۸، هنگامِ فاز ۷) · **جایگزین‌های ردشده:** کپیِ مستقل در
+`apps/realtime` + تستِ conformance · فراخوانیِ HTTPِ realtime→api برای نقش
+
+**تصمیم:** پیاده‌سازیِ pgِ پورتِ `BoardAccessReader` (کوئریِ JOINداری که ورودیِ `effectiveBoardRole` را
+می‌دهد) از `apps/api` به یک پکیجِ کوچکِ مشترک **`packages/board-access-db`** رفت. هم `apps/api` (endpointهای
+REST) و هم `apps/realtime` (`currentRole`ِ `AuthCoreBoardAuthority`) از **همان `createPgBoardAccessReader`**
+استفاده می‌کنند و `Queryable` (pool/tx) را تزریق می‌کنند.
+
+**دلیل:** فاز ۷ به realtime هم یک reader می‌داد. اگر realtime کپیِ خودش را می‌ساخت، دو نسخه از کوئریِ
+دسترسی (با منطقِ DP-4 و گیتینگِ `access_mode`) پیدا می‌شد که می‌توانند **واگرا** شوند — و آن‌وقت api و
+realtime سرِ «چه کسی حقِ نوشتن دارد» **اختلاف** پیدا می‌کنند، دقیقاً همان حفره‌ای که [ADR-012](#adr-012)
+می‌بندد. تستِ conformance می‌توانست واگرایی را بگیرد، ولی فقط **وقتی کسی اجرایش کند**؛ منبعِ واحد واگرایی را
+**غیرممکن** می‌کند. هزینه‌ی پذیرفته‌شده: یک پکیجِ کوچکِ جدید (با `pg`)، و یک لمسِ `apps/api` (انتقالِ یک فایل).
+
+**پیامدها:**
+
+- ★ **`effectiveBoardRole` (منطق) در `auth-core` است، `BoardAccessReader` (داده) در `board-access-db`.** هر دو
+  مشترک؛ هیچ‌کدام در اپ کپی نمی‌شود. endpoint/سرورِ تازه که نقش لازم دارد، از همین دو استفاده می‌کند.
+- ★ مرزِ پکیج: `board-access-db` **فقط یک کوئری است** — `pg` مجاز، ولی UI/بوم/`sdk`/`storage`/`ws`/`ioredis`/
+  `@aws-sdk` ممنوع (گیتِ `boardAccessDbBoundaries`، خودآزمونِ سه‌لایه). `process.env` نمی‌خواند؛ `Queryable` تزریقی.
+- realtime دیگر برای نقش به api **زنگ نمی‌زند** (نه HTTP، نه وابستگیِ اپ‌به‌اپ) — همان مدلِ ADR-031: منطق/داده‌ی
+  مشترک در پکیج، نه فراخوانیِ سرویس.
 
 ---
 

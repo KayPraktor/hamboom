@@ -1,11 +1,11 @@
 import { effectiveBoardRole, signRtToken } from "@hamboom/auth-core";
-import type { ObjectStore } from "@hamboom/storage";
+import { createPgBoardAccessReader } from "@hamboom/board-access-db";
 import type { BoardAccessMode, BoardRole, BoardSummary, TeamRole } from "@hamboom/shared-types";
+import type { ObjectStore } from "@hamboom/storage";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
 
-import { createPgBoardAccessReader } from "../adapters/board-access-reader.ts";
 import { requireSub } from "../auth-guard.ts";
 import {
   BOARD_FULL_SELECT,

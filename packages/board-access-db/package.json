@@ -1,32 +1,22 @@
 {
-  "name": "@hamboom/api",
+  "name": "@hamboom/board-access-db",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "REST APIِ اصلی — Fastify. auth/team/board/asset + rt-token. ماژول M3 فاز ۵.",
+  "description": "پیاده‌سازیِ pgِ پورتِ BoardAccessReader — منبعِ واحدِ داده‌ی دسترسیِ بورد برای api و realtime (M3 فاز ۷)",
   "exports": {
     ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@fastify/cookie": "^11.0.2",
-    "@fastify/rate-limit": "^10.2.2",
-    "@hamboom/assets": "workspace:*",
     "@hamboom/auth-core": "workspace:*",
-    "@hamboom/board-access-db": "workspace:*",
-    "@hamboom/config": "workspace:*",
     "@hamboom/shared-types": "workspace:*",
-    "@hamboom/storage": "workspace:*",
-    "fastify": "^5.2.0",
-    "pg": "^8.13.1",
-    "pino": "^9.5.0",
-    "zod": "^4.4.3"
+    "pg": "^8.13.1"
   },
   "devDependencies": {
     "@hamboom/eslint-config": "workspace:*",

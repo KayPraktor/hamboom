@@ -9,6 +9,7 @@ import {
   apiBoundaries,
   assetsBoundaries,
   authCoreBoundaries,
+  boardAccessDbBoundaries,
   canvasSyncBoundaries,
   processEnvDiscipline,
   realtimeBoundaries,
@@ -309,6 +310,33 @@ describe("لایه‌ی ۱ — الگوهای مرزی", () => {
     });
   });
 
+  describe("boardAccessDbBoundaries — آداپتورِ نازکِ pg؛ UI/بوم/sdk/storage ممنوع (M3 فاز ۷)", () => {
+    const config = boardAccessDbBoundaries();
+
+    it.each([
+      "@hamboom/canvas-core",
+      "@hamboom/ydoc-schema",
+      "@hamboom/sdk",
+      "@hamboom/storage",
+      "react",
+      "@excalidraw/excalidraw",
+      "@aws-sdk/client-s3",
+      "ws",
+      "ioredis",
+      "@hamboom/api", // اپ را import نمی‌کند
+    ])("می‌گیرد: %s", (specifier) => {
+      expect(isForbidden(config, specifier)).toBe(true);
+    });
+
+    // ★ مجازها: pg (کوئری)، auth-core (تایپِ پورت)، shared-types. بستنشان یعنی reader نمی‌تواند کارش را بکند.
+    it.each(["pg", "@hamboom/auth-core", "@hamboom/shared-types"])(
+      "مزاحمِ %s نمی‌شود",
+      (specifier) => {
+        expect(isForbidden(config, specifier)).toBe(false);
+      },
+    );
+  });
+
   /**
    * تطبیقِ گلاب در `no-restricted-imports` خلافِ شهودِ رایج است: `*` **از `/`
    * عبور می‌کند**. این در گام ۰٫۲ probe شد و اینجا pin می‌شود تا کسی بعداً
@@ -359,6 +387,8 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     ["apps/api", 'import { S3Client } from "@aws-sdk/client-s3";'],
     // ★ sdk: importِ لایه‌ی سرور (@hamboom/storage) باید خطا بخورد — sdk فقط با HTTP حرف می‌زند.
     ["packages/sdk", 'import { createS3ObjectStore } from "@hamboom/storage";'],
+    // ★ board-access-db: importِ UI (react) باید خطا بخورد — این فقط یک کوئریِ pg است.
+    ["packages/board-access-db", 'import React from "react";'],
   ])("%s نقضِ واقعی را خطا می‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
     expect(messages.some((m) => m.ruleId === "no-restricted-imports")).toBe(true);
@@ -392,6 +422,11 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     [
       "packages/sdk",
       'import type { Board } from "@hamboom/shared-types";\nexport const b: Board | null = null;',
+    ],
+    // ★ board-access-db مجاز است `pg` را ببیند (کوئریِ دسترسیِ بورد — مسیرِ درستش).
+    [
+      "packages/board-access-db",
+      'import type pg from "pg";\nexport type Q = Pick<pg.Pool, "query">;',
     ],
   ])("%s importِ مجاز را خطا نمی‌کند", async (packageDir, code) => {
     const messages = await lintInPackage(packageDir, code);
@@ -556,6 +591,17 @@ describe("لایه‌ی ۳ — وابستگی‌های اعلام‌شده در 
       "axios",
       "ky",
     ]) {
+      expect(deps).not.toContain(forbidden);
+    }
+  });
+
+  // ★ board-access-db آداپتورِ pg است: pg + auth-core + shared-types بله، UI/canvas/sdk/storage نه.
+  it("board-access-db pg + auth-core + shared-types را دارد، نه UI/storage/sdk", () => {
+    const deps = declaredDeps("packages/board-access-db");
+    expect(deps).toContain("pg");
+    expect(deps).toContain("@hamboom/auth-core");
+    expect(deps).toContain("@hamboom/shared-types");
+    for (const forbidden of ["@hamboom/storage", "@hamboom/sdk", "@hamboom/canvas-core", "react"]) {
       expect(deps).not.toContain(forbidden);
     }
   });

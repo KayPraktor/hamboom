@@ -1,8 +1,8 @@
 import { effectiveBoardRole } from "@hamboom/auth-core";
+import { createPgBoardAccessReader } from "@hamboom/board-access-db";
 import type { BoardRole } from "@hamboom/shared-types";
 import type pg from "pg";
 
-import { createPgBoardAccessReader } from "../adapters/board-access-reader.ts";
 import { HttpError } from "../errors.ts";
 
 const RANK: Record<BoardRole, number> = { owner: 3, editor: 2, commenter: 1, viewer: 0 };

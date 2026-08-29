@@ -622,3 +622,38 @@ export function sdkBoundaries() {
       "HTTP (axios/ky). مجاز: shared-types.",
   });
 }
+
+/**
+ * `packages/board-access-db` — آداپتورِ pgِ پورتِ `BoardAccessReader`، افزوده‌ی M3 فاز ۷
+ * ([ADR-046](../../ARCHITECTURE_DECISIONS.md#adr-046)).
+ *
+ * ★ **آداپتورِ نازکِ DB — منبعِ واحدِ داده‌ی دسترسیِ بورد برای api و realtime.** `pg` مجاز است (کوئریِ
+ * `effectiveBoardRole`)، ولی UI، بوم/Yjs، `sdk`، `storage`، و شبکه/بروکرِ دیگر (`ws`/`ioredis`/`@aws-sdk`/
+ * `axios`/`ky`) اینجا جا ندارند — این پکیج فقط یک کوئری است، نه لایه‌ی سرور. مجاز: `pg`، `@hamboom/auth-core`
+ * (تایپِ پورت)، `@hamboom/shared-types`.
+ *
+ * @returns {import("eslint").Linter.Config}
+ */
+export function boardAccessDbBoundaries() {
+  return packageBoundaries({
+    forbid: [
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/ydoc-schema",
+      "@hamboom/sdk",
+      "@hamboom/storage",
+      "@hamboom/assets",
+      "react",
+      "react-dom",
+      "@excalidraw/*",
+      "@aws-sdk/*",
+      "ws",
+      "ioredis",
+      "axios",
+      "ky",
+    ],
+    reason:
+      "board-access-db آداپتورِ نازکِ pgِ BoardAccessReader است: pg مجاز (کوئریِ دسترسیِ بورد)، ولی UI/بوم/" +
+      "sdk/storage و شبکه/بروکرِ دیگر (ws/ioredis/@aws-sdk/axios/ky) جا ندارند. مجاز: pg، auth-core (تایپِ پورت)، shared-types.",
+  });
+}
