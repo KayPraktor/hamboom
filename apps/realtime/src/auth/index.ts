@@ -8,6 +8,11 @@ export {
 } from "./board-authority.ts";
 
 export {
+  createRealtimeAuthority,
+  type RealtimeAuthorityConfig,
+} from "./auth-core-authority.ts";
+
+export {
   createDevBoardAuthority,
   signDevToken,
   type DevBoardAuthority,

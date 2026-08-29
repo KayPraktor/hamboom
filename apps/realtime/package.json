@@ -25,6 +25,8 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
+    "@hamboom/auth-core": "workspace:*",
+    "@hamboom/board-access-db": "workspace:*",
     "@hamboom/shared-types": "workspace:*",
     "@hamboom/storage": "workspace:*",
     "@hamboom/ydoc-schema": "workspace:*",

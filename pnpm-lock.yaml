@@ -86,6 +86,9 @@ importers:
       '@hamboom/auth-core':
         specifier: workspace:*
         version: link:../../packages/auth-core
+      '@hamboom/board-access-db':
+        specifier: workspace:*
+        version: link:../../packages/board-access-db
       '@hamboom/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -132,6 +135,12 @@ importers:
 
   apps/realtime:
     dependencies:
+      '@hamboom/auth-core':
+        specifier: workspace:*
+        version: link:../../packages/auth-core
+      '@hamboom/board-access-db':
+        specifier: workspace:*
+        version: link:../../packages/board-access-db
       '@hamboom/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -231,6 +240,40 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.1
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.1)(jsdom@25.0.1)(sass@1.51.0)
+
+  packages/board-access-db:
+    dependencies:
+      '@hamboom/auth-core':
+        specifier: workspace:*
+        version: link:../auth-core
+      '@hamboom/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      pg:
+        specifier: ^8.13.1
+        version: 8.22.0
+    devDependencies:
+      '@hamboom/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@hamboom/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.3
       eslint:
         specifier: ^9.17.0
         version: 9.39.5

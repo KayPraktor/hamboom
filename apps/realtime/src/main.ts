@@ -1,19 +1,22 @@
 import { randomUUID } from "node:crypto";
 
+import { createPgBoardAccessReader } from "@hamboom/board-access-db";
 import {
   appEnvSchema,
-  devAuthEnvSchema,
+  authEnvSchema,
   databaseEnvSchema,
   loadEnv,
   realtimeEnvSchema,
   redisEnvSchema,
+  s3EnvSchema,
 } from "@hamboom/config";
+import { createS3ObjectStore } from "@hamboom/storage";
 import Redis from "ioredis";
 
-import { createDevBoardAuthority } from "./auth/index.ts";
+import { createRealtimeAuthority } from "./auth/auth-core-authority.ts";
 import { createLogger } from "./log.ts";
 import { createCompactor } from "./persistence/compactor.ts";
-import { createFsSnapshotStore } from "./persistence/fs-snapshot-store.ts";
+import { createStorageSnapshotStore } from "./persistence/storage-snapshot-store.ts";
 import { createPgPool } from "./persistence/pg-pool.ts";
 import { createPostgresSnapshotCatalog } from "./persistence/postgres-snapshot-catalog.ts";
 import { createPostgresUpdateLog } from "./persistence/postgres-update-log.ts";
@@ -41,7 +44,8 @@ async function main(): Promise<void> {
       .and(realtimeEnvSchema)
       .and(databaseEnvSchema)
       .and(redisEnvSchema)
-      .and(devAuthEnvSchema),
+      .and(authEnvSchema)
+      .and(s3EnvSchema),
   );
   const logger = createLogger({ level: env.LOG_LEVEL });
 
@@ -61,7 +65,18 @@ async function main(): Promise<void> {
   });
   const log = createPostgresUpdateLog({ pool, logger });
   const catalog = createPostgresSnapshotCatalog({ pool });
-  const store = createFsSnapshotStore({ directory: env.RT_SNAPSHOT_DIR });
+  // ★ snapshotها روی Object Storage (`StorageSnapshotStore`، فاز ۷) — نه دیسکِ محلی. آداپتورِ نازک،
+  //   امضای پورت دست‌نخورده، پس `compactor`/`persisted-board-store` عوض نمی‌شوند.
+  const objectStore = createS3ObjectStore({
+    endpoint: env.S3_ENDPOINT,
+    region: env.S3_REGION,
+    accessKeyId: env.S3_ACCESS_KEY_ID,
+    secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+    forcePathStyle: env.S3_FORCE_PATH_STYLE,
+    bucket: env.S3_BUCKET_SNAPSHOTS,
+    defaultPresignTtl: env.S3_PRESIGN_TTL_SECONDS,
+  });
+  const store = createStorageSnapshotStore(objectStore);
 
   // ── خوشه (ADR-006 فاز ۲) ────────────────────────────────────────
   //
@@ -107,7 +122,12 @@ async function main(): Promise<void> {
   });
 
   const server = await createRtServer({
-    authority: createDevBoardAuthority({ secret: env.RT_DEV_JWT_SECRET }),
+    // ★ authorityِ واقعی (auth-core + readerِ pgِ مشترکِ ADR-046)؛ developmentOnly=false → production بالا می‌آید.
+    authority: createRealtimeAuthority({
+      secret: new TextEncoder().encode(env.JWT_SECRET),
+      rtTokenTtlSeconds: env.RT_TOKEN_TTL_SECONDS,
+      accessReader: createPgBoardAccessReader(pool),
+    }),
     appEnv: env.APP_ENV,
     port: env.RT_PORT,
     heartbeatMs: env.RT_HEARTBEAT_INTERVAL_MS,
