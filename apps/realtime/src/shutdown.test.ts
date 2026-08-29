@@ -4,7 +4,12 @@ import net from "node:net";
 import { WebSocket } from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createDevBoardAuthority, signDevToken } from "./auth/index.ts";
+import {
+  AuthError,
+  AUTH_ERROR_CODES,
+  type BoardAuthority,
+  type RtTokenClaims,
+} from "./auth/index.ts";
 import { createLogger } from "./log.ts";
 import { createRtServer, type RtServer, type RtSession } from "./server.ts";
 import { gracefulShutdown } from "./shutdown.ts";
@@ -17,15 +22,39 @@ import { gracefulShutdown } from "./shutdown.ts";
  * که خودمان نوشته‌ایم.
  */
 
-const SECRET = "b".repeat(32);
 const BOARD = "brd_1";
 
-const authority = createDevBoardAuthority({ secret: SECRET });
+/**
+ * ★ فاز ۷: بدلِ تستیِ `BoardAuthority` — این تست‌ها فقط توکنِ معتبر لازم دارند
+ * (heartbeat/۱۰۰۱/سلامت)، نه تغییرِ نقش. توکن یک base64(JSON)ِ ساده است؛ تاییدِ
+ * واقعیِ JWT کارِ `@hamboom/auth-core` است.
+ */
+const encodeToken = (claims: RtTokenClaims): string =>
+  Buffer.from(JSON.stringify(claims)).toString("base64url");
+
+const authority: BoardAuthority = {
+  developmentOnly: false,
+  verify(rawToken, boardId) {
+    if (rawToken.length === 0) {
+      return Promise.reject(new AuthError(AUTH_ERROR_CODES.missing, "توکن لازم است"));
+    }
+    let claims: RtTokenClaims;
+    try {
+      claims = JSON.parse(Buffer.from(rawToken, "base64url").toString("utf8")) as RtTokenClaims;
+    } catch {
+      return Promise.reject(new AuthError(AUTH_ERROR_CODES.invalid, "توکنِ نامعتبر"));
+    }
+    if (claims.exp * 1000 < Date.now()) {
+      return Promise.reject(new AuthError(AUTH_ERROR_CODES.expired, "توکن منقضی شد"));
+    }
+    if (claims.boardId !== boardId) {
+      return Promise.reject(new AuthError(AUTH_ERROR_CODES.forbidden, "بوردِ دیگر"));
+    }
+    return Promise.resolve(claims);
+  },
+};
 const token = (): string =>
-  signDevToken(
-    { sub: "usr_1", boardId: BOARD, role: "editor", exp: Math.floor(Date.now() / 1000) + 3600 },
-    SECRET,
-  );
+  encodeToken({ sub: "usr_1", boardId: BOARD, role: "editor", exp: Math.floor(Date.now() / 1000) + 3600 });
 
 let running: RtServer | null = null;
 let joined: RtSession[] = [];

@@ -31,11 +31,7 @@ export {
   assertAuthorityUsable,
   AuthError,
   AUTH_ERROR_CODES,
-  createDevBoardAuthority,
   createRealtimeAuthority,
-  signDevToken,
-  type DevBoardAuthority,
-  type DevRoleOverrides,
   type BoardAuthority,
   type RealtimeAuthorityConfig,
   type RtTokenClaims,
@@ -100,12 +96,6 @@ export {
   snapshotKey,
   type SnapshotStore,
 } from "./persistence/snapshot-store.ts";
-
-export {
-  createFsSnapshotStore,
-  DEFAULT_SNAPSHOT_DIR,
-  type FsSnapshotStoreOptions,
-} from "./persistence/fs-snapshot-store.ts";
 
 export { createStorageSnapshotStore } from "./persistence/storage-snapshot-store.ts";
 

@@ -1,26 +1,28 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 
-import { databaseEnvSchema, loadEnv, redisEnvSchema } from "@hamboom/config";
+import { createMemoryBoardAccessReader, signRtToken } from "@hamboom/auth-core";
+import { databaseEnvSchema, loadEnv, redisEnvSchema, s3EnvSchema } from "@hamboom/config";
 import {
   createCompactor,
-  createDevBoardAuthority,
-  createFsSnapshotStore,
   createPersistedBoardStore,
   createPgPool,
   createPostgresSnapshotCatalog,
   createPostgresUpdateLog,
+  createRealtimeAuthority,
   createRedisBoardBus,
   createRedisOwnerLock,
   createRoomManager,
   createRtServer,
+  createStorageSnapshotStore,
   MemoryBoardBus,
   MemoryBoardStore,
   MemoryOwnerLock,
   MemoryUpdateLog,
-  signDevToken,
   type RoomManager,
 } from "@hamboom/realtime";
+import { createS3ObjectStore } from "@hamboom/storage";
+import type { BoardRole } from "@hamboom/ydoc-schema";
 import Redis from "ioredis";
 
 /**
@@ -69,12 +71,11 @@ import Redis from "ioredis";
  *   node scripts/rt-dev-server.ts 16000 --pg # Postgres + Redisِ واقعی
  */
 
-const SECRET = "hamboom-dev-only-secret-at-least-32-chars";
+const SECRET = new TextEncoder().encode("hamboom-dev-only-secret-at-least-32-chars");
 const DEFAULT_PORT = 15_300;
 /** عمرِ توکن — کوتاه، تا مسیرِ «توکنِ تازه برای هر تلاش» واقعاً پیموده شود. */
 const TOKEN_TTL_SECONDS = 60;
 
-const SNAPSHOT_DIR = ".hamboom/snapshots-dev";
 const LIMITS = { maxRoomsPerNode: 50, maxDocBytes: 52_428_800, idleTimeoutMs: 120_000 };
 
 const args = process.argv.slice(2);
@@ -82,7 +83,14 @@ const persistent = args.includes("--pg");
 const port = Number(args.find((value) => !value.startsWith("--")) ?? DEFAULT_PORT);
 const tokenPort = port + 1;
 
-const authority = createDevBoardAuthority({ secret: SECRET });
+// ★ فاز ۷: احرازِ واقعیِ auth-core + خواننده‌ی نقشِ حافظه‌ای. خواننده هنگامِ صدورِ
+//   توکن پر می‌شود (پایین) تا currentRole با claimِ توکن هم‌نظر باشد؛ /dev-role تغییرش می‌دهد.
+const reader = createMemoryBoardAccessReader();
+const authority = createRealtimeAuthority({
+  secret: SECRET,
+  rtTokenTtlSeconds: TOKEN_TTL_SECONDS,
+  accessReader: reader,
+});
 
 /** انبارِ حافظه‌ای — پیش‌فرض، و همان چیزی که E2Eهای ۵٫۲ و ۵٫۳ رویش نشسته‌اند. */
 function memoryRooms(): RoomManager {
@@ -104,12 +112,23 @@ function memoryRooms(): RoomManager {
  * می‌دیدند و کلِ ادعای خوشه بی‌معنا می‌شد.
  */
 function persistentRooms(): RoomManager {
-  const env = loadEnv(databaseEnvSchema.and(redisEnvSchema));
+  const env = loadEnv(databaseEnvSchema.and(redisEnvSchema).and(s3EnvSchema));
   const nodeId = randomUUID();
   const pool = createPgPool({ connectionString: env.DATABASE_URL, ssl: env.DATABASE_SSL });
   const log = createPostgresUpdateLog({ pool });
   const catalog = createPostgresSnapshotCatalog({ pool });
-  const store = createFsSnapshotStore({ directory: SNAPSHOT_DIR });
+  // ★ فاز ۷: انبارِ واقعیِ MinIO از پشتِ packages/storage (P4)، نه فایل‌سیستم.
+  const store = createStorageSnapshotStore(
+    createS3ObjectStore({
+      endpoint: env.S3_ENDPOINT,
+      region: env.S3_REGION,
+      accessKeyId: env.S3_ACCESS_KEY_ID,
+      secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+      forcePathStyle: env.S3_FORCE_PATH_STYLE,
+      bucket: env.S3_BUCKET_SNAPSHOTS,
+      defaultPresignTtl: env.S3_PRESIGN_TTL_SECONDS,
+    }),
+  );
   const publisher = new Redis(env.REDIS_URL);
   const subscriber = new Redis(env.REDIS_URL);
   for (const client of [publisher, subscriber]) client.on("error", () => undefined);
@@ -141,6 +160,15 @@ const server = await createRtServer({
 });
 
 const tokens = createServer((request, response) => {
+  void handleTokenRequest(request, response).catch((error: unknown) => {
+    response.writeHead(500).end(String(error));
+  });
+});
+
+async function handleTokenRequest(
+  request: import("node:http").IncomingMessage,
+  response: import("node:http").ServerResponse,
+): Promise<void> {
   const url = new URL(request.url ?? "/", "http://localhost");
   // ⚠️ فقط برای توسعه: صفحه‌ی دمو روی پورتِ دیگری سرو می‌شود.
   response.setHeader("access-control-allow-origin", "*");
@@ -156,8 +184,8 @@ const tokens = createServer((request, response) => {
    *
    * دو کار می‌کند و هر دو لازم است، چون دو سوالِ متفاوت‌اند:
    *
-   * ۱. `roles.set` → نقشِ **ماندگار**. بدونش کاربر با اتصالِ مجدد نقشِ داخلِ
-   *    توکن را پس می‌گیرد — همان حفره‌ای که گام ۴٫۵ بست.
+   * ۱. `reader.set` → نقشِ **ماندگار** در خواننده‌ی auth-core. بدونش کاربر با
+   *    اتصالِ مجدد نقشِ داخلِ توکن را پس می‌گیرد — همان حفره‌ای که گام ۴٫۵ بست.
    * ۲. `applyRoleChange` → **هُل دادن** به نشست‌های باز (`HB_PERMISSION`).
    *    بدونش کاربر تا وقتی تب را نبندد چیزی نمی‌فهمد.
    *
@@ -171,8 +199,8 @@ const tokens = createServer((request, response) => {
       response.writeHead(400).end("sub و role لازم‌اند");
       return;
     }
-    authority.roles.set(sub, boardId, role as "viewer");
-    const pushed = rooms.applyRoleChange(boardId, sub, role as "viewer");
+    reader.set(sub, boardId, role as BoardRole);
+    const pushed = rooms.applyRoleChange(boardId, sub, role as BoardRole);
     response.writeHead(200, { "content-type": "text/plain" }).end(String(pushed));
     return;
   }
@@ -182,18 +210,14 @@ const tokens = createServer((request, response) => {
     return;
   }
 
-  response.writeHead(200, { "content-type": "text/plain" }).end(
-    signDevToken(
-      {
-        sub: url.searchParams.get("sub") ?? "usr_dev",
-        boardId,
-        role: (url.searchParams.get("role") ?? "editor") as "editor",
-        exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
-      },
-      SECRET,
-    ),
-  );
-});
+  const sub = url.searchParams.get("sub") ?? "usr_dev";
+  const role = (url.searchParams.get("role") ?? "editor") as BoardRole;
+  // ★ فاز ۷: نقش را در خواننده بگذار تا currentRole با claimِ توکن هم‌نظر باشد —
+  //   auth-core همیشه نظر دارد (نبودِ کلید → null → رد)، برخلافِ undefinedِ dev-impl.
+  reader.set(sub, boardId, role);
+  const token = await signRtToken(SECRET, { sub, boardId, role }, TOKEN_TTL_SECONDS);
+  response.writeHead(200, { "content-type": "text/plain" }).end(token);
+}
 
 await new Promise<void>((resolve) => tokens.listen(tokenPort, "127.0.0.1", resolve));
 

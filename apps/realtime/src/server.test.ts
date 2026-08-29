@@ -2,7 +2,12 @@ import { decodeMessage, encodeMessage, MSG_TYPES } from "@hamboom/ydoc-schema";
 import { WebSocket } from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createDevBoardAuthority, signDevToken, type BoardAuthority } from "./auth/index.ts";
+import {
+  AuthError,
+  AUTH_ERROR_CODES,
+  type BoardAuthority,
+  type RtTokenClaims,
+} from "./auth/index.ts";
 import { createLogger } from "./log.ts";
 import { createRoomManager } from "./room.ts";
 import { createRtServer, type RtServer, type RtSession } from "./server.ts";
@@ -16,16 +21,72 @@ import { MemoryBoardStore } from "./store/board-store.ts";
  * نوشته‌ایم.
  */
 
-const SECRET = "a".repeat(32);
 const BOARD = "brd_1";
 const future = (): number => Math.floor(Date.now() / 1000) + 3600;
 
-const authority = createDevBoardAuthority({ secret: SECRET });
+type Role = RtTokenClaims["role"];
+
+/**
+ * ★ فاز ۷: بدلِ تستیِ `BoardAuthority` — پورتِ **سرور** را می‌سنجد، نه JWT را.
+ *
+ * ⚠️ چرا بدل و نه `createRealtimeAuthority`ِ واقعی: این تست‌ها مسیرِ سرور را
+ * می‌سنجند، از جمله عقب‌گردِ «`currentRole() ?? نقشِ توکن`» که فقط وقتی
+ * `currentRole` مقدارِ `undefined` («نظری ندارم») بدهد فعال می‌شود — و
+ * authorityِ واقعیِ auth-core **هرگز** undefined نمی‌دهد (همیشه نقش یا `null`).
+ * پس آن عقب‌گرد فقط با یک بدل آزمودنی است. تاییدِ امضا و سه حمله‌ی JWT در
+ * `@hamboom/auth-core` آزموده می‌شوند، نه اینجا. توکن یک base64(JSON)ِ ساده است.
+ */
+const encodeToken = (claims: RtTokenClaims): string =>
+  Buffer.from(JSON.stringify(claims)).toString("base64url");
+
+interface FakeAuthority extends BoardAuthority {
+  roles: { set(sub: string, boardId: string, role: Role | null): void };
+}
+
+function createFakeAuthority(developmentOnly = false): FakeAuthority {
+  const overrides = new Map<string, Role | null>();
+  const key = (sub: string, boardId: string): string => `${sub}::${boardId}`;
+  return {
+    developmentOnly,
+    verify(token, boardId) {
+      // ★ توکنِ غایب کدِ خودش را دارد (TOKEN_MISSING)، مثلِ createRealtimeAuthorityِ واقعی.
+      if (token.length === 0) {
+        return Promise.reject(new AuthError(AUTH_ERROR_CODES.missing, "توکن لازم است"));
+      }
+      let claims: RtTokenClaims;
+      try {
+        claims = JSON.parse(Buffer.from(token, "base64url").toString("utf8")) as RtTokenClaims;
+      } catch {
+        return Promise.reject(new AuthError(AUTH_ERROR_CODES.invalid, "توکنِ نامعتبر"));
+      }
+      if (typeof claims?.sub !== "string" || typeof claims?.boardId !== "string") {
+        return Promise.reject(new AuthError(AUTH_ERROR_CODES.invalid, "توکنِ نامعتبر"));
+      }
+      if (typeof claims.exp !== "number" || claims.exp * 1000 < Date.now()) {
+        return Promise.reject(new AuthError(AUTH_ERROR_CODES.expired, "توکن منقضی شد"));
+      }
+      if (claims.boardId !== boardId) {
+        return Promise.reject(new AuthError(AUTH_ERROR_CODES.forbidden, "بوردِ دیگر"));
+      }
+      return Promise.resolve(claims);
+    },
+    currentRole(sub, boardId) {
+      const k = key(sub, boardId);
+      return Promise.resolve(overrides.has(k) ? overrides.get(k)! : undefined);
+    },
+    roles: { set: (sub, boardId, role) => overrides.set(key(sub, boardId), role) },
+  };
+}
+
+const authority = createFakeAuthority();
 const validToken = (overrides: Record<string, unknown> = {}): string =>
-  signDevToken(
-    { sub: "usr_9f3c1a", boardId: BOARD, role: "editor", exp: future(), ...overrides } as never,
-    SECRET,
-  );
+  encodeToken({
+    sub: "usr_9f3c1a",
+    boardId: BOARD,
+    role: "editor",
+    exp: future(),
+    ...overrides,
+  } as RtTokenClaims);
 
 let running: RtServer | null = null;
 /** خطوطِ لاگِ سرور — نگهبانِ P7 همین‌ها را اسکن می‌کند. */
@@ -232,7 +293,8 @@ describe("★★ گیتِ runtime — ADR-031", () => {
   it("پیاده‌سازیِ توسعه‌ای در production سرور را **بالا نمی‌آورد**", async () => {
     await expect(
       createRtServer({
-        authority,
+        // ★ authorityِ علامت‌گذاری‌شده به‌عنوان developmentOnly — گیت باید ردش کند.
+        authority: createFakeAuthority(true),
         appEnv: "production",
         logger: createLogger({ write: () => {} }),
       }),
@@ -303,7 +365,7 @@ describe("★★ نگهبانِ P7 — هیچ PII در لاگ", () => {
  */
 describe("★★ نقشِ جاری بر نقشِ توکن مقدم است — گام ۴٫۵", () => {
   it("توکن `editor` می‌گوید ولی نقشِ جاری `viewer` است → نشست `viewer` می‌شود", async () => {
-    const demoting = createDevBoardAuthority({ secret: SECRET });
+    const demoting = createFakeAuthority();
     demoting.roles.set("usr_9f3c1a", BOARD, "viewer");
     const server = await startServer({ authority: demoting });
 
@@ -333,7 +395,7 @@ describe("★★ نقشِ جاری بر نقشِ توکن مقدم است — گ
   it("★ دسترسیِ برداشته‌شده (`null`) اتصال را با `FORBIDDEN` رد می‌کند", async () => {
     // ⚠️ `null` و «نظری ندارم» نباید یکی رفتار کنند — وگرنه یک کاربرِ اخراج‌شده
     //    با توکنِ قدیمی‌اش تا انقضا وصل می‌مانْد.
-    const revoking = createDevBoardAuthority({ secret: SECRET });
+    const revoking = createFakeAuthority();
     revoking.roles.set("usr_9f3c1a", BOARD, null);
     const server = await startServer({ authority: revoking });
 
@@ -370,7 +432,7 @@ describe("★★ تازه‌سازیِ توکن روی اتصالِ باز", () 
   }
 
   it("★ نقشِ عوض‌شده به نشست و به کلاینت می‌رسد", async () => {
-    const demoting = createDevBoardAuthority({ secret: SECRET });
+    const demoting = createFakeAuthority();
     const server = await startServer({ authority: demoting });
     const session = await openSession(server.port);
     expect(joined[0]?.role).toBe("editor");

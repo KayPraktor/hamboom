@@ -11,11 +11,3 @@ export {
   createRealtimeAuthority,
   type RealtimeAuthorityConfig,
 } from "./auth-core-authority.ts";
-
-export {
-  createDevBoardAuthority,
-  signDevToken,
-  type DevBoardAuthority,
-  type DevBoardAuthorityOptions,
-  type DevRoleOverrides,
-} from "./dev-board-authority.ts";
