@@ -17,8 +17,12 @@ export type { TokenErrorCode } from "./tokens.ts";
 export { effectiveBoardRole } from "./roles.ts";
 export type { BoardAccessInput } from "./roles.ts";
 
-export { createAuthCoreBoardAuthority } from "./board-authority.ts";
-export type { BoardAccessReader, AuthCoreBoardAuthorityConfig } from "./board-authority.ts";
+export { createAuthCoreBoardAuthority, createMemoryBoardAccessReader } from "./board-authority.ts";
+export type {
+  BoardAccessReader,
+  AuthCoreBoardAuthorityConfig,
+  MemoryBoardAccessReader,
+} from "./board-authority.ts";
 
 export { RefreshError, startSession, rotateSession, createMemorySessionStore } from "./refresh.ts";
 export type { SessionStore, SessionRecord, RefreshConfig, RotateResult } from "./refresh.ts";

@@ -2,7 +2,6 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { databaseEnvSchema, loadEnv } from "@hamboom/config";
-import { signDevToken } from "@hamboom/realtime";
 import {
   boardRoots,
   createBoardDoc,
@@ -16,6 +15,8 @@ import pg from "pg";
 import * as syncProtocol from "y-protocols/sync";
 import { WebSocket } from "ws";
 import * as Y from "yjs";
+
+import { gaugeChildEnv, seedBoardMember, seedToken } from "./rt-seed.ts";
 
 /**
  * ★★ تستِ **کشتنِ سرور** — معیارِ پذیرشِ گام ۴٫۳.
@@ -40,7 +41,6 @@ import * as Y from "yjs";
  *   pnpm rt:durability
  */
 
-const SECRET = "hamboom-durability-secret-at-least-32-chars";
 const PORT = 15390;
 
 function fail(message: string): never {
@@ -54,13 +54,7 @@ function startServer(): Promise<ChildProcess> {
     process.execPath,
     ["--env-file-if-exists=.env", "apps/realtime/src/main.ts"],
     {
-      env: {
-        ...process.env,
-        RT_PORT: String(PORT),
-        RT_DEV_JWT_SECRET: SECRET,
-        APP_ENV: "local",
-        LOG_LEVEL: "info",
-      },
+      env: gaugeChildEnv(PORT), // ★ فاز ۷: رازِ سنجه + S3/DB/Redis از .env
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -186,12 +180,16 @@ function gesture(elementId: string): Uint8Array {
 
 async function main(): Promise<void> {
   const env = loadEnv(databaseEnvSchema);
-  const boardId = randomUUID();
+  const pool = new pg.Pool({
+    connectionString: env.DATABASE_URL,
+    ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
+    max: 2,
+  });
+  // ★ فاز ۷: بوردِ واقعی + عضوِ editor + توکنِ واقعی — نقش از readerِ pgِ مشترک خوانده می‌شود.
+  const seed = await seedBoardMember(pool, "editor");
+  const boardId = seed.boardId;
   const elementId = `stk_${randomUUID().slice(0, 8)}`;
-  const token = signDevToken(
-    { sub: "usr_durability", boardId, role: "editor", exp: Math.floor(Date.now() / 1000) + 3600 },
-    SECRET,
-  );
+  const token = await seedToken(seed.userId, boardId, "editor");
 
   process.stdout.write(`▶ بورد: ${boardId}\n`);
 
@@ -214,28 +212,20 @@ async function main(): Promise<void> {
   process.stdout.write("✔ سرور با SIGKILL کشته شد\n");
 
   // ── ۳) آیا داده روی دیسک است؟ ──────────────────────────────────
-  const pgClient = new pg.Client({
-    connectionString: env.DATABASE_URL,
-    ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
-  });
-  await pgClient.connect();
-  const rows = await pgClient.query<{ payload: Buffer }>(
+  const rows = await pool.query<{ payload: Buffer }>(
     "SELECT payload FROM board_updates WHERE board_id = $1 ORDER BY seq ASC",
     [boardId],
   );
   if (rows.rowCount === 0) {
-    await pgClient.end();
     fail("هیچ ردیفی در board_updates نیست — کلاینت «ذخیره شد» دید ولی داده نیست. گام قبول نیست.");
   }
 
   const restored = createBoardDoc();
   for (const row of rows.rows) Y.applyUpdate(restored, new Uint8Array(row.payload));
   if (!boardRoots(restored).elements.has(elementId)) {
-    await pgClient.end();
     fail(`عنصر ${elementId} در سندِ بازسازی‌شده نیست. گام قبول نیست.`);
   }
   process.stdout.write(`✔ ${rows.rowCount} ردیف در board_updates؛ عنصر در سندِ بازسازی‌شده هست\n`);
-  await pgClient.end();
 
   // ── ۴) ★ و سرورِ تازه هم همان را سرو می‌کند ─────────────────────
   server = await startServer();
@@ -263,6 +253,7 @@ async function main(): Promise<void> {
 
   second.close();
   server.kill("SIGKILL");
+  await pool.end();
 
   process.stdout.write(`\n✔ دوام تایید شد. تاخیرِ «ذخیره شد»: ${latency}ms\n`);
   process.exit(0);

@@ -11,6 +11,9 @@ importers:
       '@hamboom/auth-core':
         specifier: workspace:*
         version: link:packages/auth-core
+      '@hamboom/board-access-db':
+        specifier: workspace:*
+        version: link:packages/board-access-db
       '@hamboom/canvas-sync':
         specifier: workspace:*
         version: link:packages/canvas-sync
@@ -23,6 +26,9 @@ importers:
       '@hamboom/realtime':
         specifier: workspace:*
         version: link:apps/realtime
+      '@hamboom/storage':
+        specifier: workspace:*
+        version: link:packages/storage
       '@hamboom/tsconfig':
         specifier: workspace:*
         version: link:packages/tsconfig

@@ -48,10 +48,12 @@
   },
   "devDependencies": {
     "@hamboom/auth-core": "workspace:*",
+    "@hamboom/board-access-db": "workspace:*",
     "@hamboom/canvas-sync": "workspace:*",
     "@hamboom/config": "workspace:*",
     "@hamboom/eslint-config": "workspace:*",
     "@hamboom/realtime": "workspace:*",
+    "@hamboom/storage": "workspace:*",
     "@hamboom/tsconfig": "workspace:*",
     "@hamboom/ydoc-schema": "workspace:*",
     "@types/node": "^22.10.0",

@@ -1,9 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
 
 import { databaseEnvSchema, loadEnv } from "@hamboom/config";
-import { signDevToken } from "@hamboom/realtime";
-import { decodeMessage, encodeMessage, MSG_TYPES, type BoardRole } from "@hamboom/ydoc-schema";
+import { decodeMessage, encodeMessage, MSG_TYPES } from "@hamboom/ydoc-schema";
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
@@ -11,6 +9,8 @@ import pg from "pg";
 import * as syncProtocol from "y-protocols/sync";
 import { WebSocket } from "ws";
 import * as Y from "yjs";
+
+import { addMember, gaugeChildEnv, seedBoard, seedToken } from "./rt-seed.ts";
 
 /**
  * ★★ معیارِ پذیرشِ گام ۴٫۶ — **حضور و ephemeral، روی سیمِ واقعی**.
@@ -36,7 +36,6 @@ import * as Y from "yjs";
  *   pnpm rt:presence
  */
 
-const SECRET = "hamboom-presence-secret-at-least-32-chars-x";
 const PORT = 15394;
 const EPHEMERAL_COUNT = 1000;
 
@@ -50,16 +49,11 @@ function startServer(): Promise<ChildProcess> {
     process.execPath,
     ["--env-file-if-exists=.env", "apps/realtime/src/main.ts"],
     {
-      env: {
-        ...process.env,
-        RT_PORT: String(PORT),
-        RT_DEV_JWT_SECRET: SECRET,
-        RT_SNAPSHOT_DIR: ".hamboom/snapshots-probe",
+      // ★ فاز ۷: رازِ سنجه + S3/DB/Redis از .env؛ فشرده‌سازی خاموش (فقط حضور سنجیده می‌شود).
+      env: gaugeChildEnv(PORT, {
         RT_SNAPSHOT_EVERY_UPDATES: "99999",
         RT_SNAPSHOT_EVERY_MS: "99999999",
-        APP_ENV: "local",
-        LOG_LEVEL: "info",
-      },
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -168,20 +162,22 @@ const settle = (ms = 700): Promise<void> => new Promise((r) => setTimeout(r, ms)
 
 async function main(): Promise<void> {
   const env = loadEnv(databaseEnvSchema);
-  const boardId = randomUUID();
-  const exp = Math.floor(Date.now() / 1000) + 3600;
-  const token = (role: BoardRole): string =>
-    signDevToken({ sub: randomUUID(), boardId, role, exp }, SECRET);
+  const pool = new pg.Pool({
+    connectionString: env.DATABASE_URL,
+    ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
+    max: 2,
+  });
+  // ★ فاز ۷: بوردِ واقعی + سه عضو (editor/viewer/editor) + توکن‌های واقعی — نقش‌ها در DB می‌نشینند.
+  const board = await seedBoard(pool);
+  const boardId = board.boardId;
+  const aliceToken = await seedToken(await addMember(pool, boardId, "editor"), boardId, "editor");
+  const bobToken = await seedToken(await addMember(pool, boardId, "viewer"), boardId, "viewer");
+  const carolToken = await seedToken(await addMember(pool, boardId, "editor"), boardId, "editor");
 
   process.stdout.write(`▶ بورد: ${boardId}\n`);
 
-  const db = new pg.Client({
-    connectionString: env.DATABASE_URL,
-    ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
-  });
-  await db.connect();
   const rowCount = async (): Promise<number> => {
-    const result = await db.query<{ count: string }>(
+    const result = await pool.query<{ count: string }>(
       "SELECT COUNT(*) AS count FROM board_updates WHERE board_id = $1",
       [boardId],
     );
@@ -190,8 +186,8 @@ async function main(): Promise<void> {
 
   const server = await startServer();
 
-  const alice = await connect(boardId, token("editor"), "الف");
-  const bob = await connect(boardId, token("viewer"), "ب");
+  const alice = await connect(boardId, aliceToken, "الف");
+  const bob = await connect(boardId, bobToken, "ب");
   await settle();
 
   // ── ۱) همدیگر را می‌بینند ───────────────────────────────────────
@@ -248,7 +244,7 @@ async function main(): Promise<void> {
   process.stdout.write("✔ قطعِ ناگهانی: مکان‌نما فوراً پاک شد و users=۱ شد\n");
 
   // ── ۴) و بعدش همه‌چیز سالم است ──────────────────────────────────
-  const carol = await connect(boardId, token("editor"), "ج");
+  const carol = await connect(boardId, carolToken, "ج");
   await settle();
   carol.announce({ cursor: { x: 1, y: 1 } });
   await settle();
@@ -260,7 +256,7 @@ async function main(): Promise<void> {
 
   alice.close();
   carol.close();
-  await db.end();
+  await pool.end();
   server.kill("SIGKILL");
 
   process.stdout.write("\n✔ حضور و ephemeral تایید شد.\n");

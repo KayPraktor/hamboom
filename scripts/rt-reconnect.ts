@@ -1,27 +1,32 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  createMemoryBoardAccessReader,
+  type MemoryBoardAccessReader,
+  signRtToken,
+} from "@hamboom/auth-core";
+import {
   backoffCeilingMs,
   createWebSocketTransport,
   type TransportStatus,
   type WebSocketTransport,
 } from "@hamboom/canvas-sync/transport";
-import { databaseEnvSchema, loadEnv, redisEnvSchema } from "@hamboom/config";
+import { databaseEnvSchema, loadEnv, redisEnvSchema, s3EnvSchema } from "@hamboom/config";
 import {
   createCompactor,
-  createDevBoardAuthority,
-  createFsSnapshotStore,
   createPersistedBoardStore,
   createPgPool,
   createPostgresSnapshotCatalog,
   createPostgresUpdateLog,
+  createRealtimeAuthority,
   createRedisBoardBus,
   createRedisOwnerLock,
   createRoomManager,
   createRtServer,
-  signDevToken,
+  createStorageSnapshotStore,
   type RtServer,
 } from "@hamboom/realtime";
+import { createS3ObjectStore } from "@hamboom/storage";
 import {
   boardRoots,
   createBoardDoc,
@@ -36,6 +41,8 @@ import * as encoding from "lib0/encoding";
 import pg from "pg";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
+
+import { addMember, cleanupSeed, seedBoard } from "./rt-seed.ts";
 
 /**
  * ★★ معیارِ پذیرشِ گام ۵٫۱ — **اتصالِ مجدد**.
@@ -63,10 +70,11 @@ import * as Y from "yjs";
  *   pnpm rt:reconnect
  */
 
-const SECRET = "hamboom-reconnect-secret-at-least-32-ch";
-const SNAPSHOT_DIR = ".hamboom/snapshots-probe";
+const SECRET = new TextEncoder().encode("hamboom-reconnect-secret-at-least-32-ch");
 /** توکنِ **کوتاه‌عمر** — نکته‌ی فاز ۳ همین است. */
 const TOKEN_TTL_SECONDS = 5;
+// سقفِ عمرِ توکن که authority می‌پذیرد (exp_too_far) — بالاتر از عمرِ واقعیِ توکنِ ۵ثانیه‌ای.
+const AUTHORITY_MAX_TTL_SECONDS = 120;
 
 function fail(message: string): never {
   process.stderr.write(`✖ ${message}\n`);
@@ -88,14 +96,37 @@ interface Node {
 }
 
 async function startNode(
-  env: { DATABASE_URL: string; DATABASE_SSL: boolean; REDIS_URL: string },
+  env: {
+    DATABASE_URL: string;
+    DATABASE_SSL: boolean;
+    REDIS_URL: string;
+    S3_ENDPOINT: string;
+    S3_REGION: string;
+    S3_ACCESS_KEY_ID: string;
+    S3_SECRET_ACCESS_KEY: string;
+    S3_FORCE_PATH_STYLE: boolean;
+    S3_BUCKET_SNAPSHOTS: string;
+    S3_PRESIGN_TTL_SECONDS: number;
+  },
   port: number,
+  reader: MemoryBoardAccessReader,
 ): Promise<Node> {
   const nodeId = randomUUID();
   const pool = createPgPool({ connectionString: env.DATABASE_URL, ssl: env.DATABASE_SSL });
   const log = createPostgresUpdateLog({ pool });
   const catalog = createPostgresSnapshotCatalog({ pool });
-  const store = createFsSnapshotStore({ directory: SNAPSHOT_DIR });
+  // ★ فاز ۷: انبارِ واقعیِ MinIO از پشتِ packages/storage (P4)، نه فایل‌سیستم.
+  const store = createStorageSnapshotStore(
+    createS3ObjectStore({
+      endpoint: env.S3_ENDPOINT,
+      region: env.S3_REGION,
+      accessKeyId: env.S3_ACCESS_KEY_ID,
+      secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+      forcePathStyle: env.S3_FORCE_PATH_STYLE,
+      bucket: env.S3_BUCKET_SNAPSHOTS,
+      defaultPresignTtl: env.S3_PRESIGN_TTL_SECONDS,
+    }),
+  );
   const publisher = new Redis(env.REDIS_URL);
   const subscriber = new Redis(env.REDIS_URL);
   for (const client of [publisher, subscriber]) client.on("error", () => undefined);
@@ -116,7 +147,12 @@ async function startNode(
   });
 
   const server = await createRtServer({
-    authority: createDevBoardAuthority({ secret: SECRET }),
+    // ★ فاز ۷: احرازِ واقعیِ auth-core (developmentOnly=false) + خواننده‌ی نقشِ حافظه‌ای.
+    authority: createRealtimeAuthority({
+      secret: SECRET,
+      rtTokenTtlSeconds: AUTHORITY_MAX_TTL_SECONDS,
+      accessReader: reader,
+    }),
     appEnv: "local",
     port,
     onJoin: (session) => rooms.join(session),
@@ -165,7 +201,11 @@ interface Probe {
   stop(): void;
 }
 
-function probeClient(port: number, boardId: string, token: () => string): Probe {
+function probeClient(
+  port: number,
+  boardId: string,
+  token: () => string | Promise<string>,
+): Probe {
   const doc = createBoardDoc();
   const events: Event[] = [];
   const state = { seq: 0, opens: 0 };
@@ -303,33 +343,33 @@ function measuredGaps(probe: Probe): number[] {
 // ─────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const env = loadEnv(databaseEnvSchema.and(redisEnvSchema));
-  const boardId = randomUUID();
-  const sub = randomUUID();
+  const env = loadEnv(databaseEnvSchema.and(redisEnvSchema).and(s3EnvSchema));
+
+  // ★ فاز ۷: بوردِ واقعی — FKِ board_updates_board_fk (افزوده‌ی migrationِ فاز ۵٫۱) لازمش دارد.
+  const db = new pg.Pool({
+    connectionString: env.DATABASE_URL,
+    ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
+    max: 4,
+  });
+  const board = await seedBoard(db);
+  const boardId = board.boardId;
+  // کاربرِ واقعی — FKِ board_updates_origin_user_fk سابِ نویسنده را در users می‌خواهد.
+  const sub = await addMember(db, boardId, "editor");
+  // نقشِ کاربر از خواننده‌ی حافظه‌ایِ auth-core می‌آید (نه توکن) — همان مسیرِ verifyRtToken.
+  const reader = createMemoryBoardAccessReader();
+  reader.set(sub, boardId, "editor");
   let minted = 0;
-  const freshToken = (): string => {
+  // ⚠️ توکنِ **۵ثانیه‌ای** و **تازه در هر اتصال** — ادعای بند ۳: فاصله‌ی آفلاین از ۵s
+  //    بیشتر است، پس توکنِ کَش‌شده منقضی می‌شود و signRtToken باید دوباره صادر کند.
+  const freshToken = async (): Promise<string> => {
     minted += 1;
-    return signDevToken(
-      {
-        sub,
-        boardId,
-        role: "editor",
-        exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
-      },
-      SECRET,
-    );
+    return signRtToken(SECRET, { sub, boardId, role: "editor" }, TOKEN_TTL_SECONDS);
   };
 
   process.stdout.write(`▶ بورد: ${boardId}\n`);
 
-  const db = new pg.Client({
-    connectionString: env.DATABASE_URL,
-    ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
-  });
-  await db.connect();
-
   // ── ۰) نود، و کلاینتِ واقعی ──────────────────────────────────────
-  const first = await startNode(env, 0);
+  const first = await startNode(env, 0, reader);
   const port = first.server.port;
   process.stdout.write(`▶ پورت: ${String(port)}\n`);
 
@@ -413,7 +453,7 @@ async function main(): Promise<void> {
   client.gesture("stk_offline");
   const mintedBefore = minted;
 
-  const second = await startNode(env, port);
+  const second = await startNode(env, port, reader);
   await client.waitFor(() => client.opens() === 2, "کلاینت بعد از برگشتِ سرور وصل نشد", 40_000);
   process.stdout.write(
     `✔ بدونِ رفرش دوباره وصل شد (${String(minted - mintedBefore)} توکنِ تازه در این فاصله)\n`,
@@ -475,6 +515,7 @@ async function main(): Promise<void> {
   // ── پاکسازی ─────────────────────────────────────────────────────
   for (const probe of [client, newcomer, rejected, ...herd]) probe.stop();
   await second.kill();
+  await cleanupSeed(db, board);
   await db.end();
 
   process.stdout.write("\n✔ اتصالِ مجدد با backoff و jitter تایید شد.\n");

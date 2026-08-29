@@ -1,8 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
 
 import { databaseEnvSchema, loadEnv } from "@hamboom/config";
-import { signDevToken } from "@hamboom/realtime";
 import {
   boardRoots,
   createBoardDoc,
@@ -10,7 +8,6 @@ import {
   encodeMessage,
   MSG_TYPES,
   writeElement,
-  type BoardRole,
 } from "@hamboom/ydoc-schema";
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
 import * as decoding from "lib0/decoding";
@@ -19,6 +16,8 @@ import pg from "pg";
 import * as syncProtocol from "y-protocols/sync";
 import { WebSocket } from "ws";
 import * as Y from "yjs";
+
+import { addMember, gaugeChildEnv, seedBoard, seedToken } from "./rt-seed.ts";
 
 /**
  * ★★ معیارِ پذیرشِ گام ۴٫۷ — **دو پروسه‌ی سرورِ واقعی روی یک Redis**.
@@ -44,7 +43,6 @@ import * as Y from "yjs";
  *   pnpm rt:cluster
  */
 
-const SECRET = "hamboom-cluster-secret-at-least-32-chars-ok";
 const PORT_ONE = 15395;
 const PORT_TWO = 15396;
 const GESTURES = 40;
@@ -59,16 +57,11 @@ function startServer(port: number, label: string): Promise<ChildProcess> {
     process.execPath,
     ["--env-file-if-exists=.env", "apps/realtime/src/main.ts"],
     {
-      env: {
-        ...process.env,
-        RT_PORT: String(port),
-        RT_DEV_JWT_SECRET: SECRET,
-        RT_SNAPSHOT_DIR: ".hamboom/snapshots-probe",
+      // ★ فاز ۷: رازِ سنجه + S3/DB/Redis از .env؛ فشرده‌سازی خاموش (فقط انحصارِ خوشه سنجیده می‌شود).
+      env: gaugeChildEnv(port, {
         RT_SNAPSHOT_EVERY_UPDATES: "99999",
         RT_SNAPSHOT_EVERY_MS: "99999999",
-        APP_ENV: "local",
-        LOG_LEVEL: "info",
-      },
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -222,24 +215,24 @@ const settle = (ms = 900): Promise<void> => new Promise((r) => setTimeout(r, ms)
 
 async function main(): Promise<void> {
   const env = loadEnv(databaseEnvSchema);
-  const boardId = randomUUID();
-  const exp = Math.floor(Date.now() / 1000) + 3600;
-  const token = (role: BoardRole): string =>
-    signDevToken({ sub: randomUUID(), boardId, role, exp }, SECRET);
-
-  process.stdout.write(`▶ بورد: ${boardId}\n`);
-
-  const db = new pg.Client({
+  const pool = new pg.Pool({
     connectionString: env.DATABASE_URL,
     ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
+    max: 2,
   });
-  await db.connect();
+  // ★ فاز ۷: بوردِ واقعی + دو عضوِ editor (یکی به هر نود) + توکن‌های واقعی — نقش‌ها در DB می‌نشینند.
+  const board = await seedBoard(pool);
+  const boardId = board.boardId;
+  const aliceToken = await seedToken(await addMember(pool, boardId, "editor"), boardId, "editor");
+  const bobToken = await seedToken(await addMember(pool, boardId, "editor"), boardId, "editor");
+
+  process.stdout.write(`▶ بورد: ${boardId}\n`);
 
   const one = await startServer(PORT_ONE, "۱");
   const two = await startServer(PORT_TWO, "۲");
 
-  const alice = await connect(PORT_ONE, boardId, token("editor"), "الف");
-  const bob = await connect(PORT_TWO, boardId, token("editor"), "ب");
+  const alice = await connect(PORT_ONE, boardId, aliceToken, "الف");
+  const bob = await connect(PORT_TWO, boardId, bobToken, "ب");
   await settle();
 
   // ── ۱) ★★ تغییرِ نودِ ۱ در نودِ ۲ دیده می‌شود ─────────────────────
@@ -287,7 +280,7 @@ async function main(): Promise<void> {
   await settle(2000);
 
   // ── ۴) ★★ هیچ ردیفِ تکراری — اثباتِ قفلِ صاحب ─────────────────────
-  const duplicates = await db.query<{ seq: string; n: string }>(
+  const duplicates = await pool.query<{ seq: string; n: string }>(
     `SELECT seq, COUNT(*) AS n FROM board_updates
      WHERE board_id = $1 GROUP BY seq HAVING COUNT(*) > 1`,
     [boardId],
@@ -296,7 +289,7 @@ async function main(): Promise<void> {
     fail(`${String(duplicates.rowCount)} شماره‌ی تکراری در board_updates. قفلِ صاحب کار نکرد.`);
   }
 
-  const rows = await db.query<{ count: string; max: string }>(
+  const rows = await pool.query<{ count: string; max: string }>(
     "SELECT COUNT(*) AS count, COALESCE(MAX(seq), 0) AS max FROM board_updates WHERE board_id = $1",
     [boardId],
   );
@@ -348,7 +341,7 @@ async function main(): Promise<void> {
   const deadline = Date.now() + 45_000;
   let survived = false;
   while (Date.now() < deadline) {
-    const found = await db.query(
+    const found = await pool.query(
       "SELECT 1 FROM board_updates WHERE board_id = $1 AND seq > $2 LIMIT 1",
       [boardId, max],
     );
@@ -365,7 +358,7 @@ async function main(): Promise<void> {
 
   alice.close();
   bob.close();
-  await db.end();
+  await pool.end();
   two.kill("SIGKILL");
 
   process.stdout.write("\n✔ خوشه تایید شد.\n");

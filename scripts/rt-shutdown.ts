@@ -1,22 +1,27 @@
 import { randomUUID } from "node:crypto";
 
-import { databaseEnvSchema, loadEnv, redisEnvSchema } from "@hamboom/config";
+import {
+  createMemoryBoardAccessReader,
+  type MemoryBoardAccessReader,
+  signRtToken,
+} from "@hamboom/auth-core";
+import { databaseEnvSchema, loadEnv, redisEnvSchema, s3EnvSchema } from "@hamboom/config";
 import {
   createCompactor,
-  createDevBoardAuthority,
-  createFsSnapshotStore,
   createPersistedBoardStore,
   createPgPool,
   createPostgresSnapshotCatalog,
   createPostgresUpdateLog,
+  createRealtimeAuthority,
   createRedisBoardBus,
   createRedisOwnerLock,
   createRoomManager,
   createRtServer,
+  createStorageSnapshotStore,
   gracefulShutdown,
-  signDevToken,
   type RtServer,
 } from "@hamboom/realtime";
+import { createS3ObjectStore } from "@hamboom/storage";
 import {
   boardRoots,
   createBoardDoc,
@@ -32,6 +37,8 @@ import pg from "pg";
 import * as syncProtocol from "y-protocols/sync";
 import { WebSocket } from "ws";
 import * as Y from "yjs";
+
+import { addMember, cleanupSeed, seedBoard } from "./rt-seed.ts";
 
 /**
  * ★★ معیارِ پذیرشِ گام ۴٫۸ — **خاموشیِ مودبانه**.
@@ -61,8 +68,9 @@ import * as Y from "yjs";
  *   pnpm rt:shutdown
  */
 
-const SECRET = "hamboom-shutdown-secret-at-least-32-chars-x";
-const SNAPSHOT_DIR = ".hamboom/snapshots-probe";
+const SECRET = new TextEncoder().encode("hamboom-shutdown-secret-at-least-32-chars-x");
+// سقفِ عمرِ توکن که authority می‌پذیرد (exp_too_far) — برابرِ عمرِ توکنِ این سنجه.
+const AUTHORITY_MAX_TTL_SECONDS = 3600;
 
 function fail(message: string): never {
   process.stderr.write(`✖ ${message}\n`);
@@ -76,16 +84,37 @@ interface Node {
 }
 
 /** یک نودِ کامل — دقیقاً همان چیزی که `main.ts` سرِ هم می‌کند. */
-async function startNode(env: {
-  DATABASE_URL: string;
-  DATABASE_SSL: boolean;
-  REDIS_URL: string;
-}): Promise<Node> {
+async function startNode(
+  env: {
+    DATABASE_URL: string;
+    DATABASE_SSL: boolean;
+    REDIS_URL: string;
+    S3_ENDPOINT: string;
+    S3_REGION: string;
+    S3_ACCESS_KEY_ID: string;
+    S3_SECRET_ACCESS_KEY: string;
+    S3_FORCE_PATH_STYLE: boolean;
+    S3_BUCKET_SNAPSHOTS: string;
+    S3_PRESIGN_TTL_SECONDS: number;
+  },
+  reader: MemoryBoardAccessReader,
+): Promise<Node> {
   const nodeId = randomUUID();
   const pool = createPgPool({ connectionString: env.DATABASE_URL, ssl: env.DATABASE_SSL });
   const log = createPostgresUpdateLog({ pool });
   const catalog = createPostgresSnapshotCatalog({ pool });
-  const store = createFsSnapshotStore({ directory: SNAPSHOT_DIR });
+  // ★ فاز ۷: انبارِ واقعیِ MinIO از پشتِ packages/storage (P4)، نه فایل‌سیستم.
+  const store = createStorageSnapshotStore(
+    createS3ObjectStore({
+      endpoint: env.S3_ENDPOINT,
+      region: env.S3_REGION,
+      accessKeyId: env.S3_ACCESS_KEY_ID,
+      secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+      forcePathStyle: env.S3_FORCE_PATH_STYLE,
+      bucket: env.S3_BUCKET_SNAPSHOTS,
+      defaultPresignTtl: env.S3_PRESIGN_TTL_SECONDS,
+    }),
+  );
   const publisher = new Redis(env.REDIS_URL);
   const subscriber = new Redis(env.REDIS_URL);
   for (const client of [publisher, subscriber]) client.on("error", () => undefined);
@@ -108,7 +137,12 @@ async function startNode(env: {
   });
 
   const server = await createRtServer({
-    authority: createDevBoardAuthority({ secret: SECRET }),
+    // ★ فاز ۷: احرازِ واقعیِ auth-core (developmentOnly=false) + خواننده‌ی نقشِ حافظه‌ای.
+    authority: createRealtimeAuthority({
+      secret: SECRET,
+      rtTokenTtlSeconds: AUTHORITY_MAX_TTL_SECONDS,
+      accessReader: reader,
+    }),
     appEnv: "local",
     port: 0,
     onJoin: (session) => rooms.join(session),
@@ -248,22 +282,25 @@ async function statusOf(port: number, path: string): Promise<number> {
 const settle = (ms = 400): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 async function main(): Promise<void> {
-  const env = loadEnv(databaseEnvSchema.and(redisEnvSchema));
-  const boardId = randomUUID();
-  const token = signDevToken(
-    { sub: randomUUID(), boardId, role: "editor", exp: Math.floor(Date.now() / 1000) + 3600 },
-    SECRET,
-  );
+  const env = loadEnv(databaseEnvSchema.and(redisEnvSchema).and(s3EnvSchema));
+
+  // ★ فاز ۷: بوردِ واقعی — FKهای board_updates لازمشان دارند (board + origin_user).
+  const db = new pg.Pool({
+    connectionString: env.DATABASE_URL,
+    ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
+    max: 4,
+  });
+  const board = await seedBoard(db);
+  const boardId = board.boardId;
+  const sub = await addMember(db, boardId, "editor");
+  // نقش از خواننده‌ی حافظه‌ایِ auth-core؛ توکن با همان رازِ authority امضا می‌شود.
+  const reader = createMemoryBoardAccessReader();
+  reader.set(sub, boardId, "editor");
+  const token = await signRtToken(SECRET, { sub, boardId, role: "editor" }, AUTHORITY_MAX_TTL_SECONDS);
 
   process.stdout.write(`▶ بورد: ${boardId}\n`);
 
-  const db = new pg.Client({
-    connectionString: env.DATABASE_URL,
-    ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
-  });
-  await db.connect();
-
-  const node = await startNode(env);
+  const node = await startNode(env, reader);
   const client = await connect(node.server.port, boardId, token);
   await settle();
 
@@ -327,7 +364,7 @@ async function main(): Promise<void> {
   process.stdout.write(`✔ ژستِ لحظه‌ی آخر هم پایدار شد (seq ${savedSeq} → ${maxSeq})\n`);
 
   // و یک نودِ **تازه** هر دو را از دیتابیس می‌خوانَد.
-  const fresh = await startNode(env);
+  const fresh = await startNode(env, reader);
   const second = await connect(fresh.server.port, boardId, token);
   for (const id of ["stk_before", "stk_at_the_last_moment"]) {
     try {
@@ -340,6 +377,7 @@ async function main(): Promise<void> {
 
   second.socket.close();
   await fresh.hardClose();
+  await cleanupSeed(db, board);
   await db.end();
 
   process.stdout.write("\n✔ خاموشیِ مودبانه تایید شد.\n");

@@ -1,8 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
 
 import { databaseEnvSchema, loadEnv } from "@hamboom/config";
-import { signDevToken } from "@hamboom/realtime";
 import {
   boardRoots,
   createBoardDoc,
@@ -18,6 +16,8 @@ import pg from "pg";
 import * as syncProtocol from "y-protocols/sync";
 import { WebSocket } from "ws";
 import * as Y from "yjs";
+
+import { addMember, gaugeChildEnv, seedBoard, seedToken } from "./rt-seed.ts";
 
 /**
  * ★★ معیارِ پذیرشِ گام ۴٫۵ — **تستِ مهاجم، روی سیمِ واقعی**.
@@ -43,7 +43,6 @@ import * as Y from "yjs";
  *   pnpm rt:permission
  */
 
-const SECRET = "hamboom-permission-secret-at-least-32-chars";
 const PORT = 15393;
 
 function fail(message: string): never {
@@ -56,16 +55,11 @@ function startServer(): Promise<ChildProcess> {
     process.execPath,
     ["--env-file-if-exists=.env", "apps/realtime/src/main.ts"],
     {
-      env: {
-        ...process.env,
-        RT_PORT: String(PORT),
-        RT_DEV_JWT_SECRET: SECRET,
-        RT_SNAPSHOT_DIR: ".hamboom/snapshots-probe",
+      // ★ فاز ۷: رازِ سنجه + S3/DB/Redis از .env؛ فشرده‌سازی خاموش تا فقط ادعای مجوز سنجیده شود.
+      env: gaugeChildEnv(PORT, {
         RT_SNAPSHOT_EVERY_UPDATES: "99999",
         RT_SNAPSHOT_EVERY_MS: "99999999",
-        APP_ENV: "local",
-        LOG_LEVEL: "info",
-      },
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -204,20 +198,22 @@ const settle = (ms = 600): Promise<void> => new Promise((r) => setTimeout(r, ms)
 
 async function main(): Promise<void> {
   const env = loadEnv(databaseEnvSchema);
-  const boardId = randomUUID();
-  const exp = Math.floor(Date.now() / 1000) + 3600;
-  const token = (role: BoardRole): string =>
-    signDevToken({ sub: randomUUID(), boardId, role, exp }, SECRET);
+  const pool = new pg.Pool({
+    connectionString: env.DATABASE_URL,
+    ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
+    max: 2,
+  });
+  // ★ فاز ۷: بوردِ واقعی + دو عضو (editor/viewer) + توکن‌های واقعیِ امضاشده — نه DevBoardAuthorityِ حافظه‌ای.
+  //   نقش‌ها از readerِ pgِ مشترک خوانده می‌شوند، پس باید در DB واقعاً بنشینند.
+  const board = await seedBoard(pool);
+  const editorId = await addMember(pool, board.boardId, "editor");
+  const viewerId = await addMember(pool, board.boardId, "viewer");
+  const boardId = board.boardId;
 
   process.stdout.write(`▶ بورد: ${boardId}\n`);
 
-  const db = new pg.Client({
-    connectionString: env.DATABASE_URL,
-    ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
-  });
-  await db.connect();
   const rowCount = async (): Promise<number> => {
-    const result = await db.query<{ count: string }>(
+    const result = await pool.query<{ count: string }>(
       "SELECT COUNT(*) AS count FROM board_updates WHERE board_id = $1",
       [boardId],
     );
@@ -228,7 +224,7 @@ async function main(): Promise<void> {
 
   // ── ۱) یک editorِ واقعی که همتا هم هست ──────────────────────────
   const editorDoc = createBoardDoc();
-  const editor = await connect(boardId, token("editor"), editorDoc);
+  const editor = await connect(boardId, await seedToken(editorId, boardId, "editor"), editorDoc);
   await settle();
 
   const before = await rowCount();
@@ -247,7 +243,7 @@ async function main(): Promise<void> {
 
   // ── ۲) ★★ حمله: viewer همان بایت‌ها را مستقیم می‌فرستد ───────────
   const viewerDoc = new Y.Doc();
-  const viewer = await connect(boardId, token("viewer"), viewerDoc);
+  const viewer = await connect(boardId, await seedToken(viewerId, boardId, "viewer"), viewerDoc);
   await settle();
 
   if (viewer.roles[0] !== "viewer") {
@@ -296,7 +292,7 @@ async function main(): Promise<void> {
 
   viewer.close();
   editor.close();
-  await db.end();
+  await pool.end();
   server.kill("SIGKILL");
 
   process.stdout.write("\n✔ اعمالِ مجوز تایید شد.\n");

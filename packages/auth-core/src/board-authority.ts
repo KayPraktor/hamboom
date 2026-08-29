@@ -53,3 +53,34 @@ export function createAuthCoreBoardAuthority(config: AuthCoreBoardAuthorityConfi
     },
   };
 }
+
+/**
+ * ★ `BoardAccessReader`ِ **حافظه‌ای** — برای تست/دمو (rt-dev-server، تست‌های واحدِ realtime). نقش با
+ * `set`/`clear` گذاشته می‌شود؛ همان مکانیزمِ `DevRoleOverrides`ِ M2، ولی این‌بار داده به `effectiveBoardRole`ِ
+ * **واقعی** می‌رسد. `main.ts`ِ production نسخه‌ی pgِ مشترک (`@hamboom/board-access-db`) را می‌سازد، نه این را.
+ */
+export interface MemoryBoardAccessReader extends BoardAccessReader {
+  /** نقشِ کاربر روی بورد را بگذار؛ `null` یعنی دسترسی برداشته شد (بورد وجود ندارد → کاربر رد می‌شود). */
+  set(sub: string, boardId: string, role: BoardRole | null): void;
+  clear(sub: string, boardId: string): void;
+}
+
+/** نقش → ورودیِ خامِ `effectiveBoardRole` (بوردِ خصوصی؛ owner از `isBoardOwner`، بقیه از `directRole`). */
+function roleToInput(role: BoardRole | null): BoardAccessInput | null {
+  if (role === null) return null;
+  const base = { isStaff: false, accessMode: "private" as const, teamRole: null, hasValidLink: false };
+  return role === "owner"
+    ? { ...base, isBoardOwner: true, directRole: null }
+    : { ...base, isBoardOwner: false, directRole: role };
+}
+
+export function createMemoryBoardAccessReader(): MemoryBoardAccessReader {
+  const map = new Map<string, BoardAccessInput | null>();
+  const key = (sub: string, boardId: string): string => `${boardId} ${sub}`;
+  return {
+    // نبودِ کلید و مقدارِ `null` هر دو → `null` (بورد نیست / دسترسی برداشته شد).
+    read: (sub, boardId) => Promise.resolve(map.get(key(sub, boardId)) ?? null),
+    set: (sub, boardId, role) => map.set(key(sub, boardId), roleToInput(role)),
+    clear: (sub, boardId) => map.delete(key(sub, boardId)),
+  };
+}

@@ -1,24 +1,24 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
 
-import { databaseEnvSchema, loadEnv, redisEnvSchema } from "@hamboom/config";
+import { createPgBoardAccessReader } from "@hamboom/board-access-db";
+import { databaseEnvSchema, loadEnv, redisEnvSchema, s3EnvSchema } from "@hamboom/config";
 import {
   createCompactor,
-  createDevBoardAuthority,
-  createFsSnapshotStore,
   createPersistedBoardStore,
   createPgPool,
   createPostgresSnapshotCatalog,
   createPostgresUpdateLog,
+  createRealtimeAuthority,
   createRedisBoardBus,
   createRedisOwnerLock,
   createRoomManager,
   createRtServer,
-  signDevToken,
+  createStorageSnapshotStore,
   type RoomManager,
   type RtServer,
 } from "@hamboom/realtime";
+import { createS3ObjectStore } from "@hamboom/storage";
 import {
   boardRoots,
   createBoardDoc,
@@ -34,6 +34,16 @@ import type pg from "pg";
 import * as syncProtocol from "y-protocols/sync";
 import { WebSocket } from "ws";
 import * as Y from "yjs";
+
+import {
+  addMember,
+  cleanupSeed,
+  gaugeChildEnv,
+  RT_SEED_SECRET,
+  seedBoard,
+  seedToken,
+  type SeededBoard,
+} from "./rt-seed.ts";
 
 /**
  * ★★ بنچمارکِ گام ۶٫۳ — **سقف‌ها با عدد، نه با حس**.
@@ -69,8 +79,10 @@ import * as Y from "yjs";
  *   pnpm rt:bench
  */
 
-const SECRET = "hamboom-bench-secret-at-least-32-characters";
-const SNAPSHOT_DIR = resolve(".hamboom", "snapshots-bench");
+// ★ فاز ۷: همان رازِ سنجه‌ها؛ authorityِ درون‌فرایندی و مِینِ جداشده هر دو با این می‌سنجند.
+const SEED_SECRET_BYTES = new TextEncoder().encode(RT_SEED_SECRET);
+// سقفِ عمرِ توکن — بلند، چون بنچمارکِ بوردِ بزرگ ممکن است چند دقیقه طول بکشد.
+const AUTHORITY_MAX_TTL_SECONDS = 3600;
 
 /**
  * بوردِ بزرگ: ۵۰۰۰ عنصر در ۵۰۰ update — یعنی آستانه‌ی فشرده‌سازی هم رد می‌شود.
@@ -142,13 +154,24 @@ interface Harness {
 }
 
 async function startServer(): Promise<Harness> {
-  const env = loadEnv(databaseEnvSchema.and(redisEnvSchema));
+  const env = loadEnv(databaseEnvSchema.and(redisEnvSchema).and(s3EnvSchema));
   const nodeId = randomUUID();
 
   const pool = createPgPool({ connectionString: env.DATABASE_URL, ssl: env.DATABASE_SSL, max: 10 });
   const log = createPostgresUpdateLog({ pool });
   const catalog = createPostgresSnapshotCatalog({ pool });
-  const store = createFsSnapshotStore({ directory: SNAPSHOT_DIR });
+  // ★ فاز ۷: انبارِ واقعیِ MinIO از پشتِ packages/storage (P4)، نه فایل‌سیستم.
+  const store = createStorageSnapshotStore(
+    createS3ObjectStore({
+      endpoint: env.S3_ENDPOINT,
+      region: env.S3_REGION,
+      accessKeyId: env.S3_ACCESS_KEY_ID,
+      secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+      forcePathStyle: env.S3_FORCE_PATH_STYLE,
+      bucket: env.S3_BUCKET_SNAPSHOTS,
+      defaultPresignTtl: env.S3_PRESIGN_TTL_SECONDS,
+    }),
+  );
   const publisher = new Redis(env.REDIS_URL);
   const subscriber = new Redis(env.REDIS_URL);
   for (const client of [publisher, subscriber]) client.on("error", () => undefined);
@@ -173,7 +196,12 @@ async function startServer(): Promise<Harness> {
   });
 
   const server = await createRtServer({
-    authority: createDevBoardAuthority({ secret: SECRET }),
+    // ★ فاز ۷: احرازِ واقعیِ auth-core + خواننده‌ی نقشِ pgِ مشترک — دقیقاً مثلِ main.ts.
+    authority: createRealtimeAuthority({
+      secret: SEED_SECRET_BYTES,
+      rtTokenTtlSeconds: AUTHORITY_MAX_TTL_SECONDS,
+      accessReader: createPgBoardAccessReader(pool),
+    }),
     appEnv: "local",
     port: 0,
     onJoin: (session) => rooms.join(session),
@@ -209,16 +237,12 @@ function spawnServer(): Promise<ChildProcess> {
     process.execPath,
     ["--env-file-if-exists=.env", "apps/realtime/src/main.ts"],
     {
-      env: {
-        ...process.env,
-        RT_PORT: String(SPAWNED_PORT),
-        RT_DEV_JWT_SECRET: SECRET,
-        RT_SNAPSHOT_DIR: SNAPSHOT_DIR,
-        APP_ENV: "local",
-        // ⚠️ «آماده است» یک `logger.info` است — با `warn` هرگز نمی‌رسد و اسکریپت
-        //    بی‌دلیل timeout می‌خورد.
-        LOG_LEVEL: "info",
-      },
+      // ★ فاز ۷: رازِ سنجه به‌عنوان JWT_SECRET + S3/DB/Redis از .env؛ نقش از pg readerِ main.ts.
+      //    سقفِ عمرِ توکن بلند تا توکنِ ۳۶۰۰ثانیه‌ای exp_too_far نخورد. «آماده است» یک
+      //    logger.info است — LOG_LEVEL باید info بماند وگرنه اسکریپت بی‌دلیل timeout می‌خورد.
+      env: gaugeChildEnv(SPAWNED_PORT, {
+        RT_TOKEN_TTL_SECONDS: String(AUTHORITY_MAX_TTL_SECONDS),
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -336,11 +360,20 @@ function connect(
   });
 }
 
-function tokenFor(boardId: string, subject: string): string {
-  return signDevToken(
-    { sub: subject, boardId, role: "editor", exp: Math.floor(Date.now() / 1000) + 3600 },
-    SECRET,
-  );
+/**
+ * ★ فاز ۷: بوردِ **واقعی** + یک عضوِ editor + توکنِ واقعیِ rt — همان مسیرِ محصولی.
+ *
+ * یک عضو برای همه‌ی اتصالات کافی است: نقش از readerِ pg می‌آید و FKِ
+ * `board_updates_origin_user_fk` فقط یک کاربرِ **واقعی** می‌خواهد. ۵۰ اتصالِ یک
+ * کاربر = ۵۰ تبِ باز؛ clientIDهای Yjs جدا می‌مانند، پس سنجه‌ی تاخیر دست‌نخورده است.
+ */
+async function seedBoardWithToken(
+  pool: pg.Pool,
+): Promise<{ board: SeededBoard; boardId: string; token: string }> {
+  const board = await seedBoard(pool);
+  const sub = await addMember(pool, board.boardId, "editor");
+  const token = await seedToken(sub, board.boardId, "editor", AUTHORITY_MAX_TTL_SECONDS);
+  return { board, boardId: board.boardId, token };
 }
 
 /** یک عنصرِ معتبر — همان شکلی که binder روی سیم می‌فرستد. */
@@ -392,8 +425,7 @@ interface BigBoardResult {
 }
 
 async function benchBigBoard(harness: Harness): Promise<BigBoardResult> {
-  const boardId = randomUUID();
-  const token = tokenFor(boardId, "usr_bench_doc");
+  const { board, boardId, token } = await seedBoardWithToken(harness.pool);
   process.stdout.write(`\n▶ سنجه‌ی ۱ — بوردِ ${ELEMENTS} عنصری (بورد: ${boardId})\n`);
 
   const local = createBoardDoc();
@@ -431,7 +463,7 @@ async function benchBigBoard(harness: Harness): Promise<BigBoardResult> {
 
   // ── بارگذاریِ **گرم**: اتاق هنوز در حافظه است ────────────────────────
   const warmStart = Date.now();
-  const warm = await connect(harness.server.port, boardId, tokenFor(boardId, "usr_bench_warm"));
+  const warm = await connect(harness.server.port, boardId, token);
   await warm.until(
     () => boardRoots(warm.doc).elements.size >= ELEMENTS,
     "کلاینتِ گرم کلِ بورد را نگرفت",
@@ -451,7 +483,7 @@ async function benchBigBoard(harness: Harness): Promise<BigBoardResult> {
   //
   // ★ کلاینتِ خالی، چون این عددِ **کاربر** است: از باز کردنِ تب تا دیدنِ کلِ بورد.
   const coldStart = Date.now();
-  const reader = await connect(harness.server.port, boardId, tokenFor(boardId, "usr_bench_cold"));
+  const reader = await connect(harness.server.port, boardId, token);
   await reader.until(
     () => boardRoots(reader.doc).elements.size >= ELEMENTS,
     "کلاینتِ سرد کلِ بورد را نگرفت",
@@ -475,12 +507,7 @@ async function benchBigBoard(harness: Harness): Promise<BigBoardResult> {
   Y.applyUpdate(primed, Y.encodeStateAsUpdate(local));
   const heapBefore = await settleHeap();
 
-  const probe = await connect(
-    harness.server.port,
-    boardId,
-    tokenFor(boardId, "usr_bench_mem"),
-    primed,
-  );
+  const probe = await connect(harness.server.port, boardId, token, primed);
   await probe.until(
     () => harness.rooms.has(boardId) && probe.seq() > 0,
     "اتاق برای اندازه‌گیریِ حافظه بالا نیامد",
@@ -514,6 +541,7 @@ async function benchBigBoard(harness: Harness): Promise<BigBoardResult> {
     `  · دیتابیس: ${result.updateRows} ردیفِ update (${mb(Number(updateRows.rows[0]?.bytes ?? 0))}) · ` +
       `${result.snapshotRows} snapshot (${mb(result.snapshotBytes)})\n`,
   );
+  await cleanupSeed(harness.pool, board);
   return result;
 }
 
@@ -525,8 +553,8 @@ interface LatencyResult {
   clients: number;
 }
 
-async function benchLatency(port: number, label: string): Promise<LatencyResult> {
-  const boardId = randomUUID();
+async function benchLatency(pool: pg.Pool, port: number, label: string): Promise<LatencyResult> {
+  const { board, boardId, token } = await seedBoardWithToken(pool);
   process.stdout.write(`\n▶ سنجه‌ی ۲ — ${CLIENTS} کلاینتِ همزمان · ${label} (بورد: ${boardId})\n`);
 
   // ★ کلاینتِ اول با یک سندِ ساخته‌شده می‌آید تا بورد **وجود** داشته باشد؛ بقیه
@@ -534,12 +562,7 @@ async function benchLatency(port: number, label: string): Promise<LatencyResult>
   const clients: BenchClient[] = [];
   for (let index = 0; index < CLIENTS; index += 1) {
     clients.push(
-      await connect(
-        port,
-        boardId,
-        tokenFor(boardId, `usr_bench_${index}`),
-        index === 0 ? createBoardDoc() : new Y.Doc(),
-      ),
+      await connect(port, boardId, token, index === 0 ? createBoardDoc() : new Y.Doc()),
     );
   }
   await new Promise((done) => setTimeout(done, 500));
@@ -632,6 +655,7 @@ async function benchLatency(port: number, label: string): Promise<LatencyResult>
   process.stdout.write(`  · ${summarize(`رگبار (${CLIENTS} نویسنده‌ی هم‌زمان)`, burst)}\n`);
 
   for (const client of clients) client.close();
+  await cleanupSeed(pool, board);
   return { quiet, burst, clients: CLIENTS };
 }
 
@@ -650,13 +674,13 @@ async function main(): Promise<void> {
   let child: ChildProcess | null = null;
   try {
     const big = await benchBigBoard(harness);
-    const sameProcess = await benchLatency(harness.server.port, "سرور در همین فرایند");
+    const sameProcess = await benchLatency(harness.pool, harness.server.port, "سرور در همین فرایند");
 
     // ★ همان سنجه، این‌بار با سرورِ **جدا** — تفاوتش می‌گوید چقدر از عدد کارِ
     //   سرور بوده و چقدرش رقابتِ ۵۰ کلاینت بر سرِ یک حلقه‌ی رویداد.
     child = await spawnServer();
     process.stdout.write(`▶ سرورِ جدا روی پورتِ ${SPAWNED_PORT}\n`);
-    const separate = await benchLatency(SPAWNED_PORT, "سرورِ جدا");
+    const separate = await benchLatency(harness.pool, SPAWNED_PORT, "سرورِ جدا");
 
     const perElement = big.roomHeapBytes / ELEMENTS;
     process.stdout.write("\n────────────────── خلاصه ──────────────────\n");

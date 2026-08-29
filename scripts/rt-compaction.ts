@@ -1,10 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { access, readFile, rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
 
-import { databaseEnvSchema, loadEnv } from "@hamboom/config";
-import { signDevToken } from "@hamboom/realtime";
+import { databaseEnvSchema, loadEnv, s3EnvSchema } from "@hamboom/config";
+import { createS3ObjectStore } from "@hamboom/storage";
 import {
   boardRoots,
   createBoardDoc,
@@ -19,6 +16,8 @@ import pg from "pg";
 import * as syncProtocol from "y-protocols/sync";
 import { WebSocket } from "ws";
 import * as Y from "yjs";
+
+import { gaugeChildEnv, seedBoardMember, seedToken } from "./rt-seed.ts";
 
 /**
  * ★★ معیارِ پذیرشِ گام ۴٫۴ — **فشرده‌سازی با زیرساختِ واقعی**.
@@ -43,10 +42,8 @@ import * as Y from "yjs";
  *   pnpm rt:compaction
  */
 
-const SECRET = "hamboom-compaction-secret-at-least-32-chars";
 const PORT = 15391;
 const UPDATES = 500;
-const SNAPSHOT_DIR = resolve(".hamboom", "snapshots-probe");
 
 function fail(message: string): never {
   process.stderr.write(`✖ ${message}\n`);
@@ -58,18 +55,12 @@ function startServer(): Promise<ChildProcess> {
     process.execPath,
     ["--env-file-if-exists=.env", "apps/realtime/src/main.ts"],
     {
-      env: {
-        ...process.env,
-        RT_PORT: String(PORT),
-        RT_DEV_JWT_SECRET: SECRET,
-        RT_SNAPSHOT_DIR: SNAPSHOT_DIR,
+      // ★ فاز ۷: رازِ سنجه + S3/DB/Redis از .env؛ snapshotها روی MinIO (StorageSnapshotStore).
+      env: gaugeChildEnv(PORT, {
         RT_SNAPSHOT_EVERY_UPDATES: String(UPDATES),
-        // ⚠️ آستانه‌ی زمانی عمداً **بزرگ** است: وگرنه معلوم نمی‌شود فشرده‌سازی به
-        //    خاطرِ رسیدن به ۵۰۰ رخ داده یا فقط چون یک دقیقه گذشته.
+        // ⚠️ آستانه‌ی زمانی عمداً بزرگ: فشرده‌سازی فقط به‌خاطرِ رسیدن به سقفِ update، نه گذرِ زمان.
         RT_SNAPSHOT_EVERY_MS: String(3_600_000),
-        APP_ENV: "local",
-        LOG_LEVEL: "info",
-      },
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -237,21 +228,27 @@ interface SnapshotRow {
 }
 
 async function main(): Promise<void> {
-  const env = loadEnv(databaseEnvSchema);
-  const boardId = randomUUID();
-  const token = signDevToken(
-    { sub: randomUUID(), boardId, role: "editor", exp: Math.floor(Date.now() / 1000) + 3600 },
-    SECRET,
-  );
-
-  process.stdout.write(`▶ بورد: ${boardId}\n`);
-  await rm(join(SNAPSHOT_DIR, boardId), { recursive: true, force: true });
-
-  const db = new pg.Client({
+  const env = loadEnv(databaseEnvSchema.and(s3EnvSchema));
+  const pool = new pg.Pool({
     connectionString: env.DATABASE_URL,
     ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
+    max: 2,
   });
-  await db.connect();
+  // ★ فاز ۷: بایت‌های snapshot روی MinIO‌اند، نه دیسک — همان ObjectStoreی که main.ts می‌سازد.
+  const objectStore = createS3ObjectStore({
+    endpoint: env.S3_ENDPOINT,
+    region: env.S3_REGION,
+    accessKeyId: env.S3_ACCESS_KEY_ID,
+    secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+    forcePathStyle: env.S3_FORCE_PATH_STYLE,
+    bucket: env.S3_BUCKET_SNAPSHOTS,
+    defaultPresignTtl: env.S3_PRESIGN_TTL_SECONDS,
+  });
+  const seed = await seedBoardMember(pool, "editor");
+  const boardId = seed.boardId;
+  const token = await seedToken(seed.userId, boardId, "editor");
+
+  process.stdout.write(`▶ بورد: ${boardId}\n`);
 
   // ── ۱) ۵۰۰ updateِ واقعی از یک کلاینتِ واقعی ────────────────────
   let server = await startServer();
@@ -306,7 +303,7 @@ async function main(): Promise<void> {
   const deadline = Date.now() + 60_000;
   let snapshot: SnapshotRow | undefined;
   while (Date.now() < deadline) {
-    const rows = await db.query<SnapshotRow>(
+    const rows = await pool.query<SnapshotRow>(
       "SELECT seq_upto, storage_key, byte_size, element_count FROM board_snapshots WHERE board_id = $1 ORDER BY seq_upto DESC",
       [boardId],
     );
@@ -315,7 +312,7 @@ async function main(): Promise<void> {
     await new Promise((r) => setTimeout(r, 200));
   }
   if (!snapshot) {
-    await db.end();
+    await pool.end();
     server.kill("SIGKILL");
     fail(`بعد از ${UPDATES} update هیچ snapshotی در board_snapshots نیست. گام قبول نیست.`);
   }
@@ -324,31 +321,29 @@ async function main(): Promise<void> {
     `✔ snapshot ثبت شد: seq_upto=${seqUpto}، ${snapshot.element_count} عنصر، ${snapshot.byte_size} بایت\n`,
   );
 
-  // بایت‌ها واقعاً روی دیسک‌اند؟
-  const file = join(SNAPSHOT_DIR, snapshot.storage_key);
-  try {
-    await access(file);
-  } catch {
-    await db.end();
+  // بایت‌ها واقعاً در MinIO‌اند؟
+  const snapBytes = await objectStore.getObject(snapshot.storage_key);
+  if (snapBytes === null) {
+    await pool.end();
     server.kill("SIGKILL");
-    fail(`رکوردِ snapshot هست ولی فایلش نیست: ${file}. گام قبول نیست.`);
+    fail(`رکوردِ snapshot هست ولی بایت‌ها در MinIO نیست: ${snapshot.storage_key}. گام قبول نیست.`);
   }
-  process.stdout.write(`✔ بایت‌ها روی دیسک‌اند: ${snapshot.storage_key}\n`);
+  process.stdout.write(`✔ بایت‌ها در MinIO‌اند: ${snapshot.storage_key}\n`);
 
   // ── ۳) ★ updateهای قدیمی واقعاً حذف شدند؟ ───────────────────────
-  const remaining = await db.query<{ count: string; min: string | null }>(
+  const remaining = await pool.query<{ count: string; min: string | null }>(
     "SELECT COUNT(*) AS count, MIN(seq) AS min FROM board_updates WHERE board_id = $1",
     [boardId],
   );
   const left = Number(remaining.rows[0]?.count ?? 0);
   const minSeq = remaining.rows[0]?.min === null ? null : Number(remaining.rows[0]?.min);
   if (left >= UPDATES) {
-    await db.end();
+    await pool.end();
     server.kill("SIGKILL");
     fail(`updateهای قدیمی حذف نشدند (${left} ردیف مانده). گام قبول نیست.`);
   }
   if (minSeq !== null && minSeq <= seqUpto) {
-    await db.end();
+    await pool.end();
     server.kill("SIGKILL");
     fail(`ردیفی با seq=${minSeq} <= seq_upto=${seqUpto} مانده — حذف ناقص بوده.`);
   }
@@ -388,8 +383,7 @@ async function main(): Promise<void> {
   const theirIds = [...boardRoots(freshDoc).elements.keys()].sort();
 
   const oracle = new Y.Doc();
-  const snapBytes = new Uint8Array(await readFile(file));
-  const tail = await db.query<{ payload: Buffer }>(
+  const tail = await pool.query<{ payload: Buffer }>(
     "SELECT payload FROM board_updates WHERE board_id = $1 AND seq > $2 ORDER BY seq ASC",
     [boardId, seqUpto],
   );
@@ -406,7 +400,7 @@ async function main(): Promise<void> {
 
   fresh.close();
   server.kill("SIGKILL");
-  await db.end();
+  await pool.end();
 
   if (!sameVector) {
     // ⚠️ «۱۵ بایت در برابرِ ۱۵ بایت» چیزی به کسی نمی‌گوید. تفاوت را **باز کن**:
@@ -428,7 +422,6 @@ async function main(): Promise<void> {
     `✔ کلاینتِ تازه هر ${elements} عنصر را گرفت — و state vectorش **بایت‌به‌بایت** با دیتابیس یکی است\n`,
   );
 
-  await rm(join(SNAPSHOT_DIR, boardId), { recursive: true, force: true });
   process.stdout.write(
     `\n✔ فشرده‌سازی تایید شد. ${UPDATES} update → یک snapshot تا seq=${seqUpto}، ${UPDATES - left} ردیفِ حذف‌شده.\n`,
   );
