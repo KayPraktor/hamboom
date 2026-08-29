@@ -1,6 +1,33 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
-تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۶/۰۸ (2026-08-28)
+تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۶/۱۰ (2026-08-30)
+
+## ★★ فاز ۷ (`apps/realtime` روی پورت‌های واقعی) — ✅ **کامل شد** (۱۴۰۵/۰۶/۱۰)
+
+**چه شد:** چهار پورتِ M2 پیاده و تزریق شدند، و **هر هفت سنجه‌ی زنده + bench** با auth **و** storageِ
+واقعی دوباره سبز شدند. `main.ts` حالا `createRealtimeAuthority` (verifyِ JWTِ auth-core +
+`createPgBoardAccessReader`) و `createStorageSnapshotStore` روی MinIO می‌سازد — نه `DevBoardAuthority`
+و `FsSnapshotStore`. **گیتِ production برعکسِ M2 شد:** `APP_ENV=production` سرور را **بالا آورد**
+(آزموده روی پورتِ ۷۷۹۹) چون `developmentOnly=false`.
+
+| زیرگام | چه شد |
+|---|---|
+| **۷ (پکیجِ مشترک)** | ★ `packages/board-access-db` — پیاده‌سازیِ pgِ `BoardAccessReader`، **منبعِ واحدِ** api و realtime ([ADR-046](ARCHITECTURE_DECISIONS.md#adr-046))، تا دریفتِ منطقِ دسترسی ممکن نباشد. گیتِ خودآزمونِ سه‌لایه. |
+| **۷٫۱ تزریق** | `main.ts` واقعی‌ها را می‌سازد؛ `assertAuthorityUsable` دیگر رد نمی‌کند. `createMemoryBoardAccessReader` به auth-core افزوده شد (نقشِ درون‌فرایندی برای سنجه‌های Group-B و `rt-dev-server`). |
+| **۷٫۲ هفت سنجه** | `durability·compaction·permission·presence·cluster·shutdown·reconnect` — همه سبز با seedِ DB + توکنِ امضاشده‌ی واقعی + MinIO. **FKهای فاز ۵٫۱** (`board_updates_board_fk`/`origin_user_fk`) حالا بوردِ واقعی + کاربرِ واقعی می‌خواهند، پس هر سنجه از `scripts/rt-seed.ts` seed می‌کند و پاک می‌کند. |
+| **bench** | بوردِ ۵۰۰۰ عنصری = **۳٫۶۶MB سند / ۷۶٫۱۱MB حافظه** — بایت‌به‌بایت مثلِ M2. تزریق منطق را عوض نکرد (ADR-031). خطِ «۱ snapshot (۳٫۶۵MB)» ثابت کرد مسیرِ فشرده‌سازیِ MinIO end-to-end کار کرد. |
+| **حذفِ dev-impl** | `dev-board-authority.ts`+تست و `fs-snapshot-store.ts`+تست حذف شدند (M2 گفته بود «با auth-core حذف می‌شود»). سه حمله‌ی JWT روی verifierِ واقعی در auth-core زنده‌اند؛ contractِ SnapshotStore با `storage-snapshot-store.test.ts` پوشیده. |
+| **بازسیم‌کشیِ تست** | `server.test.ts`+`shutdown.test.ts` با **بدلِ تستیِ `BoardAuthority`** (سینک) بازنویسی شدند — نه authorityِ واقعی، چون عقب‌گردِ `currentRole() ?? نقشِ‌توکن` فقط با `undefined` فعال می‌شود و auth-coreِ واقعی **هرگز** undefined نمی‌دهد. ۱۶۳ تستِ realtime سبز. |
+
+**تصمیم‌ها:**
+- **بدل به‌جای authorityِ واقعی در تست‌های سرور** — تاییدِ JWT کارِ auth-core است (همان‌جا آزموده)؛ تست‌های
+  سرور مسیرِ **سرور** را می‌سنجند، از جمله عقب‌گردی که فقط یک authorityِ undefined-دِه فعالش می‌کند.
+- **خواننده‌ی pg در سنجه‌ی in-process bench** (نه حافظه‌ای) — تا harnessِ درون‌فرایندی **دقیقاً** همان چیزی
+  باشد که `main.ts` سرِ هم می‌کند؛ `@hamboom/board-access-db` به devDepهای ریشه افزوده شد.
+- **خودآزمون:** `rt:reconnect` با تنزلِ عمدیِ نقش (viewer به‌جای editor، توکن هنوز editor) **قرمز** شد،
+  و ۴ تستِ خواننده‌ی حافظه‌ای با شکستنِ پیش‌فرضِ unset→null قرمز شدند. گیت‌ها ضعیف نشدند.
+
+**قدمِ بعد: فاز ۸ (`apps/web`)** — احراز → داشبورد → پوسته‌ی بورد (اتصالِ `canvas-sync` به سرورِ واقعی).
 
 ## ★★ فاز ۵ (`apps/api`) — ✅ **کامل شد** (۱۴۰۵/۰۶/۰۸)
 

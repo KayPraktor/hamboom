@@ -216,13 +216,15 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   - **`shared-types`:** claimهای `rtToken` → به `shared-types` (تاییدِ ADR-021، ۱۴۰۵/۰۵/۲۴)؛
     `CommentPin` عمداً در `ydoc-schema` مانْد؛ فقط DTOهای **مصرف‌کننده‌دار** اضافه می‌شوند، نه کلِ §۵٫۱.
   - ⚠️ **رفعِ سه یافته‌ی M2 که به `canvas-core`/`canvas-sync` دست می‌زند تک‌تک تاییدِ مالک می‌خواهد** (گام ۸٫۵).
-  - **وضعیت الان:** فاز ۰–۶ کامل ✅ — فاز ۳ (`storage`/`assets`)، فاز ۴ (`auth-core`)، **فاز ۵ (`apps/api`)** (کلِ
-    سطحِ REST + migration + OpenAPI 3.1 + Idempotency؛ MinIO روی پورتِ ۹۸۰۰)، و **فاز ۶ (`packages/sdk`) تمام شد
-    (۱۴۰۵/۰۶/۰۸):** کلاینتِ typedِ REST از `shared-types` (access در حافظه، ۴۰۱→refresh→retry، `SdkError`)، گیتِ
-    `sdkBoundaries`، و تستِ قراردادی در برابرِ `buildApp()`ِ واقعی (`pnpm sdk:contract`). ★★ **[ADR-045](ARCHITECTURE_DECISIONS.md#adr-045):**
-    api حالا پاسخ را از لایه‌ی serialize (`apps/api/src/dto.ts`) به شکلِ **دقیقِ DTOی shared-types** می‌دهد (نه ردیفِ خام) —
-    یافته‌ی فاز ۶ که چون sdk قبل از web است زود گرفته شد. `pnpm verify` سبز. **قدمِ بعد: فاز ۷** (تزریقِ auth-core/storage
-    به `apps/realtime` + اجرای دوباره‌ی ۷ سنجه).
+  - **وضعیت الان:** فاز ۰–۷ کامل ✅ — فاز ۳ (`storage`/`assets`)، فاز ۴ (`auth-core`)، **فاز ۵ (`apps/api`)** (کلِ
+    سطحِ REST + migration + OpenAPI 3.1 + Idempotency؛ MinIO روی پورتِ ۹۸۰۰)، **فاز ۶ (`packages/sdk`)** (کلاینتِ
+    typedِ REST؛ [ADR-045](ARCHITECTURE_DECISIONS.md#adr-045): api پاسخ را به شکلِ **دقیقِ DTOی shared-types** می‌دهد)،
+    و **فاز ۷ (اتصالِ `apps/realtime`) تمام شد (۱۴۰۵/۰۶/۱۰):** چهار پورت پیاده و تزریق شدند — `main.ts` حالا
+    `createRealtimeAuthority` (verifyِ auth-core + `createPgBoardAccessReader` از **`packages/board-access-db`**،
+    [ADR-046](ARCHITECTURE_DECISIONS.md#adr-046)) + `createStorageSnapshotStore` روی MinIO می‌سازد. **گیتِ production
+    برعکسِ M2 شد** (`APP_ENV=production` بالا می‌آید). **هر ۷ سنجه + bench سبز با auth+storageِ واقعی** (bench بایت‌به‌بایت
+    مثلِ M2: ۳٫۶۶MB/۷۶٫۱۱MB)، و `DevBoardAuthority`+`FsSnapshotStore` **حذف شدند** (تست‌های سرور با بدلِ تستیِ
+    `BoardAuthority` بازسیم‌کشی شدند). `pnpm verify` سبز. **قدمِ بعد: فاز ۸ (`apps/web`)** — احراز → داشبورد → پوسته‌ی بورد.
 - **★★★ M2 (`realtime-sync`) تمام و تحویل شد** (۱۴۰۵/۰۵/۲۳) — هر ۳۰ گامِ
   [TODO.md](TODO.md) تیک خورده. نقطه‌ی ورودِ M3: [`docs/m3-handoff.md`](docs/m3-handoff.md)
   (چهار پورت، دو موردِ به‌ارث‌رسیده، چهار یافته‌ی M2، سقف‌های اندازه‌گیری‌شده).

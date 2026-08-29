@@ -481,20 +481,26 @@ Chromium، thumbnail) = **بعد از M3**.
 > ⚠️ **دامنه‌ی حساس:** این فاز به `apps/realtime` دست می‌زند (M2). فقط **تزریقِ
 > پیاده‌سازی** است، نه تغییرِ منطقِ اتاق/پایداری/خوشه — همان مرزی که ADR-031 گذاشت.
 
-### گام ۷٫۱ — تزریقِ `AuthCoreBoardAuthority` + `StorageSnapshotStore`
-- [ ] `DevBoardAuthority` و `FsSnapshotStore` با نسخه‌های واقعی جایگزین شوند (تزریق در
-      `main.ts`/سیم‌کشی). سه تستِ حمله‌ی JWT به `auth-core` منتقل/تکرار شوند، بعد dev-impl
-      حذف شود.
-- [ ] گیتِ production: با auth-core، `APP_ENV=production` باید **بالا بیاید** (برعکسِ M2).
-- **معیار پذیرش:** سرور با پورت‌های واقعی بالا می‌آید؛ dev-impl حذف شده و تست‌هایش زنده‌اند.
+### گام ۷٫۱ — تزریقِ `AuthCoreBoardAuthority` + `StorageSnapshotStore` — ✅ (۱۴۰۵/۰۶/۱۰)
+- [x] `DevBoardAuthority` و `FsSnapshotStore` با نسخه‌های واقعی جایگزین شدند: `main.ts` حالا
+      `createRealtimeAuthority` (auth-core JWT verify + `createPgBoardAccessReader` از
+      `@hamboom/board-access-db`، [ADR-046](ARCHITECTURE_DECISIONS.md#adr-046)) و
+      `createStorageSnapshotStore` روی MinIO می‌سازد. سه حمله‌ی JWT روی verifierِ واقعیِ
+      `auth-core` (`tokens.test.ts`: alg:none · امضای اشتباه · منقضی) — بعد dev-impl **حذف شد**.
+- [x] گیتِ production: با auth-core، `APP_ENV=production` سرور را **بالا آورد** (برعکسِ M2 —
+      آزموده روی پورتِ ۷۷۹۹). `assertAuthorityUsable` چون `developmentOnly=false` رد نمی‌کند.
+- **معیار پذیرش:** ✅ سرور با پورت‌های واقعی بالا می‌آید؛ dev-impl حذف شد و تست‌هایش با بدلِ
+      تستیِ `BoardAuthority` بازسیم‌کشی شدند (۱۶۳ تستِ realtime سبز)؛ `pnpm verify` سبز.
 
-### گام ۷٫۲ — ★★ اجرای دوباره‌ی **هر هفت سنجه‌ی زنده** روی پورت‌های واقعی
-- [ ] `pnpm rt:durability · rt:compaction · rt:permission · rt:presence · rt:cluster ·
-      rt:shutdown · rt:reconnect` — همه سبز، این‌بار با auth **و** storageِ واقعی. (CLAUDE.md:
-      «باگِ گام ۴٫۶ را سنجه‌ی گام ۴٫۴ گرفت» — هر هفت با هم.)
-- [ ] `pnpm rt:bench` دوباره؛ عددِ حافظه ورودیِ فاز ۱۱.
-- **معیار پذیرش:** هفت سنجه سبز؛ **و** هرکدام با یک شکستنِ عمدی (مثلاً storageی که ناقص
-      می‌نویسد) هنوز **قرمز** می‌شود — گیت ضعیف نشده.
+### گام ۷٫۲ — ★★ اجرای دوباره‌ی **هر هفت سنجه‌ی زنده** روی پورت‌های واقعی — ✅ (۱۴۰۵/۰۶/۱۰)
+- [x] `pnpm rt:durability · rt:compaction · rt:permission · rt:presence · rt:cluster ·
+      rt:shutdown · rt:reconnect` — **هر هفت سبز**، این‌بار با auth **و** storageِ واقعی
+      (seedِ DB + توکنِ امضاشده‌ی واقعی + MinIO؛ FKهای فاز ۵٫۱ بوردِ واقعی می‌خواهند).
+- [x] `pnpm rt:bench` دوباره؛ عددِ حافظه ورودیِ فاز ۱۱: بوردِ ۵۰۰۰ عنصری = **۳٫۶۶MB سند /
+      ۷۶٫۱۱MB حافظه** — بایت‌به‌بایت مثلِ M2 (تزریق منطق را عوض نکرد، ADR-031).
+- **معیار پذیرش:** ✅ هفت سنجه سبز؛ **و** خودآزمون: `rt:reconnect` با تنزلِ عمدیِ نقش در
+      خواننده (viewer به‌جای editor، توکن هنوز editor) **قرمز** شد — یعنی `currentRole`ِ واقعی
+      واقعاً در مسیر است، نه claimِ توکن.
 
 ---
 

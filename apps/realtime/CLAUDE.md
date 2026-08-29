@@ -28,10 +28,13 @@ ADR-005، **ADR-006**، **ADR-009**، **ADR-012**، ADR-022، ADR-029، **ADR-03
    [`permission.ts`](src/permission.ts) است · بررسی **قبل از** `readSyncMessage`
    انجام می‌شود (بعدش Yjs عقب‌گرد ندارد) · و `step1` استثناست وگرنه `viewer`
    بوردِ خالی می‌بیند.
-4. ★ **`DevBoardAuthority` هرگز نباید در production زنده شود**
-   ([ADR-031](../../ARCHITECTURE_DECISIONS.md#adr-031)). هرکس `RT_DEV_JWT_SECRET` را
-   بداند می‌تواند برای خودش نقشِ owner صادر کند. با `APP_ENV=production` سرور باید
-   **بالا نیاید** — نه اینکه هشدار بدهد و ادامه دهد.
+4. ★ **پیاده‌سازیِ توسعه‌ای هرگز نباید در production زنده شود**
+   ([ADR-031](../../ARCHITECTURE_DECISIONS.md#adr-031)). گیتِ `assertAuthorityUsable`
+   هر authorityِ `developmentOnly=true` را با `APP_ENV=production` **بالا نمی‌آورد**
+   (نه اینکه هشدار بدهد و ادامه دهد).
+   ✅ **M3 فاز ۷:** `DevBoardAuthority` **حذف شد** و `main.ts` حالا
+   `createRealtimeAuthority` (auth-core، `developmentOnly=false`) می‌سازد — پس در
+   production **بالا می‌آید**؛ گیت برای هر dev-implِ آینده سرِ جاست.
 5. ★ **update قبل از ack به کلاینت نوشته شود**
    ([ADR-009](../../ARCHITECTURE_DECISIONS.md#adr-009)). `SaveState` باید **حقیقت**
    را بگوید نه خوش‌بینی؛ اگر «ذخیره شد» نشان دادیم و کاربر تب را بست، کارش نباید برود.
@@ -53,7 +56,7 @@ importهای نسبی باید `.ts` صریح داشته باشند (`allowImpor
 |---|---|---|
 | `src/index.ts` | صادرات | ۰٫۲ |
 | `src/server.ts` | سرورِ ws + دست‌دادن | ۴٫۱ ✅ |
-| `src/auth/` | پورتِ `BoardAuthority` + `DevBoardAuthority` | ۴٫۱ ✅ |
+| `src/auth/` | پورتِ `BoardAuthority` + `createRealtimeAuthority` (تزریقِ auth-core، M3 فاز ۷) | ۴٫۱ ✅ |
 | `src/log.ts` | لاگِ ساخت‌یافته + ماسکِ P7 | ۴٫۱ ✅ |
 | `src/protocol-error.ts` | پایه‌ی مشترکِ «رد با کدِ پروتکلی» | ۴٫۲ ✅ |
 | `src/room.ts` | چرخه‌ی عمرِ اتاق + **مرزِ اعتماد** | ۴٫۲ ✅ |
@@ -90,10 +93,14 @@ importهای نسبی باید `.ts` صریح داشته باشند (`allowImpor
 `redactSecrets` روی **کلِ خط** به‌عنوان آخرین سد. نگهبانش دو تست است — یکی لاگِ
 واقعی را اسکن می‌کند، یکی ثابت می‌کند خودِ نگهبان روی نشتِ عمدی **می‌افتد**.
 
-⚠️ **`DevBoardAuthority` عمداً JWT را دستی می‌سنجد** (`node:crypto`، بدونِ
-کتابخانه) چون با آمدنِ `auth-core`ِ M3 **حذف می‌شود**. هزینه‌اش صریح است: سه
-حمله‌ی کلاسیکِ JWT تست دارند — `alg: none` · مقایسه‌ی زمان‌ثابت · `exp`ِ اجباری.
-**به آن دست نزن بدونِ اینکه همان سه تست را نگه داری.**
+✅ **M3 فاز ۷ — `DevBoardAuthority` حذف شد.** پیش‌تر عمداً JWT را دستی می‌سنجید
+(`node:crypto`، بدونِ کتابخانه) چون قرار بود با `auth-core` برود. سه حمله‌ی
+کلاسیکِ JWT حالا روی verifierِ **محصولیِ** `auth-core` تست دارند
+([`packages/auth-core/src/tokens.test.ts`](../../packages/auth-core/src/tokens.test.ts):
+`alg:none` · امضای اشتباه · `exp`ِ منقضی، به‌علاوه‌ی سقفِ آینده/بوردِ دیگر/نقشِ
+ناشناخته). تست‌های واحدِ سرور (`server.test.ts`/`shutdown.test.ts`) حالا با یک
+**بدلِ تستیِ `BoardAuthority`** کار می‌کنند — چون عقب‌گردِ `currentRole() ?? نقشِ‌توکن`
+فقط با authorityی که `undefined` بدهد آزمودنی است و auth-coreِ واقعی هرگز نمی‌دهد.
 
 ## ★★ مرزِ اعتماد اینجاست — و فقط اینجا (گام ۴٫۲)
 
