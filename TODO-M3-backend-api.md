@@ -508,13 +508,16 @@ Chromium، thumbnail) = **بعد از M3**.
 
 > ★ **این «لایه‌ی بورد/تیم/احراز هویت» است که نوار ابزار بعدش می‌آید.**
 
-### گام ۸٫۱ — اسکلت + RTL + فونت
-- [ ] React 19 + Vite + TS + TanStack Router؛ `<html dir="rtl" lang="fa">`؛ **فقط logical
-      properties** ([ADR-016](ARCHITECTURE_DECISIONS.md#adr-016))؛ Vazirmatn **خودمیزبان** با
-      `document.fonts.ready` gate قبل از رندرِ بوم ([ADR-017](ARCHITECTURE_DECISIONS.md#adr-017))؛
-      QueryClient، error boundary، تم.
-- **معیار پذیرش:** `pnpm dev` اپ را بالا می‌آورد؛ Stylelintِ داخلِ verify روی `apps/web/**/*.css`
-      یک propertyِ فیزیکیِ عمدی را **قرمز** می‌کند؛ فونت بدونِ درخواستِ خارجی لود می‌شود (P2).
+### گام ۸٫۱ — اسکلت + RTL + فونت — ✅ (۱۴۰۵/۰۶/۱۰)
+- [x] React 19 + Vite 6 + TS + **TanStack Router (code-based)** + TanStack Query؛
+      `<html dir="rtl" lang="fa">`؛ **فقط logical properties** ([ADR-016](ARCHITECTURE_DECISIONS.md#adr-016))؛
+      Vazirmatn **خودمیزبان** از `@fontsource-variable/vazirmatn` (OFL-1.1) + گیتِ
+      `document.fonts.ready` در [`fonts.ts`](apps/web/src/fonts.ts) برای بوم ([ADR-017](ARCHITECTURE_DECISIONS.md#adr-017))؛
+      QueryClient، ErrorBoundary، تمِ روشن/تیره، StrictMode (ADR-032).
+- **معیار پذیرش:** ✅ `pnpm --filter @hamboom/web dev` روی ۱۵۳۸۰ بالا می‌آید و پوسته‌ی RTL
+      رندر می‌شود (screenshot، تمِ تیره، برند سمتِ راست)؛ Stylelintِ داخلِ verify یک `margin-left`ِ
+      عمدی را **قرمز** کرد (بعد از revert سبز)؛ **همه‌ی requestها روی `127.0.0.1`** — صفر میزبانِ
+      خارجی (P2، آزموده در مرورگر). `pnpm verify` سبز (۸ گیت، ۸۱۶ پکیجِ لایسنس‌شده).
 
 ### گام ۸٫۲ — احراز هویت (UI)
 - [ ] صفحاتِ شماره موبایل/OTP/refresh؛ access در **حافظه** (نه localStorage)؛ از `sdk`.
