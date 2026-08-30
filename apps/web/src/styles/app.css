@@ -77,6 +77,17 @@ body {
 .app-header__brand {
   font-size: 18px;
   font-weight: 700;
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-header__user {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-inline-start: auto;
+  font-size: 14px;
+  color: var(--hb-muted);
 }
 
 .app-main {
@@ -193,4 +204,128 @@ body {
   color: var(--hb-fg);
   background: transparent;
   border-color: var(--hb-border);
+}
+
+.btn--sm {
+  padding-inline: 10px;
+  padding-block: 6px;
+  font-size: 13px;
+}
+
+/* ── داشبورد ────────────────────────────────────────────── */
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-inline-size: 1080px;
+  margin-inline: auto;
+}
+
+.dashboard__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dashboard__bar h1 {
+  margin-block: 0;
+  font-size: 22px;
+}
+
+.dashboard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.chip {
+  font: inherit;
+  font-size: 13px;
+  padding-inline: 12px;
+  padding-block: 8px;
+  color: var(--hb-muted);
+  background: transparent;
+  border: 1px solid var(--hb-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chip--on {
+  color: var(--hb-accent);
+  border-color: var(--hb-accent);
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.board-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--hb-border);
+  border-radius: var(--hb-radius);
+  background: var(--hb-surface);
+}
+
+.board-card__thumb {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 44px;
+  block-size: 44px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--hb-accent-fg);
+  background: var(--hb-accent);
+  border-radius: 8px;
+}
+
+.board-card__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.board-card__title {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.board-card__meta {
+  font-size: 12px;
+  color: var(--hb-muted);
+}
+
+.star {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--hb-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.star--on {
+  color: #e5a50a;
+}
+
+.empty-state {
+  padding-block: 48px;
+  color: var(--hb-muted);
+  text-align: center;
 }

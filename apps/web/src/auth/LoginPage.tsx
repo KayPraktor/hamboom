@@ -1,8 +1,8 @@
-import { SdkError } from "@hamboom/sdk";
 import { Navigate, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { api } from "../api/client.ts";
+import { errorMessage } from "../api/error-message.ts";
 import { useSession } from "./session-context.ts";
 import { normalizeCode, normalizePhone } from "./validate.ts";
 
@@ -22,9 +22,6 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const messageOf = (e: unknown): string =>
-    e instanceof SdkError ? e.message : "ارتباط با سرور برقرار نشد. دوباره تلاش کنید.";
-
   async function submitPhone(ev: FormEvent): Promise<void> {
     ev.preventDefault();
     setError(null);
@@ -39,7 +36,7 @@ export function LoginPage() {
       setPhone(normalized);
       setStep("otp");
     } catch (e) {
-      setError(messageOf(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -59,7 +56,7 @@ export function LoginPage() {
       await establish();
       await navigate({ to: "/dashboard" });
     } catch (e) {
-      setError(messageOf(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }

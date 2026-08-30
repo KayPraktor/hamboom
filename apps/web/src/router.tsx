@@ -2,7 +2,7 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 
 import { LoginPage } from "./auth/LoginPage.tsx";
 import { RequireAuth } from "./auth/RequireAuth.tsx";
-import { DashboardPage } from "./routes/DashboardPage.tsx";
+import { DashboardPage } from "./dashboard/DashboardPage.tsx";
 import { IndexRedirect } from "./routes/IndexRedirect.tsx";
 import { RootLayout } from "./routes/RootLayout.tsx";
 
