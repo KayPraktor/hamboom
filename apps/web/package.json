@@ -6,8 +6,10 @@
   "license": "MIT",
   "description": "اپِ وبِ هم‌بوم — احراز هویت، داشبورد، پوسته‌ی بورد (RTL، فارسی). ماژول M3 فاز ۸.",
   "scripts": {
-    "predev": "node ../../scripts/check-dev-port.mjs 15380",
+    "assets": "node scripts/copy-excalidraw-fonts.mjs",
+    "predev": "pnpm run assets && node ../../scripts/check-dev-port.mjs 15380",
     "dev": "vite",
+    "prebuild": "pnpm run assets",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
@@ -17,15 +19,20 @@
   },
   "dependencies": {
     "@fontsource-variable/vazirmatn": "5.3.0",
+    "@hamboom/canvas-core": "workspace:*",
+    "@hamboom/canvas-sync": "workspace:*",
     "@hamboom/i18n": "workspace:*",
     "@hamboom/sdk": "workspace:*",
     "@hamboom/shared-types": "workspace:*",
+    "@hamboom/ydoc-schema": "workspace:*",
     "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-router": "^1.95.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "yjs": "^13.6.20"
   },
   "devDependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
     "@hamboom/eslint-config": "workspace:*",
     "@hamboom/tsconfig": "workspace:*",
     "@testing-library/dom": "^10.4.0",

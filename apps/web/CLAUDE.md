@@ -44,8 +44,30 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 | `src/styles/app.css` | تمِ روشن/تیره + پوسته + فرم‌ها، فقط logical properties | ۸٫۱ ✅ |
 | `src/api/client.ts` | singletonِ `sdk` (access در حافظه، `baseUrl=""`) | ۸٫۲ ✅ |
 | `src/auth/` | `LoginPage` (موبایل/OTP) · `SessionProvider`+`session-context` · `RequireAuth` · `validate` | ۸٫۲ ✅ |
-| (به‌زودی) `src/dashboard/` | تیم/بورد/فولدر/عضو | ۸٫۳ |
-| (به‌زودی) `src/board/` | پوسته‌ی بورد + `canvas-sync` روی سرورِ واقعی | ۸٫۴ |
+| `src/dashboard/` | فهرست/ساخت/نشان/جستجوی بورد | ۸٫۳ ✅ |
+| `src/team/` | اعضا/دعوت/نقش + پذیرشِ دعوت | ۸٫۳ ✅ |
+| `src/board/` | پوسته‌ی بورد: `HamboomCanvas` + `YjsSyncAdapter` روی سرورِ واقعی + گرفتنِ ویرایشِ محلی | ۸٫۴ ✅ |
+
+## ★★ گرفتنِ ویرایشِ محلی — تکه‌ای که M1/M2 به M3 سپرد (فاز ۸٫۴)
+
+`createCanvasBinding` فقط **remote→بوم** است. طرفِ **محلی** (ویرایشِ کاربر → سرور) کارِ اپ است و
+دموها فقط ژست‌های خاص (استیکی/تصویر) را دستی emit می‌کردند. [`BoardPage`](src/board/BoardPage.tsx) این
+پل را می‌سازد:
+
+- **`onChange` = فقط تغییرِ محلی.** تله‌ی M1: `updateScene`ِ **برنامه‌ای** (اعمالِ remote) `onChange` را
+  fire **نمی‌کند** — پس onChange یعنی ویرایشِ کاربر و اکو ممکن نیست.
+- **ضدِ اکو:** `known` (id→version) روی هر اعمالِ remote هم به‌روز می‌شود (binding پیچیده می‌شود) تا دیف
+  عنصرِ همتا را دوباره emit نکند.
+- **گروه‌بندیِ ژست:** emit با فاصله‌ی آرام‌شدنِ ۱۵۰ms → یک درگ = **یک** `gestureId` = یک `Ctrl+Z`
+  (وگرنه تله‌ی «بی‌ژست» یا «هر تیک یک ورودی» M2). ⚠️ فعلاً درگ روی settle emit می‌شود نه زنده؛
+  emitِ **زنده‌ی** میان‌درگ یک پالایشِ بعدی است.
+- `fromExcalidraw` عنصرِ موتور را به `HbElement` می‌بَرد؛ نوعِ نگاشت‌نشده رد می‌شود.
+
+## ★★ ADR-028 حل شد — تجربی (فاز ۸٫۴)
+
+الگوی امنِ StrictMode (apiِ onReady در **state** + اشتراک در `useEffect([api])`) در مرورگر با
+**بومِ واقعی زیر StrictMode** اثبات شد: رسم همگام شد، پنلِ استایلِ excalidraw روی انتخاب باز شد،
+و `Ctrl+Z` کار کرد — هیچ‌کدام «مرده» نماند. ریسکِ ثبت‌شده‌ی ADR-028 بسته است.
 
 ## ★ اجرای محلیِ کاملِ زنجیره (احراز به بعد)
 

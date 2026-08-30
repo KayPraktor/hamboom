@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 
 import { LoginPage } from "./auth/LoginPage.tsx";
 import { RequireAuth } from "./auth/RequireAuth.tsx";
+import { BoardPage } from "./board/BoardPage.tsx";
 import { DashboardPage } from "./dashboard/DashboardPage.tsx";
 import { IndexRedirect } from "./routes/IndexRedirect.tsx";
 import { RootLayout } from "./routes/RootLayout.tsx";
@@ -59,12 +60,23 @@ const inviteRoute = createRoute({
   component: InviteAcceptPage,
 });
 
+const boardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/b/$boardId",
+  component: () => (
+    <RequireAuth>
+      <BoardPage />
+    </RequireAuth>
+  ),
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   dashboardRoute,
   teamRoute,
   inviteRoute,
+  boardRoute,
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });

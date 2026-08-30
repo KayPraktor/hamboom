@@ -166,6 +166,14 @@ threshold گذاشت؛ گذاشتنشان بیرونِ گیت یعنی تکرا�
 > `.env.example` روی پیش‌فرض PLAN (۹۰۰۰) ماندند. **`docker compose up` حالا `minio-init` را هم دارد**
 > (ساختِ باکت‌های assets/snapshots، P3).
 
+> **Redis روی این ماشین ۷۳۷۹ است، نه ۶۳۷۹** (M3 گام ۸٫۴) — **همان تله‌ی MinIO، این‌بار روی ۶۳۷۹**:
+> رنجِ excludedِ ویندوز **جابه‌جا شد** و حالا ۶۳۷۹ داخلِ ۶۳۰۳–۶۴۰۲ افتاد، پس `docker` نمی‌توانست
+> host:۶۳۷۹ را bind کند (کانتینر بالا بود ولی `docker port` خالی؛ سرورِ realtime «خطای اتصالِ Redis»
+> می‌داد). در `.env` محلی: `REDIS_PORT=7379` + `REDIS_URL=…localhost:7379…`؛ compose/`.env.example` روی
+> پیش‌فرضِ PLAN (۶۳۷۹) ماندند. ⚠️ **بعد از ری‌استارت باز هم می‌تواند جابه‌جا شود** — اگر realtime دوباره
+> Redis نگرفت، `netsh … excludedportrange` را ببین و پورتِ بیرونِ رنج بگذار، بعد `docker compose … up -d
+> --force-recreate redis`.
+
 ### ⚠️ اگر `pnpm verify` روی `test` افتاد، اول محیط را ببین
 
 در گام ۲٫۳ **هر ۸ پکیج** با `FATAL ERROR: ... out of memory` افتادند در حالی که

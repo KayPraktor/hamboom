@@ -450,3 +450,58 @@ body {
   background: var(--hb-bg);
   border-radius: 4px;
 }
+
+/* ── کارتِ بورد: بخشِ بازکردن یک لینک است ─────────────────── */
+.board-card__open {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  align-items: center;
+  min-inline-size: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── پوسته‌ی بورد ──────────────────────────────────────────── */
+.board-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.board-topbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.board-topbar .back-link {
+  margin-block-end: 0;
+}
+
+.board-title {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.board-status {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-inline-start: auto;
+  font-size: 13px;
+  color: var(--hb-muted);
+}
+
+.board-status__conn {
+  color: var(--hb-fg);
+}
+
+.board-canvas {
+  position: relative;
+  block-size: calc(100vh - 170px);
+  min-block-size: 420px;
+  overflow: hidden;
+  border: 1px solid var(--hb-border);
+  border-radius: var(--hb-radius);
+}

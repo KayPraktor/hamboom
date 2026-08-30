@@ -116,16 +116,17 @@ function BoardCard({
 }) {
   return (
     <li className="board-card">
-      {/* بازکردنِ بورد کارِ ۸٫۴ است؛ فعلاً فقط اطلاعات. */}
-      <div className="board-card__thumb" aria-hidden="true">
-        {board.title.trim().slice(0, 1) || "ب"}
-      </div>
-      <div className="board-card__body">
-        <span className="board-card__title">{board.title || "بدونِ عنوان"}</span>
-        <span className="board-card__meta">
-          آخرین فعالیت: {formatJalaliShort(new Date(board.lastActivityAt))}
-        </span>
-      </div>
+      <Link to="/b/$boardId" params={{ boardId: board.id }} className="board-card__open">
+        <div className="board-card__thumb" aria-hidden="true">
+          {board.title.trim().slice(0, 1) || "ب"}
+        </div>
+        <div className="board-card__body">
+          <span className="board-card__title">{board.title || "بدونِ عنوان"}</span>
+          <span className="board-card__meta">
+            آخرین فعالیت: {formatJalaliShort(new Date(board.lastActivityAt))}
+          </span>
+        </div>
+      </Link>
       <button
         type="button"
         className={board.isFavorite ? "star star--on" : "star"}
