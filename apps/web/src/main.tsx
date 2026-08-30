@@ -6,6 +6,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { SessionProvider } from "./auth/session.tsx";
 import { ErrorBoundary } from "./ErrorBoundary.tsx";
 import { router } from "./router.tsx";
 
@@ -41,7 +42,9 @@ createRoot(container).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <SessionProvider>
+          <RouterProvider router={router} />
+        </SessionProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   </StrictMode>,

@@ -112,3 +112,85 @@ body {
   padding: 24px;
   color: var(--hb-danger);
 }
+
+.loader {
+  display: flex;
+  justify-content: center;
+  padding-block: 48px;
+  color: var(--hb-muted);
+}
+
+/* ── فرم‌ها ─────────────────────────────────────────────── */
+.auth-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-block-start: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--hb-muted);
+}
+
+.input {
+  font: inherit;
+  padding-inline: 12px;
+  padding-block: 10px;
+  color: var(--hb-fg);
+  background: var(--hb-bg);
+  border: 1px solid var(--hb-border);
+  border-radius: 8px;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--hb-accent);
+}
+
+.input--code {
+  font-size: 22px;
+  letter-spacing: 6px;
+  text-align: center;
+}
+
+.field-hint {
+  margin-block: 0;
+  font-size: 14px;
+  color: var(--hb-muted);
+}
+
+.field-error {
+  margin-block: 0;
+  font-size: 14px;
+  color: var(--hb-danger);
+}
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  padding-inline: 16px;
+  padding-block: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn--primary {
+  color: var(--hb-accent-fg);
+  background: var(--hb-accent);
+}
+
+.btn--ghost {
+  color: var(--hb-fg);
+  background: transparent;
+  border-color: var(--hb-border);
+}
