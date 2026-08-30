@@ -278,11 +278,13 @@ follow)، تصویر رد و بدل می‌کنند، و `Ctrl+Z` فقط کار�
   هر دو **تاییدِ مالک** می‌خواهند ([ADR-021](ARCHITECTURE_DECISIONS.md#adr-021)).
 - **پله‌ی ADR-003:** **A** (بسته‌ی npm) — هیچ patch و فورکی وجود ندارد و spike
   فارسی ثابت کرد لازم هم نیست ([ADR-025](ARCHITECTURE_DECISIONS.md#adr-025)).
-- **پکیج‌ها:** `canvas-core`، `shared-types`، `i18n`، `config`، `ydoc-schema`،
+- **پکیج‌های M2:** `canvas-core`، `shared-types`، `i18n`، `config`، `ydoc-schema`،
   `canvas-sync`، `tsconfig`، `eslint-config` · **اپ‌ها:** `apps/realtime`
-- **هنوز ساخته نشده:** `packages/auth-core`، `packages/storage`، `packages/sdk`،
-  `apps/api`، `apps/web` (همه کارِ M3). M2 به‌جای انتظار، پشتِ **پورت** با آن‌ها حرف
-  زد ([ADR-031](ARCHITECTURE_DECISIONS.md#adr-031)).
+- **آنچه M2 نساخته بود و M3 ساخت (فاز ۰–۷):** `packages/auth-core`، `packages/storage`،
+  `packages/assets`، `packages/sdk`، `packages/board-access-db`، `apps/api`. در M2 اینها
+  پشتِ **پورت** بودند ([ADR-031](ARCHITECTURE_DECISIONS.md#adr-031))؛ فاز ۷ پورت‌ها را با
+  پیاده‌سازیِ واقعی پر کرد. **هنوز مانده:** `apps/web` (فاز ۸، **در جریان**) · `apps/worker`
+  (به تعویق، ارثیه‌ی m4).
 - **زیرساخت:** فقط لوکال — `infra/docker/docker-compose.yml` با postgres+redis
   (برشِ حداقلیِ M2؛ M5 کاملش می‌کند). هیچ حساب آروان/زرین‌پال واقعی خریداری نشده.
 
