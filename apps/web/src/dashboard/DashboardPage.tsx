@@ -1,8 +1,10 @@
 import { formatJalaliShort } from "@hamboom/i18n";
 import type { BoardSummary } from "@hamboom/shared-types";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { errorMessage } from "../api/error-message.ts";
+import { useSession } from "../auth/session-context.ts";
 import type { BoardsFilter } from "./boards-queries.ts";
 import { useBoards, useCreateBoard, useToggleFavorite } from "./boards-queries.ts";
 
@@ -19,12 +21,28 @@ export function DashboardPage() {
     ...(favOnly ? { favorite: true } : {}),
   };
 
+  const { teams } = useSession();
   const boards = useBoards(filter);
   const createBoard = useCreateBoard();
   const toggleFavorite = useToggleFavorite();
 
   return (
     <div className="dashboard">
+      {teams.length > 0 && (
+        <nav className="teams-strip" aria-label="تیم‌ها">
+          <span className="teams-strip__label">تیم‌ها:</span>
+          {teams.map((team) => (
+            <Link
+              key={team.id}
+              to="/team/$teamId"
+              params={{ teamId: team.id }}
+              className="chip"
+            >
+              {team.name}
+            </Link>
+          ))}
+        </nav>
+      )}
       <div className="dashboard__bar">
         <h1>بوردهای من</h1>
         <div className="dashboard__actions">

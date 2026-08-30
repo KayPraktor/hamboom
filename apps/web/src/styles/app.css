@@ -329,3 +329,124 @@ body {
   color: var(--hb-muted);
   text-align: center;
 }
+
+.teams-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.teams-strip__label {
+  font-size: 13px;
+  color: var(--hb-muted);
+}
+
+.teams-strip .chip {
+  text-decoration: none;
+}
+
+/* ── صفحه‌ی تیم ─────────────────────────────────────────── */
+.team-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-inline-size: 720px;
+  margin-inline: auto;
+}
+
+.back-link {
+  display: inline-block;
+  margin-block-end: 8px;
+  font-size: 13px;
+  color: var(--hb-muted);
+  text-decoration: none;
+}
+
+.team-page h1,
+.team-page h2 {
+  margin-block: 0;
+}
+
+.team-page h2 {
+  margin-block-end: 12px;
+  font-size: 17px;
+}
+
+.member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.member-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 14px;
+  padding-block: 10px;
+  border: 1px solid var(--hb-border);
+  border-radius: 8px;
+  background: var(--hb-surface);
+}
+
+.member-row__id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.member-row__name {
+  font-weight: 600;
+}
+
+.member-row__controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.select {
+  padding-block: 6px;
+  cursor: pointer;
+}
+
+.role-badge {
+  font-size: 13px;
+  color: var(--hb-muted);
+}
+
+.role-badge--owner {
+  font-weight: 600;
+  color: var(--hb-accent);
+}
+
+.invite__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.invite__form .input {
+  flex: 1;
+  min-inline-size: 160px;
+}
+
+.invite__link {
+  margin-block-start: 10px;
+  font-size: 13px;
+  color: var(--hb-muted);
+}
+
+.invite__link code {
+  padding-inline: 6px;
+  padding-block: 2px;
+  color: var(--hb-fg);
+  background: var(--hb-bg);
+  border-radius: 4px;
+}

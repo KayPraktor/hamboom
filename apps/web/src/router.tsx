@@ -5,6 +5,8 @@ import { RequireAuth } from "./auth/RequireAuth.tsx";
 import { DashboardPage } from "./dashboard/DashboardPage.tsx";
 import { IndexRedirect } from "./routes/IndexRedirect.tsx";
 import { RootLayout } from "./routes/RootLayout.tsx";
+import { InviteAcceptPage } from "./team/InviteAcceptPage.tsx";
+import { TeamPage } from "./team/TeamPage.tsx";
 
 /**
  * روترِ **code-based** (نه file-based) — عمداً.
@@ -41,7 +43,29 @@ const dashboardRoute = createRoute({
   ),
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, loginRoute, dashboardRoute]);
+const teamRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/team/$teamId",
+  component: () => (
+    <RequireAuth>
+      <TeamPage />
+    </RequireAuth>
+  ),
+});
+
+const inviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/invite/$token",
+  component: InviteAcceptPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  loginRoute,
+  dashboardRoute,
+  teamRoute,
+  inviteRoute,
+]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });
 
