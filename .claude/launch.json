@@ -9,6 +9,13 @@
       "url": "http://127.0.0.1:15180"
     },
     {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@hamboom/web", "dev"],
+      "port": 15380,
+      "url": "http://127.0.0.1:15380"
+    },
+    {
       "name": "api",
       "runtimeExecutable": "node",
       "runtimeArgs": ["--env-file-if-exists=.env", "apps/api/src/server.ts"],

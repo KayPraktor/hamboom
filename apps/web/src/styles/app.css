@@ -1,0 +1,114 @@
+/**
+ * استایلِ سراسری — RTL و تمِ روشن/تیره.
+ *
+ * ⚠️ [ADR-016](../../../../ARCHITECTURE_DECISIONS.md#adr-016): **فقط** logical
+ * properties. هیچ margin-left/right، padding-left/right، left/right،
+ * border-left/right، یا text-align: left|right. گیتِ Stylelintِ داخلِ verify این
+ * را اعمال می‌کند.
+ */
+
+:root {
+  --hb-bg: #ffffff;
+  --hb-fg: #17181c;
+  --hb-muted: #6b7280;
+  --hb-accent: #3b6fd4;
+  --hb-accent-fg: #ffffff;
+  --hb-surface: #f5f6f8;
+  --hb-border: #e4e6ea;
+  --hb-danger: #d14343;
+  --hb-radius: 10px;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hb-bg: #0f1116;
+    --hb-fg: #e7e9ee;
+    --hb-muted: #9aa1ad;
+    --hb-accent: #6ea3ff;
+    --hb-accent-fg: #0f1116;
+    --hb-surface: #171a20;
+    --hb-border: #2a2f39;
+    --hb-danger: #f0857d;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Vazirmatn Variable", system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  background: var(--hb-bg);
+  color: var(--hb-fg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  min-block-size: 100vh;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-inline: 20px;
+  padding-block: 14px;
+  border-block-end: 1px solid var(--hb-border);
+  background: var(--hb-surface);
+}
+
+.app-header__brand {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.app-main {
+  flex: 1;
+  padding-inline: 20px;
+  padding-block: 28px;
+}
+
+.card {
+  max-inline-size: 480px;
+  margin-inline: auto;
+  padding: 24px;
+  border: 1px solid var(--hb-border);
+  border-radius: var(--hb-radius);
+  background: var(--hb-surface);
+}
+
+.card h1 {
+  margin-block: 0 8px;
+  font-size: 22px;
+}
+
+.card p {
+  margin-block: 0;
+  color: var(--hb-muted);
+}
+
+.error-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 24px;
+  color: var(--hb-danger);
+}
