@@ -519,9 +519,14 @@ Chromium، thumbnail) = **بعد از M3**.
       عمدی را **قرمز** کرد (بعد از revert سبز)؛ **همه‌ی requestها روی `127.0.0.1`** — صفر میزبانِ
       خارجی (P2، آزموده در مرورگر). `pnpm verify` سبز (۸ گیت، ۸۱۶ پکیجِ لایسنس‌شده).
 
-### گام ۸٫۲ — احراز هویت (UI)
-- [ ] صفحاتِ شماره موبایل/OTP/refresh؛ access در **حافظه** (نه localStorage)؛ از `sdk`.
-- **معیار پذیرش:** ورودِ کاملِ mock در مرورگر؛ رفرشِ صفحه session را از cookie برمی‌گرداند.
+### گام ۸٫۲ — احراز هویت (UI) — ✅ (۱۴۰۵/۰۶/۱۰)
+- [x] `LoginPage` دو-گامی (موبایل → کدِ ۶ رقمی) روی `sdk`؛ ارقامِ فارسی با `toLatinDigits`
+      نرمال (در [`validate.ts`](apps/web/src/auth/validate.ts)، تست‌دار)؛ خطاهای §۵ مستقیم نمایش.
+      `SessionProvider` نشست را از کوکیِ HttpOnly بازمی‌گرداند (refresh→me)، StrictMode-safe (ADR-032).
+      access فقط در closureِ حافظه‌ایِ `sdk` (نه localStorage). پروکسیِ dev بدونِ rewrite به api.
+- **معیار پذیرش:** ✅ **ورودِ کاملِ mock در مرورگر اثبات شد** — شماره وارد شد، کدِ mock از لاگِ api خوانده
+      شد (شماره ماسک، P7)، کاربرِ نو با تیمِ شخصیِ خودکار ساخته شد؛ **رفرشِ صفحه** نشست را با
+      `POST /auth/refresh → GET /me` نگه داشت. localStorage/sessionStorage خالی، کوکی HttpOnly. verify سبز.
 
 ### گام ۸٫۳ — داشبورد + تیم (UI)
 - [ ] لیستِ تیم/بورد/فولدر/جستجو/favorite/سطلِ بازیافت؛ صفحه‌ی اعضا/دعوت/نقش.

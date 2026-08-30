@@ -41,10 +41,22 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 | `index.html` · `src/main.tsx` | ریشه: RTL، StrictMode، QueryClient، ErrorBoundary | ۸٫۱ ✅ |
 | `src/router.tsx` · `src/routes/` | روترِ code-based + صفحات | ۸٫۱ ✅ |
 | `src/fonts.ts` | گیتِ `document.fonts.ready` (برای بوم، ۸٫۴) | ۸٫۱ ✅ |
-| `src/styles/app.css` | تمِ روشن/تیره + پوسته، فقط logical properties | ۸٫۱ ✅ |
-| (به‌زودی) `src/auth/` | صفحاتِ موبایل/OTP + سشن در حافظه | ۸٫۲ |
+| `src/styles/app.css` | تمِ روشن/تیره + پوسته + فرم‌ها، فقط logical properties | ۸٫۱ ✅ |
+| `src/api/client.ts` | singletonِ `sdk` (access در حافظه، `baseUrl=""`) | ۸٫۲ ✅ |
+| `src/auth/` | `LoginPage` (موبایل/OTP) · `SessionProvider`+`session-context` · `RequireAuth` · `validate` | ۸٫۲ ✅ |
 | (به‌زودی) `src/dashboard/` | تیم/بورد/فولدر/عضو | ۸٫۳ |
 | (به‌زودی) `src/board/` | پوسته‌ی بورد + `canvas-sync` روی سرورِ واقعی | ۸٫۴ |
+
+## ★ اجرای محلیِ کاملِ زنجیره (احراز به بعد)
+
+```bash
+pnpm db:up                                   # postgres روی 5433
+APP_ENV=local node --env-file-if-exists=.env apps/api/src/server.ts   # api روی 3002 (SMS mock → کد در لاگ)
+pnpm --filter @hamboom/web dev               # web روی 15380، پروکسی به 3002
+```
+
+⚠️ **کوکیِ refresh مسیرِ `/auth` دارد** — پروکسیِ dev **نباید rewrite کند** وگرنه مرورگر
+کوکی را برنمی‌گردانَد. `baseUrl`ِ sdk هم به همین دلیل `""` است (هم‌مبدأ).
 
 ## دستورات
 
