@@ -69,16 +69,20 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 **بومِ واقعی زیر StrictMode** اثبات شد: رسم همگام شد، پنلِ استایلِ excalidraw روی انتخاب باز شد،
 و `Ctrl+Z` کار کرد — هیچ‌کدام «مرده» نماند. ریسکِ ثبت‌شده‌ی ADR-028 بسته است.
 
-## ★ اجرای محلیِ کاملِ زنجیره (احراز به بعد)
+## ★ اجرای محلیِ کاملِ زنجیره
 
 ```bash
-pnpm db:up                                   # postgres روی 5433
-APP_ENV=local node --env-file-if-exists=.env apps/api/src/server.ts   # api روی 3002 (SMS mock → کد در لاگ)
-pnpm --filter @hamboom/web dev               # web روی 15380، پروکسی به 3002
+pnpm db:up                                   # postgres 5433 + redis 7379 + minio 9800
+APP_ENV=local node --env-file-if-exists=.env apps/api/src/server.ts            # api روی 3002 (SMS mock → کد در لاگ)
+RT_PORT=3001 APP_ENV=local node --env-file-if-exists=.env apps/realtime/src/main.ts  # realtime روی 3001 (برای بورد، ۸٫۴)
+pnpm --filter @hamboom/web dev               # web روی 15380، پروکسی به 3002، WS به 3001
 ```
 
-⚠️ **کوکیِ refresh مسیرِ `/auth` دارد** — پروکسیِ dev **نباید rewrite کند** وگرنه مرورگر
-کوکی را برنمی‌گردانَد. `baseUrl`ِ sdk هم به همین دلیل `""` است (هم‌مبدأ).
+- **بورد (۸٫۴) به هر سه نیاز دارد:** api (rt-token) + realtime (WS، `VITE_RT_URL` پیش‌فرض `ws://127.0.0.1:3001`) + web.
+  realtime به **Redis** هم نیاز دارد — اگر «خطای اتصالِ Redis» داد، نکته‌ی پورتِ ۷۳۷۹ در [CLAUDE.mdِ ریشه](../../CLAUDE.md) را ببین.
+- **تستِ دو-تبِ همگام:** یک بورد بساز، `/b/<id>` را در **دو تب** باز کن، در یکی رسم کن → در آن یکی زنده دیده می‌شود.
+- ⚠️ **کوکیِ refresh مسیرِ `/auth` دارد** — پروکسیِ dev **نباید rewrite کند** وگرنه مرورگر کوکی را برنمی‌گردانَد؛
+  `baseUrl`ِ sdk هم `""` است. و **مسیرهای SPA مفردند** (`/team`، `/b`) تا با پیشوندهای پروکسیِ api (`/teams`، `/boards`) تصادم نکنند.
 
 ## دستورات
 
