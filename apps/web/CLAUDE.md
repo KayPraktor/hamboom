@@ -1,6 +1,6 @@
 # CLAUDE.md — `@hamboom/web`
 
-اپِ وبِ کاربر — احراز هویت، داشبورد، پوسته‌ی بورد. **ماژول M3، فاز ۸.**
+اپِ وبِ کاربر — احراز هویت، داشبورد، پوسته‌ی بورد، نوار ابزار. **ماژول M3، فاز ۸–۹.**
 React 19 + Vite 6 + TypeScript + TanStack Router (code-based) + TanStack Query.
 
 **قبل از کار بخوان:** [TODO فاز ۸](../../TODO-M3-backend-api.md) · [PLAN §۵](../../PLAN.md) ·
@@ -46,7 +46,7 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 | `src/auth/` | `LoginPage` (موبایل/OTP) · `SessionProvider`+`session-context` · `RequireAuth` · `validate` | ۸٫۲ ✅ |
 | `src/dashboard/` | فهرست/ساخت/نشان/جستجو + **ریلِ فولدرِ per-team** (`FolderNav`) + **سطلِ بازیافت** + منوی کارت (`BoardCardMenu`) | ۸٫۳ ✅ |
 | `src/team/` | اعضا/دعوت/نقش + پذیرشِ دعوت | ۸٫۳ ✅ |
-| `src/board/` | پوسته‌ی بورد: `HamboomCanvas` + `YjsSyncAdapter` + گرفتنِ ویرایشِ محلی + **مکان‌نمای زنده‌ی همتا** | ۸٫۴/۸٫۵ ✅ |
+| `src/board/` | پوسته‌ی بورد: `HamboomCanvas` + `YjsSyncAdapter` + گرفتنِ ویرایشِ محلی + **مکان‌نمای زنده‌ی همتا** + **نوار ابزارِ عمودی** | ۸٫۴/۸٫۵/۹٫۱ ✅ |
 
 ## ★ حضور و دو یافته‌ی ۸٫۵ (لمسِ M1/M2 با تاییدِ مالک)
 
@@ -78,6 +78,30 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 - `fromExcalidraw` عنصرِ موتور را به `HbElement` می‌بَرد؛ نوعِ نگاشت‌نشده رد می‌شود.
 - **پیام‌های پروتکل ([ADR-047](../../ARCHITECTURE_DECISIONS.md#adr-047)):** `onProtocolError` یک نوتیسِ فارسی نشان
   می‌دهد (نه console-only) — `error.message` از قبل فارسیِ آماده است. رشته‌ها در `canvas-sync` می‌مانند، به i18n نمی‌روند.
+
+## ★ نوار ابزارِ عمودی (فاز ۹٫۱)
+
+نوار ابزارِ عمودیِ شبیه‌میرو روی بومِ وصل‌شده. **همه از canvas-core reuse شد** (ADR-024) — تنها لمسِ نو، propِ
+افزایشیِ `orientation="vertical"` روی `Toolbar`ِ **M1** است (تاییدِ مالک ۱۴۰۵/۰۶/۱۲، در PROGRESS مثلِ B-1 ثبت).
+
+- **نوار همان `Toolbar`ِ canvas-core است** با `orientation="vertical"` (نه کامپوننتِ نو). `selectTool` نگاشتِ
+  `ToolId`→رفتار است: موتور با `setActiveTool` (شکل=rectangle، کانکتور=arrow، فریم/متن/پاک‌کن)، استیکی/قلمِ سفارشی
+  با `activate`، تصویر با انتخابگرِ فایل. میان‌برها از `toolForShortcut` (یک منبع). پالتِ ۱۲رنگه از `HB_STICKY_PALETTE`.
+- **★★ نوشتنِ برنامه‌ایِ ابزار onChange نمی‌دهد (تله‌ی M1) → `flushLocal`ِ دستی.** استیکی/تصویر/قلم برنامه‌ای به
+  صحنه می‌نویسند، پس `onChange` (که emitِ 8.4 را می‌زند) fire نمی‌شود؛ هر ابزار در callbackِ پایانش
+  (`onCreated`/`onInserted`/`onCommitted`) `flushLocal` می‌کند — همان مسیرِ تک‌emit که `known` را هم درست نگه می‌دارد.
+  ابزارهای موتور (شکل/متن/کانکتور/فریم/پاک‌کن) با درگِ **واقعیِ کاربر** onChange می‌دهند و خودکار emit می‌شوند.
+- **★ قلم: ضدِ دو-emit.** `DrawTool` هم صحنه را می‌نویسد هم `emitElementChanges` دارد؛ چون flushLocal تنها مسیرِ
+  emit است، `emitElementChanges`ِ ابزار **no-op** است و `emitEphemeral`→outboundِ واقعی (پیش‌نمایشِ زنده‌ی همتا).
+  روکشِ استروکِ محلی از `sceneToOverlayPixel`ِ مشترک رندر می‌شود (صفر importِ excalidraw در web).
+- **★ ابزارِ فعالِ همتا:** `emitActiveTool(id)` روی هر انتخاب؛ برچسبِ همتا از همان `HB_TOOLS` (i18n). **قرارداد از
+  M2 بود** (`emitActiveTool`/`PeerState.activeTool`؛ awareness relayش می‌کند) — **صفر لمسِ M2/shared-types**.
+- **استیکی بعد از یک قراردهی خودش deactivate می‌شود (M1)** → `onCreated` UI را به «انتخاب» برمی‌گرداند (پالت بسته می‌شود).
+- **⚠️ تصویر به فاز ۱۱٫۲ موکول:** adapter بدونِ `assets` است → `requestAssetUpload` خطا می‌دهد؛ نوتیسِ گراسفول
+  (وایرینگ آماده، فقط `assets:` به adapter در ۱۱٫۲). `createLocalAssetTransport` عمداً **نه** (بلابِ per-page، بی‌sync).
+- **⚠️ نوار ابزارِ نیتیوِ excalidraw هنوز دیده می‌شود** — پنهان‌کردنش یک لمسِ M1ِ جدا (`UIOptions`/zenMode روی
+  `HamboomCanvas`)، نیازِ تایید.
+- **viewer:** نوار ابزار/پالت/روکش فقط برای **ویرایشگر** رندر می‌شوند؛ `selectTool` هم edit-toolها را برای readOnly گیت می‌کند.
 
 ## ★★ درسِ اندازه‌گیریِ بوم در مرورگر (فاز ۸٫۴)
 

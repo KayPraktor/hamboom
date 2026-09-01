@@ -97,6 +97,10 @@ Playwright یک Chromiumِ **واقعی** اجرا می‌کند که composite 
 - ★ **`HamboomCanvas` propِ `onPointerUpdate` دارد** (M3 گام ۸٫۵، تاییدِ مالک ۱۴۰۵/۰۶/۱۰): `onPointerUpdate`ِ
   موتور را که **مختصاتِ صحنه** می‌دهد به بیرون forward می‌کند، پس مصرف‌کننده (اپ) بی هیچ تبدیلِ پیکسل→صحنه
   مکان‌نمای محلی را برای حضور emit می‌کند. این گپِ ثبت‌شده‌ی M2 §۴ را می‌بندد (صفر تکرارِ فرمول، ADR-024).
+- ★ **`Toolbar` propِ `orientation` دارد** (M3 گام ۹٫۱، تاییدِ مالک ۱۴۰۵/۰۶/۱۲): `"horizontal"` (پیش‌فرض،
+  پایین-وسط، سازگار با گذشته) یا `"vertical"` (لبه‌ی `--center-start`، ستونی). افزایشی و backward-compatible —
+  مصرف‌کننده‌های موجود بی‌تغییر می‌مانند. جای‌گذاری از همان `overlay-layout.css` (اسلاتِ نو `--center-start`)، با
+  logical properties (RTL بی‌آینه، Stylelint-clean). `apps/web` (نوار ابزارِ بورد) با `orientation="vertical"` مصرفش می‌کند.
 - **پکیج JIT است:** `exports` مستقیماً به `src/*.ts` اشاره می‌کند و build ندارد.
   مصرف‌کننده‌ها (همه Vite هستند) خودشان transpile می‌کنند. الگوی internal package
   در Turborepo. اگر روزی یک مصرف‌کننده‌ی Node خالص اضافه شد، آن‌وقت build لازم می‌شود.

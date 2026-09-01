@@ -29,6 +29,25 @@ describe("Toolbar", () => {
     expect(screen.getByLabelText("استیکی")).toHaveAttribute("title", "استیکی · N");
   });
 
+  it("★ پیش‌فرض افقی است (سازگار با گذشته): پایین-وسط، بدونِ کلاسِ عمودی", () => {
+    const { container } = render(<Toolbar activeTool="select" onSelectTool={() => {}} />);
+    const bar = container.querySelector(".hb-toolbar");
+    expect(bar).toHaveClass("hb-overlay--bottom-center");
+    expect(bar).not.toHaveClass("hb-toolbar--vertical");
+    expect(bar).toHaveAttribute("aria-orientation", "horizontal");
+  });
+
+  it("★ orientation=vertical: لبه‌ی inline-start + ستونی + aria عمودی (گام ۹٫۱)", () => {
+    const { container } = render(
+      <Toolbar activeTool="select" onSelectTool={() => {}} orientation="vertical" />,
+    );
+    const bar = container.querySelector(".hb-toolbar");
+    expect(bar).toHaveClass("hb-toolbar--vertical");
+    expect(bar).toHaveClass("hb-overlay--center-start");
+    expect(bar).not.toHaveClass("hb-overlay--bottom-center");
+    expect(bar).toHaveAttribute("aria-orientation", "vertical");
+  });
+
   it("★ دکمه‌ی stub (کامنت) «به‌زودی» است و کلیکش بی‌اثر", async () => {
     const onSelect = vi.fn();
     render(<Toolbar activeTool="select" onSelectTool={onSelect} />);

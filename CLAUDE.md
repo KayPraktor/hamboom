@@ -244,7 +244,15 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
     · **★ ۸٫۵ (سه یافته‌ی M2، تاییدِ تک‌تکِ مالک):** یافته‌ی ۳ (**مکان‌نمای زنده** — propِ افزایشیِ `onPointerUpdate` روی
     `HamboomCanvas`/**M1** + رندرِ `PeerCursors` در اپ) و یافته‌ی ۲ (**مهرِ تنبلِ `schemaVersion`** در adapter/**M2**)
     اعمال و اثبات شدند؛ **یافته‌ی ۴ (انزوای متن) موکول شد** (مالک رد کرد). لمسِ M1/M2 در PROGRESS ثبت شد.
-    جزئیات و درس‌ها در [`PROGRESS-M3`](PROGRESS-M3-backend-api.md). **قدمِ بعد:** فاز ۹ (نوار ابزار).
+    جزئیات و درس‌ها در [`PROGRESS-M3`](PROGRESS-M3-backend-api.md).
+  - **★ فاز ۹ (نوار ابزارِ عمودی) — گام ۹٫۱ تمام و در مرورگر اثبات شد (۱۴۰۵/۰۶/۱۲):** نوارِ عمودیِ شبیه‌میرو
+    روی لبه‌ی **inline-start** روی بومِ وصل‌شده. **همه از canvas-core reuse شد** (ADR-024): `HB_TOOLS`،
+    `toolForShortcut`، `createStickyTool`/`ImageTool`/`DrawTool`، سازنده‌های موتور، پالتِ ۱۲رنگه. **تنها لمسِ نو:**
+    propِ افزایشیِ `orientation` روی `Toolbar` (**M1، تاییدِ صریحِ مالک ۱۴۰۵/۰۶/۱۲**، در PROGRESS مثلِ B-1 ثبت).
+    **★ ابزارِ فعالِ همتا از قبل در قرارداد بود** (`emitActiveTool`/`PeerState.activeTool` از M2؛ awareness relayش
+    می‌کند) — **صفر لمسِ M2/shared-types**. اثبات در دو تب: استیکیِ فارسی/کانکتور/فریم/قلم همگام، ابزارِ فعالِ همتا
+    دوطرفه. **تصویر به فاز ۱۱٫۲ موکول** (adapter بدونِ `assets`؛ نوتیسِ گراسفول). ⚠️ **نوار ابزارِ نیتیوِ excalidraw
+    هنوز دیده می‌شود** — پنهان‌کردنش یک لمسِ M1ِ جدا (نیازِ تایید). `pnpm verify` سبز. **قدمِ بعد:** فاز ۱۱ (فاز ۱۰ موکول).
 - **★★★ M2 (`realtime-sync`) تمام و تحویل شد** (۱۴۰۵/۰۵/۲۳) — هر ۳۰ گامِ
   [TODO.md](TODO.md) تیک خورده. نقطه‌ی ورودِ M3: [`docs/m3-handoff.md`](docs/m3-handoff.md)
   (چهار پورت، دو موردِ به‌ارث‌رسیده، چهار یافته‌ی M2، سقف‌های اندازه‌گیری‌شده).

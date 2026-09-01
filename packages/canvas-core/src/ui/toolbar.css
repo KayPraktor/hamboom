@@ -13,6 +13,17 @@
   box-shadow: 0 6px 24px rgb(0 0 0 / 12%);
 }
 
+/*
+ * چیدمانِ عمودی (M3 گام ۹٫۱) — فقط جهتِ محورِ flex عوض می‌شود؛ جای‌گذاری روی
+ * لبه با اسلاتِ `--center-start` در overlay-layout.css است. روی صفحه‌ی کوتاه
+ * اسکرول می‌کند تا از بوم بیرون نزند (max-block-size منطقی است، نه max-height).
+ */
+.hb-toolbar--vertical {
+  flex-direction: column;
+  max-block-size: calc(100% - 2 * var(--hb-overlay-gap));
+  overflow-y: auto;
+}
+
 .hb-tool {
   inline-size: 40px;
   block-size: 40px;

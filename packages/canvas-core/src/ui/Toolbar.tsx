@@ -8,9 +8,15 @@ import "./toolbar.css";
 /**
  * نوار ابزارِ هم‌بوم — گام ۴٫۲.
  *
- * **پایین، وسط، شناور** (تصمیمِ ثبت‌شده در PROGRESS) — جهت‌خنثی، پس دعوای
- * چپ/راستِ RTL را ندارد. مرکز با `margin-inline: auto` (نه `left`) تا با گیتِ
- * Stylelintِ ADR-016 نسازد.
+ * دو چیدمان دارد (`orientation`، پیش‌فرض `"horizontal"`):
+ *
+ * - **افقی** (پیش‌فرض، سازگار با گذشته): **پایین، وسط، شناور** — جهت‌خنثی، پس
+ *   دعوای چپ/راستِ RTL را ندارد. مرکز با `margin-inline: auto` (نه `left`) تا با
+ *   گیتِ Stylelintِ ADR-016 نسازد.
+ * - **عمودی** (M3 گام ۹٫۱، تاییدِ مالک ۱۴۰۵/۰۶/۱۲): لبه‌ی **inline-start** (در
+ *   RTL سمتِ راست)، وسطِ عمودی — نوارِ فشرده‌ی شبیه‌میرو. جای‌گذاری باز هم منطقی
+ *   است (`inset-inline-start` + محورِ بلوک)، پس دعوای چپ/راست را با logical
+ *   properties حل می‌کند، نه با آینه‌کردن.
  *
  * ── ارائه‌ای است، نه رفتاری ────────────────────────────────────────────
  *
@@ -23,14 +29,23 @@ import "./toolbar.css";
 export interface ToolbarProps {
   activeTool: ToolId;
   onSelectTool: (id: ToolId) => void;
+  /**
+   * چیدمان — افقیِ پایین-وسط (پیش‌فرض) یا عمودیِ لبه‌ی inline-start.
+   * افزایشی و سازگار با گذشته: مصرف‌کننده‌های موجود بدونِ تغییر افقی می‌مانند.
+   */
+  orientation?: "horizontal" | "vertical";
 }
 
-export function Toolbar({ activeTool, onSelectTool }: ToolbarProps) {
+export function Toolbar({ activeTool, onSelectTool, orientation = "horizontal" }: ToolbarProps) {
+  const vertical = orientation === "vertical";
+  // جای‌گذاری از همان منبعِ واحدِ overlay-layout می‌آید (ADR-027) — نه offsetِ دستی.
+  const placement = vertical ? "hb-overlay--center-start" : "hb-overlay--bottom-center";
   return (
     <div
-      className="hb-toolbar hb-overlay hb-overlay--bottom-center"
+      className={`hb-toolbar${vertical ? " hb-toolbar--vertical" : ""} hb-overlay ${placement}`}
       role="toolbar"
       aria-label="ابزارها"
+      aria-orientation={vertical ? "vertical" : "horizontal"}
     >
       {HB_TOOLS.map((tool) => {
         const label = t(tool.labelKey);

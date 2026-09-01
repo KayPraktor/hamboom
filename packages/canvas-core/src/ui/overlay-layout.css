@@ -68,3 +68,14 @@
 .hb-overlay--bottom-center {
   inset-block-end: var(--hb-overlay-gap);
 }
+
+/*
+ * لبه‌ی inline-start، وسطِ عمودی — نوار ابزارِ عمودیِ M3 (گام ۹٫۱).
+ * `inset-inline-start` منطقی است (در RTL راست) و `translateY` روی محورِ **بلوک**
+ * (عمودی) است که RTL آینه‌اش نمی‌کند — پس جهت‌خنثی و سازگار با گیتِ Stylelint.
+ */
+.hb-overlay--center-start {
+  inset-inline-start: var(--hb-overlay-gap);
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+}
