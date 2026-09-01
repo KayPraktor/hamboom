@@ -792,6 +792,16 @@ body {
   color: var(--hb-fg);
 }
 
+.board-notice {
+  padding-inline: 14px;
+  padding-block: 8px;
+  font-size: 13px;
+  color: var(--hb-danger);
+  background: color-mix(in srgb, var(--hb-danger) 12%, transparent);
+  border: 1px solid var(--hb-danger);
+  border-radius: 8px;
+}
+
 .board-canvas {
   position: relative;
   block-size: calc(100vh - 170px);

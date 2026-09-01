@@ -543,20 +543,28 @@ Chromium، thumbnail) = **بعد از M3**.
       بوردی به سطل رفت، در `?trashed=true` دیده شد، بازیابی شد و به «همه» برگشت. دو گیتِ جدید
       (trashedِ api + selection) با شکستنِ عمدی قرمز شدند. `pnpm verify` سبز.
 
-### گام ۸٫۴ — ★ پوسته‌ی بورد: اتصالِ `canvas-sync` به سرورِ واقعی — ✅ هسته اثبات شد (۱۴۰۵/۰۶/۱۰)
+### گام ۸٫۴ — ★ پوسته‌ی بورد: اتصالِ `canvas-sync` به سرورِ واقعی — ✅ **کامل شد** (۱۴۰۵/۰۶/۱۰)
 - [x] `/b/$boardId` → `GET /boards/:id` + `rt-token` → mountِ `HamboomCanvas` +
       `YjsSyncAdapter` با `createWebSocketTransport` (به ۳۰۰۱) و `createIndexeddbDocStore`.
 - [x] ★ **الگوی StrictMode-safe** (ADR-032): همه‌ی اشتراک‌ها در `useEffect([api])` با cleanup.
       ★★ **ADR-028 تجربی حل شد** — بومِ واقعی زیر StrictMode رسم/پنل/undo همه زنده.
 - [x] ★ **`bindUndoShortcuts`** (ADR-035) روی pane وصل شد — یک `Ctrl+Z` کلِ ژست را برگرداند.
 - [x] ★ **گرفتنِ ویرایشِ محلی** (تکه‌ی سپرده‌شده‌ی M1/M2): `onChange`→دیف→emit با ضدِ اکو
-      (`known` روی هر اعمالِ remote) + گروه‌بندیِ ژست (settle ۱۵۰ms) + `fromExcalidraw`.
+      (`known` روی هر اعمالِ remote) + گروه‌بندیِ ژست + `fromExcalidraw`.
 - [x] `token()` برای **هر تلاش** تازه؛ `user`ِ واقعی روی حضور؛ `viewModeEnabled` از `canEdit`.
-- [!] **viewer نمی‌تواند بنویسد** — گیتِ سرور از فاز ۷ (`rt:permission`) اثبات‌شده؛ **E2Eِ وبِ viewer**
-      (کاربرِ دومِ viewer روی بورد) و **emitِ زنده‌ی میان‌درگ** و **تصمیمِ پیام‌های فارسی (handoff §۲)** مانده.
+- [x] ★★ **emitِ زنده‌ی میان‌درگ** ✅ — debounceِ ۱۵۰msِ اپ **حذف شد** (کارِ throttle مالِ
+      `createEmitScheduler`ِ canvas-sync است: ۵۰ms درگ/فوریِ ساخت‌وحذف). اپ روی هر onChange (coalesce با
+      **`queueMicrotask` نه rAF** — rAF در تبِ پس‌زمینه می‌ایستد) دیف و emit می‌کند؛ `gestureId` از
+      [`gesture-tracker.ts`](apps/web/src/board/gesture-tracker.ts) (تست‌دار، خودآزمون). **در مرورگر: یک رسمِ
+      واقعی = ۳ emit در یک ژست (نه ۱)، و یک Ctrl+Z کلش را برداشت.**
+- [x] ★★ **E2Eِ وبِ «viewer نمی‌تواند بنویسد»** ✅ — کاربرِ دومِ واقعی (viewer عضوِ بورد) بورد را باز کرد:
+      سرور نقشِ **viewer** داد، وب `canEdit=false`→`viewModeEnabled`→**نوارِ ابزار غایب** + نشانِ «فقط‌خواندنی»،
+      محتوای مالک دیده شد، و تلاشِ رسم فقط بوم را pan کرد (هیچ عنصری ساخته نشد). گیتِ سرور از فاز ۷ (`rt:permission`).
+- [x] ★ **تصمیمِ پیام‌های فارسیِ کلاینت (handoff §۲)** ✅ — [ADR-047](ARCHITECTURE_DECISIONS.md#adr-047): رشته‌ها
+      در `canvas-sync` می‌مانند (به i18n نمی‌روند)؛ اپ `onProtocolError` را به یک **نوتیسِ فارسی** نشان می‌دهد، نه console-only.
 - **معیار پذیرش:** ✅ **دو تبِ مرورگر روی یک بورد با توکن و مجوزِ واقعی همگام شدند** (رسم در تب A → زنده در
       تب B؛ `Ctrl+Z` در A کلِ مستطیل را **یک‌باره** برداشت و حذف به B رسید؛ `board_updates` در Postgres جلو
-      رفت؛ حضور «۱ همکار»). StrictMode اشتراک را نکُشت. ⚠️ ردِ نوشتنِ viewer در وب هنوز E2E نشده.
+      رفت؛ حضور «۱ همکار»). StrictMode اشتراک را نکُشت. **ردِ نوشتنِ viewer در وب هم E2E شد** (بالا). `pnpm verify` سبز.
 
 ### گام ۸٫۵ — ★ رفعِ سه یافته‌ی M2 (M3-D4) — ⚠️ **هر سه `[!]`، تک‌تک تایید می‌شوند**
 > ⚠️ **قاعده‌ی این گام (تصمیمِ مالک ۱۴۰۵/۰۵/۲۴):** اجازه‌ی کلیِ دست‌زدن به M1/M2 **وجود

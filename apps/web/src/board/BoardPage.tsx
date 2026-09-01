@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.ts";
 import { errorMessage } from "../api/error-message.ts";
 import { useSession } from "../auth/session-context.ts";
+import { createGestureTracker } from "./gesture-tracker.ts";
 import { colorForId } from "./presence-color.ts";
 
 /** نوعِ apiِ موتور — از خودِ propِ `onReady` مشتق می‌شود (نه تعریفِ موازی). */
@@ -25,8 +26,12 @@ type SceneElement = ReturnType<CanvasApi["getSceneElementsIncludingDeleted"]>[nu
 /** نشانیِ سرورِ realtime؛ در dev پیش‌فرض ۳۰۰۱ (RT_PORT)، در production از env. */
 const RT_URL = (import.meta.env.VITE_RT_URL as string | undefined) ?? "ws://127.0.0.1:3001";
 
-/** فاصله‌ی آرام‌گرفتنِ یک ژست پیش از emit — یک درگ را به **یک** ورودیِ undo/سیم جمع می‌کند. */
-const GESTURE_SETTLE_MS = 150;
+/**
+ * مرزِ ژست برای گروه‌بندیِ undo: onChangeهای ظرفِ این فاصله یک ژست‌اند (یک درگ)، پس
+ * یک ورودیِ undo. **دیگر تاخیرِ emit نیست** — emit زنده روی هر فریم می‌رود؛ این فقط
+ * می‌گوید کِی `gestureId` عوض شود.
+ */
+const GESTURE_IDLE_MS = 140;
 
 export function BoardPage() {
   const { boardId } = useParams({ from: "/b/$boardId" });
@@ -39,6 +44,8 @@ export function BoardPage() {
   const [connection, setConnection] = useState<ConnectionState | null>(null);
   const [save, setSave] = useState<SaveState | null>(null);
   const [permissions, setPermissions] = useState<CanvasPermissions | null>(null);
+  // پیامِ کوتاهِ خطای پروتکل (مثلِ ردِ نوشتنِ viewer) — فارسیِ آماده از سرور/adapter.
+  const [notice, setNotice] = useState<string | null>(null);
   const paneRef = useRef<HTMLDivElement | null>(null);
 
   const readOnly = permissions?.canEdit === false;
@@ -47,6 +54,16 @@ export function BoardPage() {
     // ★ الگوی StrictMode-safe (ADR-032/ADR-028): api از onReady در **state** است و
     //   همه‌ی اشتراک‌ها اینجا در `useEffect([api])` با cleanup بسته می‌شوند.
     if (!canvasApi || !user) return;
+
+    // ★ §۲ handoff (ADR-047): پیام‌های پروتکلِ **کلاینت** در `canvas-sync` می‌مانند (لایه‌ی
+    //   سنکِ خودشان، سرور هم فارسی می‌دهد)؛ اپ فقط **نمایششان** می‌دهد — نه console-only.
+    //   `error.message` از قبل فارسیِ آماده است (سرور/`TOO_OLD_MESSAGE`).
+    let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+    const showNotice = (message: string): void => {
+      setNotice(message);
+      if (noticeTimer) clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(() => setNotice(null), 4000);
+    };
 
     // ⚠️ `createBoardDoc` (نه `new Y.Doc`) — نسخه‌ی schema را مهر می‌زند مثلِ هر
     //    کلاینتِ محصولی؛ سرور این کار را نمی‌کند (F-1، گام ۴٫۶).
@@ -64,7 +81,10 @@ export function BoardPage() {
       doc,
       transport,
       localStore,
-      onProtocolError: (error) => console.warn(`HB_ERROR ${error.code}: ${error.message}`),
+      onProtocolError: (error) => {
+        console.warn(`HB_ERROR ${error.code}: ${error.message}`);
+        showNotice(error.message.length > 0 ? error.message : "تغییرِ شما اعمال نشد.");
+      },
       user: {
         id: user.id,
         displayName: user.displayName,
@@ -73,7 +93,7 @@ export function BoardPage() {
       },
     });
 
-    // ── سمتِ **محلی**: onChange → دیف → emit ────────────────────────────────
+    // ── سمتِ **محلی**: onChange → دیف → emitِ زنده ──────────────────────────
     //
     // ⚠️ چرا اینجا و نه در binder: `createCanvasBinding` فقط remote→بوم است؛
     //    گرفتنِ ویرایشِ **محلیِ** موتور و فرستادنش کارِ اپ است.
@@ -82,10 +102,21 @@ export function BoardPage() {
     //   یعنی «تغییرِ محلی»، و اکو ممکن نیست. برای اطمینان، `known` روی هر اعمالِ
     //   remote هم به‌روز می‌شود (بسته‌بندیِ binding پایین) تا دیف عنصرِ همتا را
     //   دوباره emit نکند.
+    //
+    // ★★ **emitِ زنده (نه پس از settle):** هر onChangeِ محلی روی یک microtask دیف و emit
+    //    می‌شود — throttleِ واقعی کارِ `createEmitScheduler`ِ canvas-sync است (۵۰ms
+    //    درگ / فوریِ ساخت‌وحذف / ۱۵۰ms متن). اگر اپ اینجا هم debounce کند، scheduler
+    //    حالت‌های میان‌درگ را **هرگز نمی‌بیند** و همتا فقط پس از drop تکان را می‌بیند.
+    //    ⚠️ **`queueMicrotask` نه `requestAnimationFrame`:** rAF در تبِ **پس‌زمینه**
+    //    متوقف می‌شود، پس ویرایشِ یک تبِ پنهان تا نمایان‌شدن emit نمی‌شد (سنجیده شد:
+    //    درگ در تبِ پس‌زمینه فقط ۱ update می‌ساخت، نه ~۲۰). microtask همیشه اجرا می‌شود و
+    //    باز هم رگبارِ یک تسک را به یک دیف جمع می‌کند؛ `gestureId` از `gestures` می‌آید تا
+    //    کلِ یک درگ **یک** ورودیِ undo بماند (scheduler با همان id گروه می‌کند).
     const known = new Map<string, number>(); // id → excalidraw version
     let outbound: Awaited<ReturnType<typeof adapter.connect>> | null = null;
-    let settleTimer: ReturnType<typeof setTimeout> | null = null;
-    let gestureSeq = 0;
+    let cancelled = false;
+    let flushScheduled = false;
+    const gestures = createGestureTracker(user.id, GESTURE_IDLE_MS);
 
     const snapshotKnown = (): void => {
       known.clear();
@@ -95,7 +126,6 @@ export function BoardPage() {
     };
 
     const flushLocal = (): void => {
-      settleTimer = null;
       const scene = canvasApi.getSceneElementsIncludingDeleted() as (SceneElement & {
         version: number;
         isDeleted: boolean;
@@ -122,20 +152,23 @@ export function BoardPage() {
       for (const [id, version] of nextKnown) known.set(id, version);
 
       if (outbound && (upserted.length > 0 || deleted.length > 0)) {
-        gestureSeq += 1;
         outbound.emitElementChanges({
           upserted,
           deleted,
           origin: "local-user",
-          gestureId: `g_${user.id}_${String(gestureSeq)}`,
+          gestureId: gestures.idFor(performance.now()),
         });
       }
     };
 
     const offChange = canvasApi.onChange(() => {
-      // آرام‌شدنِ ژست: یک درگ چند بار onChange می‌زند؛ ۱۵۰ms بعد از آخری یک‌بار emit.
-      if (settleTimer) clearTimeout(settleTimer);
-      settleTimer = setTimeout(flushLocal, GESTURE_SETTLE_MS);
+      // coalesceِ یک‌تسکی: چند onChange در یک تسک → یک دیف. scheduler خودش throttle می‌کند.
+      if (flushScheduled) return;
+      flushScheduled = true;
+      queueMicrotask(() => {
+        flushScheduled = false;
+        if (!cancelled) flushLocal();
+      });
     });
 
     // binding را می‌پیچیم تا هر اعمالِ remote، `known` را هم‌روز نگه دارد (ضدِ اکو).
@@ -155,7 +188,6 @@ export function BoardPage() {
       },
     };
 
-    let cancelled = false;
     let unbindUndo: (() => void) | undefined;
 
     void adapter
@@ -173,8 +205,8 @@ export function BoardPage() {
       });
 
     return () => {
-      cancelled = true;
-      if (settleTimer) clearTimeout(settleTimer);
+      cancelled = true; // microtaskِ در صف اگر بعد از این اجرا شود، flushLocal را رد می‌کند
+      if (noticeTimer) clearTimeout(noticeTimer);
       offChange();
       unbindUndo?.();
       adapter.disconnect();
@@ -207,6 +239,11 @@ export function BoardPage() {
           <span className="board-status__conn">{connectionLabel(connection)}</span>
         </div>
       </div>
+      {notice !== null && (
+        <div className="board-notice" role="status">
+          {notice}
+        </div>
+      )}
       <div className="board-canvas" ref={paneRef}>
         <HamboomCanvas onReady={setCanvasApi} viewModeEnabled={readOnly} />
       </div>
