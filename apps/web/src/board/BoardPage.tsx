@@ -7,6 +7,7 @@ import {
   fromExcalidraw,
   HamboomCanvas,
   type HamboomCanvasProps,
+  type HbShapeKind,
   HB_STICKY_PALETTE,
   HB_TOOLS,
   type ImageAssetOutbound,
@@ -41,7 +42,7 @@ import { t } from "@hamboom/i18n";
 import type { HbElement, HbStickyColor } from "@hamboom/shared-types";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 
 import { api } from "../api/client.ts";
@@ -74,6 +75,86 @@ function peerToolLabel(activeTool: string | null): string | null {
   return meta ? t(meta.labelKey) : null;
 }
 
+/** واریانتِ کانکتور — پیکان (arrow) یا خطِ ساده (line). هر دو نوعِ نیتیوِ موتورند. */
+type ConnectorKind = "arrow" | "line";
+
+// آیکونِ کوچکِ واریانت‌ها — SVGِ خطی، `currentColor` (با تمِ روشن/تیره هماهنگ).
+const shapeIcon: Readonly<Record<HbShapeKind, ReactNode>> = {
+  rectangle: (
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <rect x="3" y="5" width="14" height="10" rx="1.5" />
+    </svg>
+  ),
+  ellipse: (
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <ellipse cx="10" cy="10" rx="7" ry="5" />
+    </svg>
+  ),
+  diamond: (
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10 3 L17 10 L10 17 L3 10 Z" />
+    </svg>
+  ),
+};
+
+const connectorIcon: Readonly<Record<ConnectorKind, ReactNode>> = {
+  arrow: (
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 10 H15 M11 6 L15 10 L11 14" />
+    </svg>
+  ),
+  line: (
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+      <path d="M4 16 L16 4" />
+    </svg>
+  ),
+};
+
+const SHAPE_VARIANTS: readonly { kind: HbShapeKind; label: string; icon: ReactNode }[] = [
+  { kind: "rectangle", label: "مستطیل", icon: shapeIcon.rectangle },
+  { kind: "ellipse", label: "بیضی", icon: shapeIcon.ellipse },
+  { kind: "diamond", label: "لوزی", icon: shapeIcon.diamond },
+];
+
+const CONNECTOR_VARIANTS: readonly { kind: ConnectorKind; label: string; icon: ReactNode }[] = [
+  { kind: "arrow", label: "پیکان", icon: connectorIcon.arrow },
+  { kind: "line", label: "خط", icon: connectorIcon.line },
+];
+
+/**
+ * فلای‌اوتِ واریانت — کنارِ نوارِ عمودی وقتی «شکل»/«کانکتور» فعال است (مثلِ پالتِ
+ * استیکی). فقط انتخابِ **نوع** است؛ ساخت/سینک از خودِ موتور و مسیرِ 8.4 می‌آید.
+ */
+function VariantFlyout<T extends string>({
+  label,
+  variants,
+  current,
+  onPick,
+}: {
+  label: string;
+  variants: readonly { kind: T; label: string; icon: ReactNode }[];
+  current: T;
+  onPick: (kind: T) => void;
+}) {
+  return (
+    <div className="board-flyout" role="group" aria-label={label}>
+      {variants.map((variant) => (
+        <button
+          key={variant.kind}
+          type="button"
+          className={`board-flyout__btn${current === variant.kind ? " is-selected" : ""}`}
+          title={variant.label}
+          aria-label={variant.label}
+          aria-pressed={current === variant.kind}
+          onClick={() => onPick(variant.kind)}
+        >
+          {variant.icon}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function BoardPage() {
   const { boardId } = useParams({ from: "/b/$boardId" });
   const { user } = useSession();
@@ -94,6 +175,9 @@ export function BoardPage() {
   // ★ نوار ابزار (گام ۹٫۱): ابزارِ فعال + رنگِ استیکیِ بعدی.
   const [activeToolId, setActiveToolId] = useState<ToolId>("select");
   const [palette, setPalette] = useState<HbStickyColor>("yellow");
+  // ★ واریانتِ شکل/کانکتور (پوششِ بیضی/لوزی/خطِ نوارِ نیتیو) — فلای‌اوت انتخابشان می‌کند.
+  const [shapeKind, setShapeKind] = useState<HbShapeKind>("rectangle");
+  const [connectorKind, setConnectorKind] = useState<ConnectorKind>("arrow");
 
   const paneRef = useRef<HTMLDivElement | null>(null);
   // outbound را در ref نگه می‌داریم تا هندلرهای سطحِ render (مکان‌نما/ابزار) به آن برسند.
@@ -122,6 +206,10 @@ export function BoardPage() {
   viewportRef.current = viewport;
   const activeToolIdRef = useRef(activeToolId);
   activeToolIdRef.current = activeToolId;
+  const shapeKindRef = useRef(shapeKind);
+  shapeKindRef.current = shapeKind;
+  const connectorKindRef = useRef(connectorKind);
+  connectorKindRef.current = connectorKind;
 
   // مکان‌نمای محلی → همتاها. موتور `onPointerUpdate` را در مختصاتِ **صحنه** می‌دهد
   // (بی‌تبدیل، یافته‌ی ۳)؛ throttleِ ۴۰ms را خودِ آداپتور می‌زند (`HB_THROTTLE`).
@@ -180,10 +268,12 @@ export function BoardPage() {
         engine.setActiveTool({ type: "text" });
         break;
       case "shape":
-        engine.setActiveTool({ type: "rectangle" });
+        // واریانتِ فعلی (مستطیل/بیضی/لوزی) — فلای‌اوت عوضش می‌کند.
+        engine.setActiveTool({ type: shapeKindRef.current });
         break;
       case "connector":
-        engine.setActiveTool({ type: "arrow" });
+        // واریانتِ فعلی (پیکان/خط).
+        engine.setActiveTool({ type: connectorKindRef.current });
         break;
       case "frame":
         engine.setActiveTool({ type: "frame" });
@@ -210,6 +300,17 @@ export function BoardPage() {
     outboundRef.current?.emitActiveTool(id);
   }, []);
   selectToolRef.current = selectTool;
+
+  // انتخابِ واریانتِ شکل/کانکتور از فلای‌اوت — نوع را نگه می‌دارد (برای دفعه‌ی بعد) و
+  // همان لحظه ابزارِ موتور را عوض می‌کند. رسم/سینک از مسیرِ onChange→flushLocalِ 8.4 می‌رود.
+  const pickShape = useCallback((kind: HbShapeKind) => {
+    setShapeKind(kind);
+    canvasApiRef.current?.setActiveTool({ type: kind });
+  }, []);
+  const pickConnector = useCallback((kind: ConnectorKind) => {
+    setConnectorKind(kind);
+    canvasApiRef.current?.setActiveTool({ type: kind });
+  }, []);
 
   // انتخابِ فایلِ تصویر از نوار → درج، سپس برگشت به ابزارِ انتخاب.
   // ⚠️ **درجِ تصویر به «حملِ دارایی» نیاز دارد که فاز ۱۱٫۲ (ذخیره‌سازیِ واقعی) سیم
@@ -652,6 +753,22 @@ export function BoardPage() {
                   />
                 ))}
               </div>
+            )}
+            {activeToolId === "shape" && (
+              <VariantFlyout
+                label="نوعِ شکل"
+                variants={SHAPE_VARIANTS}
+                current={shapeKind}
+                onPick={pickShape}
+              />
+            )}
+            {activeToolId === "connector" && (
+              <VariantFlyout
+                label="نوعِ کانکتور"
+                variants={CONNECTOR_VARIANTS}
+                current={connectorKind}
+                onPick={pickConnector}
+              />
             )}
             <input
               ref={fileInputRef}

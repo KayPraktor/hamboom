@@ -897,6 +897,46 @@ body {
   outline-offset: 2px;
 }
 
+/* فلای‌اوتِ واریانتِ شکل/کانکتور — کنارِ نوارِ عمودی (مثلِ پالتِ استیکی)، ستونی و آیکونی. */
+.board-flyout {
+  position: absolute;
+  inset-inline-start: 68px;
+  inset-block-start: 50%;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--hb-surface);
+  border: 1px solid var(--hb-border);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 12%);
+  transform: translateY(-50%);
+}
+
+.board-flyout__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 34px;
+  block-size: 34px;
+  padding: 0;
+  color: var(--hb-fg);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.board-flyout__btn:hover {
+  background: color-mix(in srgb, var(--hb-fg) 8%, transparent);
+}
+
+.board-flyout__btn.is-selected {
+  color: var(--hb-accent-fg);
+  background: var(--hb-accent);
+}
+
 /* ZoomControl پیش‌فرض bottom-start است (در RTL راست) و با نوارِ عمودیِ center-startِ
    راست تصادم می‌کند؛ به گوشه‌ی مقابل (bottom-end = در RTL چپ) می‌بریمش. اپ مالکِ
    چیدمانِ overlayِ بوردِ خودش است؛ منطقی و Stylelint-clean. */

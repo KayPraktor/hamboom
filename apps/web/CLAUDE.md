@@ -103,6 +103,10 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
   رندر می‌شود (لمسِ M1ِ دوم، با CSS نه zenMode). چون فوترِ زوم/undoِ نیتیو هم رفت، `ZoomControl`ِ **خودِ canvas-core**
   (reuse) وصل شد (`applyZoom`/`fitToScreen` با `zoomAroundCenter`/`zoomStep`) و با CSSِ اپ به **bottom-end** برده شد تا
   با نوارِ عمودیِ center-start تصادم نکند؛ undo با `Ctrl+Z`.
+- **★ کاملیتِ نوار (بیضی/لوزی/خط):** چون chromeِ نیتیو رفت، ابزارهایی که فقط آنجا بودند نباید گم شوند. «شکل» و
+  «کانکتور» **فلای‌اوتِ واریانت** دارند (`VariantFlyout`، مثلِ پالتِ استیکی): شکل→مستطیل/بیضی/لوزی، کانکتور→پیکان/خط.
+  **سمتِ اپ، بی‌لمسِ M1** — `setActiveTool`ِ نیتیو + `shapeKindRef`/`connectorKindRef` (تا انتخاب/میانبرِ بعدی همان
+  واریانت را بزند). خط با pointsِ سالم سینک می‌شود (codec spread-based؛ `line→shape` در نگاشتِ M1). **لیزر جدا** (قدمِ ۲).
 - **viewer:** نوار ابزار/پالت/روکش فقط برای **ویرایشگر** رندر می‌شوند (`ZoomControl` برای همه — ناوبری است)؛
   `selectTool` هم edit-toolها را برای readOnly گیت می‌کند.
 
