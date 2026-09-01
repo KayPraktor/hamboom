@@ -83,11 +83,12 @@ describe("createClient", () => {
         return Promise.resolve(json(200, { boards: [] }));
       },
     });
-    await client.boards.list({ q: "سلام", folderId: "f1", favorite: true });
+    await client.boards.list({ q: "سلام", folderId: "f1", favorite: true, trashed: true });
     const u = new URL(seenUrl);
     expect(u.searchParams.get("q")).toBe("سلام");
     expect(u.searchParams.get("folderId")).toBe("f1");
     expect(u.searchParams.get("favorite")).toBe("true");
+    expect(u.searchParams.get("trashed")).toBe("true");
   });
 
   it("verifyOtp توکن را در حافظه ذخیره می‌کند", async () => {

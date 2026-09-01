@@ -245,9 +245,13 @@ export function createClient(options: ClientOptions) {
     },
 
     boards: {
-      list: (query?: { q?: string; folderId?: string; favorite?: boolean }): Promise<{
-        boards: BoardSummary[];
-      }> => request("GET", "/boards", { query }),
+      list: (query?: {
+        q?: string;
+        folderId?: string;
+        favorite?: boolean;
+        /** `true` → سطلِ بازیافت (بوردهای حذف‌شده‌ی مالک)، به‌جای بوردهای زنده. */
+        trashed?: boolean;
+      }): Promise<{ boards: BoardSummary[] }> => request("GET", "/boards", { query }),
       create: (body: CreateBoardBody): Promise<Board> => request("POST", "/boards", { body }),
       get: (id: string): Promise<Board> => request("GET", `/boards/${id}`),
       update: (id: string, body: PatchBoardBody): Promise<Board> =>

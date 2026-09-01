@@ -44,7 +44,7 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 | `src/styles/app.css` | تمِ روشن/تیره + پوسته + فرم‌ها، فقط logical properties | ۸٫۱ ✅ |
 | `src/api/client.ts` | singletonِ `sdk` (access در حافظه، `baseUrl=""`) | ۸٫۲ ✅ |
 | `src/auth/` | `LoginPage` (موبایل/OTP) · `SessionProvider`+`session-context` · `RequireAuth` · `validate` | ۸٫۲ ✅ |
-| `src/dashboard/` | فهرست/ساخت/نشان/جستجوی بورد | ۸٫۳ ✅ |
+| `src/dashboard/` | فهرست/ساخت/نشان/جستجو + **ریلِ فولدرِ per-team** (`FolderNav`) + **سطلِ بازیافت** + منوی کارت (`BoardCardMenu`) | ۸٫۳ ✅ |
 | `src/team/` | اعضا/دعوت/نقش + پذیرشِ دعوت | ۸٫۳ ✅ |
 | `src/board/` | پوسته‌ی بورد: `HamboomCanvas` + `YjsSyncAdapter` روی سرورِ واقعی + گرفتنِ ویرایشِ محلی | ۸٫۴ ✅ |
 
@@ -68,6 +68,20 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 الگوی امنِ StrictMode (apiِ onReady در **state** + اشتراک در `useEffect([api])`) در مرورگر با
 **بومِ واقعی زیر StrictMode** اثبات شد: رسم همگام شد، پنلِ استایلِ excalidraw روی انتخاب باز شد،
 و `Ctrl+Z` کار کرد — هیچ‌کدام «مرده» نماند. ریسکِ ثبت‌شده‌ی ADR-028 بسته است.
+
+## فولدر + سطلِ بازیافت (فاز ۸٫۳)
+
+- **سطلِ بازیافت یک افزوده‌ی کوچکِ api خواست:** `GET /boards` مسیرِ `deleted_at IS NULL` را سفت‌کد کرده بود —
+  هیچ راهی برای *لیست‌کردنِ* بوردهای حذف‌شده نبود (`remove`/`restore` بود، «دیدنِ سطل» نه). `?trashed=true`
+  اضافه شد: پیش‌بندِ حذف برعکس + گیتِ **owner** (مثلِ `assertDeletedBoardOwner`)، نقشِ سطل همیشه `owner`.
+  `trashed?` هم به فیلترِ `sdk`. ⚠️ **`shared-types` دست‌نخورد** — `BoardSummary` همان است (سطل فیلد جدید نخواست).
+- **فولدر team-first (بدونِ فیلترِ teamId):** فولدرها per-team اند و `BoardSummary` تیم را **ندارد**. `FolderNav`
+  برای هر تیمِ نشست فولدرها را می‌گیرد؛ منوی جابه‌جایی (`BoardCardMenu`) `boards.get` می‌زند تا `teamId` (+ فولدرِ
+  فعلی) را بگیرد و فقط فولدرهای **همان تیم** را پیشنهاد دهد (جابه‌جاییِ بین‌تیمی را api رد می‌کند).
+- **حذفِ فولدر نرم است:** بوردهای داخلش پاک نمی‌شوند و در «همه‌ی بوردها» می‌مانند (به مالکشان نمی‌خورد).
+- **منطقِ انتخاب→فیلتر خالص و تست‌دار است** ([`selection.ts`](src/dashboard/selection.ts)) — نگاشتِ
+  همه/نشان/سطل/فولدر به `BoardsFilter` بیرونِ React، پس قابلِ تستِ واحد (trash با شکستِ عمدی قرمز شد).
+- ⚠️ **فرمِ تک‌inputی نباید فقط به Enter تکیه کند** — دکمه‌ی submit (✓) هم دارد (دسترسی‌پذیری + لمس + اتوماسیون).
 
 ## ★ اجرای محلیِ کاملِ زنجیره
 

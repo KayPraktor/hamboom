@@ -233,12 +233,14 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
     برعکسِ M2 شد** (`APP_ENV=production` بالا می‌آید). **هر ۷ سنجه + bench سبز با auth+storageِ واقعی** (bench بایت‌به‌بایت
     مثلِ M2: ۳٫۶۶MB/۷۶٫۱۱MB)، و `DevBoardAuthority`+`FsSnapshotStore` **حذف شدند** (تست‌های سرور با بدلِ تستیِ
     `BoardAuthority` بازسیم‌کشی شدند). `pnpm verify` سبز.
-  - **★ فاز ۸ (`apps/web`) آغاز شد — ۸٫۱–۸٫۴ در مرورگر با سرورِ واقعی اثبات شد (۱۴۰۵/۰۶/۱۰):**
+  - **★ فاز ۸ (`apps/web`) آغاز شد — ۸٫۱–۸٫۴ + فولدر/سطلِ ۸٫۳ در مرورگر با سرورِ واقعی اثبات شد (۱۴۰۵/۰۶/۱۰):**
     اسکلت (React 19 + Vite + TanStack + RTL + Vazirmatnِ خودمیزبان) · احرازِ موبایل/OTP (access در حافظه،
     نشست از کوکی) · داشبورد + تیم (لیست/ساخت/نشان بورد؛ **تغییرِ نقشِ عضو**) · **پوسته‌ی بورد: `HamboomCanvas`+
     `YjsSyncAdapter` روی realtimeِ واقعی — دو تب همگام، `Ctrl+Z` یک‌ژست، حضور**. ★★ **ADR-028 (بوم+StrictMode)
-    تجربی حل شد**. جزئیات و درس‌ها در [`PROGRESS-M3`](PROGRESS-M3-backend-api.md). **قدمِ بعد:** فولدر/سطلِ ۸٫۳ ·
-    E2Eِ وبِ viewer در ۸٫۴ · ⚠️ **۸٫۵ (سه یافته‌ی M2) تاییدِ مالک می‌خواهد**.
+    تجربی حل شد**. · **فولدر + سطلِ بازیافت (۸٫۳):** ریلِ پیمایشِ per-team + جابه‌جاییِ بورد + سطل
+    (`GET /boards?trashed=true` به api، گیتِ owner؛ **shared-types دست‌نخورد**). جزئیات و درس‌ها در
+    [`PROGRESS-M3`](PROGRESS-M3-backend-api.md). **قدمِ بعد:** E2Eِ وبِ viewer + emitِ زنده‌ی میان‌درگ در ۸٫۴ ·
+    ⚠️ **۸٫۵ (سه یافته‌ی M2) تاییدِ مالک می‌خواهد**.
 - **★★★ M2 (`realtime-sync`) تمام و تحویل شد** (۱۴۰۵/۰۵/۲۳) — هر ۳۰ گامِ
   [TODO.md](TODO.md) تیک خورده. نقطه‌ی ورودِ M3: [`docs/m3-handoff.md`](docs/m3-handoff.md)
   (چهار پورت، دو موردِ به‌ارث‌رسیده، چهار یافته‌ی M2، سقف‌های اندازه‌گیری‌شده).

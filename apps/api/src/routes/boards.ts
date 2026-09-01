@@ -37,7 +37,15 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
   //   (جستجوی pg_trgm و صفحه‌بندیِ cursor: گامِ بعد.)
   app.get("/boards", { preHandler: deps.requireAuth }, async (req) => {
     const sub = requireSub(req);
-    const query = req.query as { q?: string; folderId?: string; favorite?: string };
+    const query = req.query as {
+      q?: string;
+      folderId?: string;
+      favorite?: string;
+      trashed?: string;
+    };
+    // ★ سطلِ بازیافت: تنها راهِ *لیست‌کردنِ* بوردهای حذف‌شده. فقط بوردهایی که کاربر
+    //   می‌تواند بازیابی کند (مالک) — همان تعریفِ مالکیتِ `assertDeletedBoardOwner`.
+    const trashed = query.trashed === "true";
 
     const params: unknown[] = [sub];
     const filters: string[] = [];
@@ -55,6 +63,13 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
       query.favorite === "true"
         ? "JOIN board_favorites fav ON fav.board_id = b.id AND fav.user_id = $1"
         : "LEFT JOIN board_favorites fav ON fav.board_id = b.id AND fav.user_id = $1";
+
+    // بوردِ زنده: `deleted_at IS NULL` + گیتِ effectiveBoardRole (مالک/عضوِ مستقیم/عضوِ تیمِ team-access).
+    // سطل: `deleted_at IS NOT NULL` + گیتِ owner (created_by یا board_members.role='owner').
+    const deletionPredicate = trashed ? "b.deleted_at IS NOT NULL" : "b.deleted_at IS NULL";
+    const accessPredicate = trashed
+      ? "(b.created_by = $1 OR bm.role = 'owner')"
+      : "(b.created_by = $1 OR bm.user_id IS NOT NULL OR (b.access_mode = 'team' AND tm.user_id IS NOT NULL))";
 
     // ★ ورودی‌های effectiveBoardRole per-row می‌آیند تا myRoleِ هر بورد در JS (بی‌کوئریِ اضافه) حساب شود
     //   — همان تابعِ مشترکِ auth-core (یک منبعِ حقیقتِ دسترسی، ADR-012).
@@ -80,10 +95,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
          LEFT JOIN board_members bm     ON bm.board_id = b.id      AND bm.user_id = $1
          LEFT JOIN board_link_grants lg ON lg.board_id = b.id      AND lg.user_id = $1
          ${favoriteJoin}
-        WHERE b.deleted_at IS NULL
-          AND (b.created_by = $1
-               OR bm.user_id IS NOT NULL
-               OR (b.access_mode = 'team' AND tm.user_id IS NOT NULL))
+        WHERE ${deletionPredicate}
+          AND ${accessPredicate}
           ${filters.length > 0 ? `AND ${filters.join(" AND ")}` : ""}
         ORDER BY b.last_activity_at DESC
         LIMIT 50`,
@@ -91,14 +104,17 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     );
     const boards = rows
       .map((r) => {
-        const role = effectiveBoardRole({
-          isStaff: r.is_staff ?? false,
-          isBoardOwner: r.is_board_owner,
-          accessMode: r.access_mode,
-          directRole: r.direct_role,
-          teamRole: r.team_role,
-          hasValidLink: r.has_valid_link,
-        });
+        // در سطل همه مالک‌اند (گیتِ owner بالا)؛ نقشِ 'owner' بدونِ کوئریِ اضافه.
+        const role: BoardRole | null = trashed
+          ? "owner"
+          : effectiveBoardRole({
+              isStaff: r.is_staff ?? false,
+              isBoardOwner: r.is_board_owner,
+              accessMode: r.access_mode,
+              directRole: r.direct_role,
+              teamRole: r.team_role,
+              hasValidLink: r.has_valid_link,
+            });
         return role === null ? null : toBoardSummary(r, role);
       })
       .filter((b): b is BoardSummary => b !== null);
