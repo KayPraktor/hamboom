@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 import { HB_TOOLS, toolForShortcut } from "./toolbar-tools";
 
 describe("HB_TOOLS", () => {
-  it("★ ۱۱ ابزار با شناسه‌های یکتا", () => {
-    expect(HB_TOOLS).toHaveLength(11);
-    expect(new Set(HB_TOOLS.map((t) => t.id)).size).toBe(11);
+  it("★ ۱۲ ابزار با شناسه‌های یکتا", () => {
+    expect(HB_TOOLS).toHaveLength(12);
+    expect(new Set(HB_TOOLS.map((t) => t.id)).size).toBe(12);
   });
 
   it("★ میانبرها یکتا و تک‌حرفی‌اند", () => {

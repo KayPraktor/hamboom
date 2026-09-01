@@ -78,6 +78,28 @@ function peerToolLabel(activeTool: string | null): string | null {
 /** واریانتِ کانکتور — پیکان (arrow) یا خطِ ساده (line). هر دو نوعِ نیتیوِ موتورند. */
 type ConnectorKind = "arrow" | "line";
 
+// ثابت‌های لیزر — بافرِ کوتاهِ دنباله، throttleِ emit، و مهلتِ پاک‌شدن پس از توقف.
+const LASER_TRAIL_MAX = 16;
+const LASER_EMIT_MS = 40;
+const LASER_IDLE_MS = 320;
+
+/** یک دنباله‌ی نقطه‌ای را روی لایه‌ی روکش می‌کشد (قلمِ محلی یا لیزرِ همتا). */
+function drawTrail(
+  ctx: CanvasRenderingContext2D,
+  pts: readonly { x: number; y: number }[],
+  color: string,
+  width: number,
+): void {
+  if (pts.length < 2) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.stroke();
+}
+
 // آیکونِ کوچکِ واریانت‌ها — SVGِ خطی، `currentColor` (با تمِ روشن/تیره هماهنگ).
 const shapeIcon: Readonly<Record<HbShapeKind, ReactNode>> = {
   rectangle: (
@@ -195,6 +217,19 @@ export function BoardPage() {
   const selectToolRef = useRef<((id: ToolId) => void) | null>(null);
   const flushLocalRef = useRef<(() => void) | null>(null);
   const showNoticeRef = useRef<((message: string) => void) | null>(null);
+  // لایه‌ی روکش: قلمِ محلی + دنباله‌ی لیزرِ همتاها. یک redraw برای هر دو (وگرنه با clearRect
+  // همدیگر را پاک می‌کنند). refها تا redrawِ سطحِ effect/رویداد آخرین مقدار را ببیند.
+  const penPointsRef = useRef<StrokePoint[] | null>(null);
+  const peersRef = useRef<PeerState[]>([]);
+  const redrawOverlayRef = useRef<(() => void) | null>(null);
+  // لیزر: بافرِ دنباله + throttleِ emit + مهلتِ پاک‌شدن پس از توقف.
+  const laserTrailRef = useRef<[number, number][]>([]);
+  const lastLaserEmitRef = useRef(0);
+  const laserIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // رنگِ لیزرِ **خودم** روی روکش (تا مستقل از رندرِ نیتیوِ موتور خودم هم ببینمش) —
+  // همان رنگی که همتاها با آن می‌بینندم (colorForId)، برای هماهنگی.
+  const myColorRef = useRef("#e5484d");
+  myColorRef.current = user ? colorForId(user.id) : "#e5484d";
 
   const readOnly = permissions?.canEdit === false;
   // آخرین مقادیر در ref تا هندلرهای پایدار (بدونِ re-subscribe) بخوانند.
@@ -215,6 +250,25 @@ export function BoardPage() {
   // (بی‌تبدیل، یافته‌ی ۳)؛ throttleِ ۴۰ms را خودِ آداپتور می‌زند (`HB_THROTTLE`).
   const handlePointerUpdate = useCallback((pointer: { x: number; y: number }) => {
     outboundRef.current?.emitPointer({ x: pointer.x, y: pointer.y, visible: true });
+    // ★ لیزر: دنباله‌ی محلی را برای همتاها emit کن (ephemeral، بی‌ذخیره). لیزرِ **محلی**
+    //   را خودِ موتور می‌کشد (`setActiveTool "laser"`)؛ اینجا فقط برای همتاهاست.
+    if (activeToolIdRef.current !== "laser") return;
+    const trail = laserTrailRef.current;
+    trail.push([pointer.x, pointer.y]);
+    if (trail.length > LASER_TRAIL_MAX) trail.shift();
+    redrawOverlayRef.current?.(); // لیزرِ محلیِ خودم را همین‌جا بازکش
+    const now = performance.now();
+    if (now - lastLaserEmitRef.current >= LASER_EMIT_MS) {
+      lastLaserEmitRef.current = now;
+      outboundRef.current?.emitEphemeral({ kind: "laser", points: trail.slice() });
+    }
+    // پس از توقفِ حرکت، دنباله را (محلی و روی همتاها) پاک کن.
+    if (laserIdleRef.current) clearTimeout(laserIdleRef.current);
+    laserIdleRef.current = setTimeout(() => {
+      laserTrailRef.current = [];
+      outboundRef.current?.emitEphemeral(null);
+      redrawOverlayRef.current?.();
+    }, LASER_IDLE_MS);
   }, []);
 
   // نقطه‌ی صحنه → پیکسلِ لایه‌ی روکش، با تابعِ **مشترکِ** `sceneToOverlayPixel` (ADR-024،
@@ -235,6 +289,69 @@ export function BoardPage() {
     [canvasApi, viewport],
   );
 
+  // ★ رندرِ لایه‌ی روکش — قلمِ محلی + دنباله‌ی لیزرِ همتاها **با هم** (یک `clearRect`،
+  //   وگرنه یکی دیگری را پاک می‌کند). پروجکشنِ مشترکِ `sceneToOverlayPixel` (ADR-024).
+  //   نمای معتبر از `viewportRef` (نه getAppState — درسِ Q1).
+  const redrawOverlay = useCallback(() => {
+    const overlay = overlayRef.current;
+    const host = paneRef.current;
+    const ctx = overlay?.getContext("2d");
+    if (!overlay || !host || !canvasApi || !ctx) return;
+    if (overlay.width !== overlay.clientWidth || overlay.height !== overlay.clientHeight) {
+      overlay.width = overlay.clientWidth;
+      overlay.height = overlay.clientHeight;
+    }
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    const state = canvasApi.getAppState();
+    const rect = host.getBoundingClientRect();
+    const toPixel = (sceneX: number, sceneY: number) =>
+      sceneToOverlayPixel(
+        { x: sceneX, y: sceneY },
+        viewportRef.current,
+        { offsetLeft: state.offsetLeft, offsetTop: state.offsetTop },
+        { left: rect.left, top: rect.top },
+      );
+    // دنباله‌ی لیزرِ همتاها — رنگِ خودِ همتا.
+    for (const peer of peersRef.current) {
+      const eph = peer.ephemeral;
+      if (!eph || eph.kind !== "laser" || eph.points.length < 2) continue;
+      drawTrail(
+        ctx,
+        eph.points.map(([x, y]) => toPixel(x, y)),
+        peer.user.color,
+        3,
+      );
+    }
+    // لیزرِ **خودم** — تا مستقل از رندرِ نیتیوِ موتور (که با هر ابزار/رویداد رفتارش
+    // فرق دارد) همیشه بازخوردِ محلی ببینم. همتاها همین را در رنگِ من می‌بینند.
+    const myLaser = laserTrailRef.current;
+    if (activeToolIdRef.current === "laser" && myLaser.length >= 2) {
+      drawTrail(
+        ctx,
+        myLaser.map(([x, y]) => toPixel(x, y)),
+        myColorRef.current,
+        3,
+      );
+    }
+    // استروکِ قلمِ محلیِ در حالِ کشیدن.
+    const pen = penPointsRef.current;
+    if (pen && pen.length >= 2) {
+      drawTrail(
+        ctx,
+        pen.map((p) => toPixel(p[0], p[1])),
+        "#1a1a1a",
+        3,
+      );
+    }
+  }, [canvasApi]);
+  redrawOverlayRef.current = redrawOverlay;
+
+  // روکش را با تغییرِ همتاها (لیزر) یا نما (pan/zoom → دوباره پروجکت) بازرسم کن.
+  useEffect(() => {
+    peersRef.current = peers;
+    redrawOverlayRef.current?.();
+  }, [peers, viewport]);
+
   /**
    * انتخابِ ابزار (از نوار یا میانبر) — لایه‌ی سیم‌کشی. ابزارهای موتور با
    * `setActiveTool` (شکل/کانکتور/فریم/متن/پاک‌کن)، استیکی/قلمِ سفارشی با `activate`،
@@ -250,6 +367,14 @@ export function BoardPage() {
     if (meta?.comingSoon) {
       showNoticeRef.current?.("این ابزار در فاز بعد می‌آید.");
       return;
+    }
+
+    // خروج از لیزر → دنباله را روی همتاها پاک کن (وگرنه آخرین دنباله‌ات آنجا می‌ماند).
+    if (activeToolIdRef.current === "laser" && id !== "laser") {
+      if (laserIdleRef.current) clearTimeout(laserIdleRef.current);
+      laserTrailRef.current = [];
+      outboundRef.current?.emitEphemeral(null);
+      redrawOverlayRef.current?.();
     }
 
     // ابزارهای سفارشی را خاموش کن مگر خودشان انتخاب شده باشند.
@@ -280,6 +405,10 @@ export function BoardPage() {
         break;
       case "eraser":
         engine.setActiveTool({ type: "eraser" });
+        break;
+      case "laser":
+        // لیزرِ نیتیوِ موتور، محلی را می‌کشد؛ دنباله برای همتاها در handlePointerUpdate.
+        engine.setActiveTool({ type: "laser" });
         break;
       case "sticky":
         engine.setActiveTool({ type: "selection" });
@@ -524,39 +653,9 @@ export function BoardPage() {
       });
     });
 
-    // رندرِ استروکِ قلمِ در حالِ کشیدن روی لایه‌ی روکش (ADR-022: هیچ‌چیزِ در حالِ
-    // شکل‌گیری وارد سند نمی‌شود). پروجکشنِ **مشترکِ** `sceneToOverlayPixel` — صفر
-    // تکرارِ فرمولِ صحنه→پیکسل (ADR-024). `viewportRef` تا نمای معتبر (نه کهنه) بخوانَد.
-    const renderStroke = (points: StrokePoint[] | null): void => {
-      const overlay = overlayRef.current;
-      const host = paneRef.current;
-      const ctx = overlay?.getContext("2d");
-      if (!overlay || !host || !ctx) return;
-      if (overlay.width !== overlay.clientWidth || overlay.height !== overlay.clientHeight) {
-        overlay.width = overlay.clientWidth;
-        overlay.height = overlay.clientHeight;
-      }
-      ctx.clearRect(0, 0, overlay.width, overlay.height);
-      if (!points || points.length < 2) return;
-      const state = canvasApi.getAppState();
-      const rect = host.getBoundingClientRect();
-      ctx.beginPath();
-      points.forEach((point, index) => {
-        const px = sceneToOverlayPixel(
-          { x: point[0], y: point[1] },
-          viewportRef.current,
-          { offsetLeft: state.offsetLeft, offsetTop: state.offsetTop },
-          { left: rect.left, top: rect.top },
-        );
-        if (index === 0) ctx.moveTo(px.x, px.y);
-        else ctx.lineTo(px.x, px.y);
-      });
-      ctx.strokeStyle = "#1a1a1a";
-      ctx.lineWidth = 3;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.stroke();
-    };
+    // استروکِ قلم و دنباله‌ی لیزرِ همتاها روی **یک** لایه‌ی روکش می‌روند، پس رندرشان
+    // یک‌جا در `redrawOverlay`ِ سطحِ کامپوننت است (بالا) — draw-tool فقط بافرِ نقاط را
+    // می‌گذارد و redraw می‌کند (وگرنه دو clearRect همدیگر را پاک می‌کنند).
 
     // binding را می‌پیچیم تا هر اعمالِ remote، `known` را هم‌روز نگه دارد (ضدِ اکو).
     const binding = createCanvasBinding({
@@ -635,7 +734,10 @@ export function BoardPage() {
           api: canvasApi,
           outbound: drawOutbound,
           authorId: user.id,
-          onLocalStroke: renderStroke,
+          onLocalStroke: (points) => {
+            penPointsRef.current = points;
+            redrawOverlayRef.current?.();
+          },
           onCommitted: () => flushLocal(),
         });
 
@@ -649,6 +751,7 @@ export function BoardPage() {
     return () => {
       cancelled = true; // microtaskِ در صف اگر بعد از این اجرا شود، flushLocal را رد می‌کند
       if (noticeTimer) clearTimeout(noticeTimer);
+      if (laserIdleRef.current) clearTimeout(laserIdleRef.current);
       offChange();
       unbindUndo?.();
       // ابزارها listenerِ document دارند؛ باید نابود شوند (StrictMode: دو نمونه نماند).

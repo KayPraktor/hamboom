@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import { Toolbar } from "./Toolbar";
 
 describe("Toolbar", () => {
-  it("★ ۱۱ دکمه رندر می‌کند", () => {
+  it("★ ۱۲ دکمه رندر می‌کند", () => {
     render(<Toolbar activeTool="select" onSelectTool={() => {}} />);
-    expect(screen.getAllByRole("button")).toHaveLength(11);
+    expect(screen.getAllByRole("button")).toHaveLength(12);
   });
 
   it("★ ابزارِ فعال aria-pressed دارد، بقیه نه", () => {

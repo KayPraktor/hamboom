@@ -80,6 +80,12 @@ const ICONS: Record<ToolId, ReactElement> = {
       <path d="M8 16h8M4.5 12.5l5-5 5 5-3 3H7z" />
     </svg>
   ),
+  laser: (
+    <svg {...S}>
+      <circle cx="10" cy="10" r="2.2" />
+      <path d="M10 2.5v2.4M10 15.1v2.4M2.5 10h2.4M15.1 10h2.4M5 5l1.7 1.7M15 5l-1.7 1.7M5 15l1.7-1.7M15 15l-1.7-1.7" />
+    </svg>
+  ),
 };
 
 export function toolIcon(id: ToolId): ReactElement {

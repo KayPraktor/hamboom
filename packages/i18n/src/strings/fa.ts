@@ -20,6 +20,7 @@ export const fa = {
   "tool.frame": "فریم",
   "tool.comment": "کامنت",
   "tool.eraser": "پاک‌کن",
+  "tool.laser": "لیزر",
 
   // کنش‌ها
   "action.undo": "برگردان",

@@ -23,6 +23,7 @@
 |---|---|---|---|
 | **M1** [`Toolbar.tsx`](packages/canvas-core/src/ui/Toolbar.tsx) + `toolbar.css` + `overlay-layout.css` | propِ **افزایشیِ** `orientation?: "horizontal"\|"vertical"` (پیش‌فرض افقی، سازگار با گذشته) + اسلاتِ `--center-start` + flexِ ستونی | Toolbarِ canonical جای درستِ یک toolbar است (`src/ui`)؛ یک نوار/آیکون/مدلِ مشترک (DRY). جای‌گذاری با logical properties (`inset-inline-start` + `translateY`ِ محورِ بلوک) — RTL خودش، بی‌آینه، Stylelint-clean | ۲ تستِ نو در `Toolbar.test.tsx` (پیش‌فرض افقی می‌مانَد؛ vertical کلاس/aria درست)؛ در مرورگر روی لبه‌ی راست |
 | **M1** (پولیش) [`HamboomCanvas.tsx`](packages/canvas-core/src/engine/HamboomCanvas.tsx) + [`canvas-chrome.css`](packages/canvas-core/src/engine/canvas-chrome.css) | propِ **افزایشیِ** `hideNativeUI` (پیش‌فرض `false`) → wrapperِ `display:contents` + `display:none` روی chromeِ نیتیو | برای «شبیه‌میرو» باید chromeِ **تکراریِ** excalidraw برود؛ opt-in تا دمو/تست‌های M1 دست‌نخورند. **CSS نه zenMode** (زن‌مود فوترِ نیتیو + «خروج از زن‌مود» را نگه می‌دارد). سلکتورْ ظرفِ ساختاریِ ۰٫۱۸٫۱ (پین، ADR-003=npm؛ با ارتقا بازبینی) | مرورگر: نوار/منو/فوترِ نیتیو `display:none`؛ نوارِ عمودی، رسمِ مستطیل، و زوم سالم |
+| **M1** (لیزر) [`toolbar-tools.ts`](packages/canvas-core/src/ui/toolbar-tools.ts) + [`toolbar-icons.tsx`](packages/canvas-core/src/ui/toolbar-icons.tsx) + i18n [`fa.ts`](packages/i18n/src/strings/fa.ts) | `laser` به `ToolId`/`HB_TOOLS` (میانبرِ `l`) + آیکون + کلیدِ `tool.laser` | لیزر فقط در «ابزارهای بیشترِ» نیتیو بود؛ برای پوششِ کامل باید ابزارِ نو باشد | نوار **۱۲ ابزار**؛ تست‌های شمارش ۱۱→۱۲ سبز؛ در مرورگر فعال، پیلِ همتا «لیزر» |
 
 **نکاتِ کلیدی:**
 - **★ حضورِ ابزارِ فعال از قبل کامل بود — صفر لمسِ M2/shared-types.** قراردادِ `CanvasOutbound.emitActiveTool` و
@@ -57,6 +58,18 @@
   **spread-based** است (type/points حفظ می‌شود)، پس **خط با pointsِ سالم در تبِ دوم خط ماند، نه جعبه**. embed
   (خلافِ P2)، library (منبعِ خارجی)، و keep-active (modifier) عمداً کنار. **لیزر = قدمِ ۲** (بزرگ‌تر: رندرِ زنده‌ی لیزرِ
   همتا هنوز ساخته نشده — همان گپِ استروکِ همتا).
+- **★ کاملیتِ نوار — قدمِ ۲: لیزر** (لمسِ M1ِ سوم، جدولِ بالا): سمتِ M3، ابزارِ موتور `setActiveTool("laser")` (رفتارِ
+  **اینرت** — نه select/draw)، و دنباله از `onPointerUpdate`ِ **صحنه‌ای** (بی‌تبدیل) به‌صورت `emitEphemeral({kind:"laser"})`
+  برای همتاها. **رندرِ لیزر (محلی و همتا) روی همان روکشِ قلم** با `redrawOverlay`ِ **یکپارچه** (peer.ephemeral + قلم + لیزرِ
+  خودم؛ یک `clearRect`)، رنگِ کاربر. throttleِ ۴۰ms + پاک‌شدنِ ۳۲۰ms پس از توقف.
+  ⚠️⚠️ **کشفِ مهم حین دیباگ: کانالِ ephemeral (استروکِ زنده‌ی قلم + لیزر) هیچ‌وقت peer-to-peer با سرورِ واقعی اثبات
+  نشده بود.** حالا شد — با console-probe (seed emit=۱٫٫۱۴ نقطه) + pixel-detector (روکشِ tab-2: `everSeen=true`, alpha=۲۵۵) در
+  دو تبِ واقعی. سرور از M2 relay می‌کرد؛ فقط هیچ‌وقت end-to-end دیده نشده بود.
+  ⚠️ **رندرِ لیزرِ نیتیوِ موتور با رویدادِ مصنوعی نمی‌آید** (تله‌ی M1)، پس عمداً به آن **تکیه نکردم** و لیزرِ محلی را
+  خودم روی روکش می‌کشم — مستقل، قابلِ‌اثبات، متقارن با آنچه همتا می‌بیند. `setActiveTool("laser")` فقط برای رفتارِ اینرت
+  است (اگر نیتیو هم برای کاربرِ واقعی رندر کرد، هم‌رنگ/هم‌جا و بی‌ضرر روی مالِ من می‌افتد).
+  ⚠️ **استروکِ زنده‌ی قلمِ همتا هنوز رندر نمی‌شود** (فقط استروکِ نهایی سینک است)؛ زیرساختش حالا هست (`redrawOverlay`
+  peer.ephemeral را می‌خواند)، افزودنِ `kind:"draw-stroke"` خارج از دامنه‌ی لیزر ماند.
 
 **اثباتِ نهایی:** `pnpm verify` سبز (هر ۸ گیت). دو تب همگام (استیکیِ فارسی/کانکتور/فریم/قلم)، ابزارِ فعالِ همتا
 دوطرفه، پالتِ ۱۲رنگه، میانبر، و ذخیره‌ی پایدار همه در مرورگر با سرورِ واقعی.

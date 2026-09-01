@@ -17,7 +17,8 @@ export type ToolId =
   | "image"
   | "frame"
   | "comment"
-  | "eraser";
+  | "eraser"
+  | "laser";
 
 export interface ToolMeta {
   id: ToolId;
@@ -41,6 +42,7 @@ export const HB_TOOLS: readonly ToolMeta[] = [
   { id: "frame", labelKey: "tool.frame", shortcut: "f" },
   { id: "comment", labelKey: "tool.comment", shortcut: "k", comingSoon: true },
   { id: "eraser", labelKey: "tool.eraser", shortcut: "e" },
+  { id: "laser", labelKey: "tool.laser", shortcut: "l" },
 ];
 
 /** نگاشتِ میانبر (حرفِ کوچک) → شناسه‌ی ابزار. */
