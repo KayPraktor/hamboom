@@ -1,5 +1,18 @@
-import { fromExcalidraw, HamboomCanvas, type HamboomCanvasProps } from "@hamboom/canvas-core";
-import type { CanvasPermissions, ConnectionState, SaveState } from "@hamboom/canvas-core/sync";
+import {
+  fromExcalidraw,
+  HamboomCanvas,
+  type HamboomCanvasProps,
+  PeerCursors,
+  sceneToOverlayPixel,
+} from "@hamboom/canvas-core";
+import type {
+  CanvasOutbound,
+  CanvasPermissions,
+  ConnectionState,
+  PeerState,
+  SaveState,
+  Viewport,
+} from "@hamboom/canvas-core/sync";
 import {
   bindUndoShortcuts,
   createCanvasBinding,
@@ -8,10 +21,10 @@ import {
   YjsSyncAdapter,
 } from "@hamboom/canvas-sync";
 import type { HbElement } from "@hamboom/shared-types";
-import { createBoardDoc } from "@hamboom/ydoc-schema";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import * as Y from "yjs";
 
 import { api } from "../api/client.ts";
 import { errorMessage } from "../api/error-message.ts";
@@ -46,9 +59,49 @@ export function BoardPage() {
   const [permissions, setPermissions] = useState<CanvasPermissions | null>(null);
   // پیامِ کوتاهِ خطای پروتکل (مثلِ ردِ نوشتنِ viewer) — فارسیِ آماده از سرور/adapter.
   const [notice, setNotice] = useState<string | null>(null);
+  // ★ حضورِ همتاها (یافته‌ی ۳): مکان‌نمای زنده. `applyPeers` این را می‌دهد.
+  const [peers, setPeers] = useState<PeerState[]>([]);
+  // ★★ نما از `onScrollChange`، نه `getAppState()` (یک فریمْ کهنه بعد از pan — درسِ Q1/M1).
+  const [viewport, setViewport] = useState<Viewport>({ scrollX: 0, scrollY: 0, zoom: 1 });
   const paneRef = useRef<HTMLDivElement | null>(null);
+  // outbound را در ref نگه می‌داریم تا هندلرِ مکان‌نما (سطحِ render) به آن برسد.
+  const outboundRef = useRef<CanvasOutbound | null>(null);
 
   const readOnly = permissions?.canEdit === false;
+
+  // مکان‌نمای محلی → همتاها. موتور `onPointerUpdate` را در مختصاتِ **صحنه** می‌دهد
+  // (بی‌تبدیل، یافته‌ی ۳)؛ throttleِ ۴۰ms را خودِ آداپتور می‌زند (`HB_THROTTLE`).
+  const handlePointerUpdate = useCallback((pointer: { x: number; y: number }) => {
+    outboundRef.current?.emitPointer({ x: pointer.x, y: pointer.y, visible: true });
+  }, []);
+
+  // نقطه‌ی صحنه → پیکسلِ لایه‌ی روکش، با تابعِ **مشترکِ** `sceneToOverlayPixel` (ADR-024،
+  // صفر تکرارِ فرمول). وابسته به `viewport` تا با هر pan/zoom دوباره پروجکت شود.
+  const projectPeer = useCallback(
+    (sceneX: number, sceneY: number): { x: number; y: number } => {
+      const host = paneRef.current;
+      if (!canvasApi || !host) return { x: sceneX, y: sceneY };
+      const state = canvasApi.getAppState();
+      const rect = host.getBoundingClientRect();
+      return sceneToOverlayPixel(
+        { x: sceneX, y: sceneY },
+        viewport,
+        { offsetLeft: state.offsetLeft, offsetTop: state.offsetTop },
+        { left: rect.left, top: rect.top },
+      );
+    },
+    [canvasApi, viewport],
+  );
+
+  // نما را از `onScrollChange` نگه می‌داریم (مقدارِ اولیه از getAppState، بعد زنده).
+  useEffect(() => {
+    if (!canvasApi) return;
+    const initial = canvasApi.getAppState();
+    setViewport({ scrollX: initial.scrollX, scrollY: initial.scrollY, zoom: initial.zoom.value });
+    return canvasApi.onScrollChange((scrollX, scrollY, zoom) =>
+      setViewport({ scrollX, scrollY, zoom: zoom.value }),
+    );
+  }, [canvasApi]);
 
   useEffect(() => {
     // ★ الگوی StrictMode-safe (ADR-032/ADR-028): api از onReady در **state** است و
@@ -65,9 +118,10 @@ export function BoardPage() {
       noticeTimer = setTimeout(() => setNotice(null), 4000);
     };
 
-    // ⚠️ `createBoardDoc` (نه `new Y.Doc`) — نسخه‌ی schema را مهر می‌زند مثلِ هر
-    //    کلاینتِ محصولی؛ سرور این کار را نمی‌کند (F-1، گام ۴٫۶).
-    const doc = createBoardDoc();
+    // ★★ `Y.Doc`ِ ساده، نه `createBoardDoc` (یافته‌ی ۲ M2): مهرِ `schemaVersion` روی هر
+    //    باز شدنِ تب یک opِ اضافی می‌ساخت. حالا adapter آن را **تنبل** روی اولین نوشتنِ
+    //    واقعی می‌زند (فقط اگر سند بی‌نسخه باشد) — بوردِ موجود از sync نسخه دارد.
+    const doc = new Y.Doc();
     const localStore = createIndexeddbDocStore({ doc, name: `hamboom-${boardId}` });
 
     const transport = createWebSocketTransport({
@@ -174,7 +228,8 @@ export function BoardPage() {
     // binding را می‌پیچیم تا هر اعمالِ remote، `known` را هم‌روز نگه دارد (ضدِ اکو).
     const binding = createCanvasBinding({
       api: canvasApi,
-      ui: { setConnectionState: setConnection, setSaveState: setSave, setPermissions },
+      // ★ `applyPeers` (یافته‌ی ۳): حضورِ همتاها → state تا `PeerCursors` رندرشان کند.
+      ui: { setConnectionState: setConnection, setSaveState: setSave, setPermissions, applyPeers: setPeers },
     });
     const wrappedBinding: typeof binding = {
       ...binding,
@@ -195,6 +250,7 @@ export function BoardPage() {
       .then((ob) => {
         if (cancelled) return;
         outbound = ob;
+        outboundRef.current = ob; // هندلرِ مکان‌نما (سطحِ render) از این می‌خوانَد.
         // ★★ Ctrl+Z باید به UndoManager برسد، نه تاریخچه‌ی موتور (ADR-035، اجباری).
         if (paneRef.current && adapter.undo) {
           unbindUndo = bindUndoShortcuts(paneRef.current, adapter.undo);
@@ -210,6 +266,8 @@ export function BoardPage() {
       offChange();
       unbindUndo?.();
       adapter.disconnect();
+      outboundRef.current = null;
+      setPeers([]); // مکان‌نمای همتاها با قطع پاک شود
       // ⚠️ localStore بسته نمی‌شود — چرخه‌ی عمرش مالِ صفحه است، نه اتصال (StrictMode).
     };
   }, [canvasApi, user, boardId]);
@@ -245,7 +303,13 @@ export function BoardPage() {
         </div>
       )}
       <div className="board-canvas" ref={paneRef}>
-        <HamboomCanvas onReady={setCanvasApi} viewModeEnabled={readOnly} />
+        <HamboomCanvas
+          onReady={setCanvasApi}
+          viewModeEnabled={readOnly}
+          onPointerUpdate={handlePointerUpdate}
+        />
+        {/* لایه‌ی روکشِ مکان‌نمای همتاها — pointer-events:none، پس کلیک به بوم می‌رسد. */}
+        <PeerCursors peers={peers} project={projectPeer} />
       </div>
     </div>
   );

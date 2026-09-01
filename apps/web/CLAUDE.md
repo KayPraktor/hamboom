@@ -46,7 +46,17 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 | `src/auth/` | `LoginPage` (موبایل/OTP) · `SessionProvider`+`session-context` · `RequireAuth` · `validate` | ۸٫۲ ✅ |
 | `src/dashboard/` | فهرست/ساخت/نشان/جستجو + **ریلِ فولدرِ per-team** (`FolderNav`) + **سطلِ بازیافت** + منوی کارت (`BoardCardMenu`) | ۸٫۳ ✅ |
 | `src/team/` | اعضا/دعوت/نقش + پذیرشِ دعوت | ۸٫۳ ✅ |
-| `src/board/` | پوسته‌ی بورد: `HamboomCanvas` + `YjsSyncAdapter` روی سرورِ واقعی + گرفتنِ ویرایشِ محلی | ۸٫۴ ✅ |
+| `src/board/` | پوسته‌ی بورد: `HamboomCanvas` + `YjsSyncAdapter` + گرفتنِ ویرایشِ محلی + **مکان‌نمای زنده‌ی همتا** | ۸٫۴/۸٫۵ ✅ |
+
+## ★ حضور و دو یافته‌ی ۸٫۵ (لمسِ M1/M2 با تاییدِ مالک)
+
+- **مکان‌نمای زنده (یافته‌ی ۳):** `BoardPage` مکان‌نمای محلی را از propِ نو `onPointerUpdate`ِ `HamboomCanvas`
+  می‌گیرد (موتور **مختصاتِ صحنه** می‌دهد، بی‌تبدیل)، `emitPointer` می‌کند، `applyPeers`→state، و `PeerCursors`ِ M1
+  را با `sceneToOverlayPixel` رندر می‌کند. نما از `onScrollChange` (نه getAppState — درسِ Q1). **تکرارِ فرمولِ
+  پیکسل→صحنه صفر است** (ADR-024). لمسِ **M1**: propِ افزایشیِ `onPointerUpdate`.
+- **مهرِ تنبلِ `schemaVersion` (یافته‌ی ۲):** `BoardPage` یک `new Y.Doc()`ِ ساده می‌دهد، نه `createBoardDoc()` —
+  وگرنه هر باز شدنِ تب یک opِ اضافی (کلاینتِ فانتوم در state vector) می‌ساخت. adapter (**M2**) نسخه را روی اولین
+  نوشتنِ واقعی و فقط اگر بی‌نسخه باشد مهر می‌زند.
 
 ## ★★ گرفتنِ ویرایشِ محلی — تکه‌ای که M1/M2 به M3 سپرد (فاز ۸٫۴)
 

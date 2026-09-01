@@ -18,6 +18,7 @@ import {
   encodeMessage,
   getSchemaVersion,
   HB_ERROR_CODES,
+  META_KEYS,
   MSG_TYPES,
   readDocument,
   readElement,
@@ -963,6 +964,15 @@ export class YjsSyncAdapter implements CanvasSyncAdapter {
 
     const roots = boardRoots(this.doc);
     this.doc.transact(() => {
+      // ★★ مهرِ `schemaVersion` **تنبل** — فقط اگر سند هنوز بی‌نسخه است (یافته‌ی ۲ M2).
+      //    اپ یک `Y.Doc`ِ ساده می‌دهد و `createBoardDoc` دیگر روی هر باز شدنِ تب یک opِ
+      //    اضافی (با clientID نو) نمی‌نویسد؛ بوردِ **واقعاً نو** نسخه‌اش را با اولین نوشتنِ
+      //    واقعی می‌گیرد، و بوردِ موجود آن را از sync دارد پس اینجا مهر نمی‌خورد.
+      //    ⚠️ در `meta` است که **بیرونِ دامنه‌ی UndoManager** (فقط `elements`) است، پس
+      //    undoِ اولین ویرایش نسخه را پاک نمی‌کند.
+      if (getSchemaVersion(this.doc) === undefined) {
+        roots.meta.set(META_KEYS.schemaVersion, SCHEMA_VERSION);
+      }
       for (const element of changes.upserted) writeElement(roots.elements, element);
       for (const id of changes.deleted) this.softDelete(id);
       for (const asset of changes.assets ?? []) writeAsset(roots.assets, asset satisfies HbAsset);

@@ -5,7 +5,17 @@ import {
   type ElementChangeSet,
 } from "@hamboom/canvas-core/sync";
 import type { HbElement } from "@hamboom/shared-types";
-import { boardRoots, encodeMessage, MSG_TYPES, readDocument } from "@hamboom/ydoc-schema";
+import {
+  boardRoots,
+  createBoardDoc,
+  encodeMessage,
+  getSchemaVersion,
+  META_KEYS,
+  MSG_TYPES,
+  readDocument,
+  SCHEMA_VERSION,
+  writeElement,
+} from "@hamboom/ydoc-schema";
 import * as Y from "yjs";
 import { describe, expect, it, vi } from "vitest";
 
@@ -630,5 +640,72 @@ describe("ترابریِ درون‌حافظه‌ای", () => {
     const b = new YjsSyncAdapter({ transport: new LocalTransport(hub) });
     expect(Y.encodeStateAsUpdate(a.document).byteLength).toBeGreaterThan(0);
     expect(b.document).not.toBe(a.document);
+  });
+});
+
+/**
+ * ★★ یافته‌ی ۲ (M2، تاییدِ مالک ۱۴۰۵/۰۶/۱۰): مهرِ `schemaVersion` **تنبل**.
+ *
+ * پیش‌تر اپ روی هر باز شدنِ تب `createBoardDoc()` می‌ساخت که یک opِ `meta.schemaVersion`
+ * با یک `clientID`ِ نو می‌نوشت؛ برای بوردِ **موجود** این یک کلاینتِ فانتوم به state vector
+ * اضافه می‌کرد — حتی برای بازکردنِ فقط‌خواندنی. حالا اپ `Y.Doc`ِ ساده می‌دهد و آداپتور فقط
+ * روی اولین نوشتنِ **واقعی** و **فقط اگر بی‌نسخه باشد** مهر می‌زند.
+ */
+function countClients(doc: Y.Doc): number {
+  return Y.decodeStateVector(Y.encodeStateVector(doc)).size;
+}
+
+describe("یافته‌ی ۲ — مهرِ schemaVersion تنبل", () => {
+  it("★ بوردِ نو (Y.Doc ساده): اولین نوشتن نسخه را مهر می‌زند", async () => {
+    const doc = new Y.Doc();
+    const adapter = new YjsSyncAdapter({ doc });
+    const outbound = await adapter.connect(fakeCanvas().inbound);
+    expect(getSchemaVersion(doc)).toBeUndefined(); // پیش از نوشتن، بی‌نسخه
+
+    let metaWritten = false;
+    boardRoots(doc).meta.observe(() => {
+      metaWritten = true;
+    });
+    outbound.emitElementChanges({ upserted: [element("stk_1")], deleted: [], origin: "local-user" });
+
+    expect(getSchemaVersion(doc)).toBe(SCHEMA_VERSION);
+    expect(metaWritten).toBe(true);
+  });
+
+  it("★ بوردِ موجود (از قبل نسخه‌دار): نوشتن نسخه را دوباره مهر نمی‌زند", async () => {
+    const doc = new Y.Doc();
+    doc.transact(() => boardRoots(doc).meta.set(META_KEYS.schemaVersion, SCHEMA_VERSION));
+    const adapter = new YjsSyncAdapter({ doc });
+    const outbound = await adapter.connect(fakeCanvas().inbound);
+
+    let metaWritten = false;
+    boardRoots(doc).meta.observe(() => {
+      metaWritten = true;
+    });
+    outbound.emitElementChanges({ upserted: [element("stk_2")], deleted: [], origin: "local-user" });
+
+    expect(metaWritten).toBe(false); // نسخه از قبل هست → مهرِ اضافی نه
+    expect(getSchemaVersion(doc)).toBe(SCHEMA_VERSION);
+  });
+
+  it("★ چرا مهم است: createBoardDoc یک کلاینتِ اضافی به بوردِ موجود می‌دهد، Y.Doc ساده نه", () => {
+    const existing = new Y.Doc();
+    existing.transact(() => {
+      boardRoots(existing).meta.set(META_KEYS.schemaVersion, SCHEMA_VERSION);
+      writeElement(boardRoots(existing).elements, element("stk_1"));
+    });
+    const state = Y.encodeStateAsUpdate(existing);
+    const base = countClients(existing);
+
+    // بازکردنِ همان بورد، دو جور:
+    const plain = new Y.Doc();
+    Y.applyUpdate(plain, state); // راهِ نو
+    const stamped = createBoardDoc();
+    Y.applyUpdate(stamped, state); // راهِ کهنه
+
+    expect(getSchemaVersion(plain)).toBe(SCHEMA_VERSION); // هر دو نسخه دارند (از sync)
+    expect(getSchemaVersion(stamped)).toBe(SCHEMA_VERSION);
+    expect(countClients(plain)).toBe(base); // بدونِ کلاینتِ اضافی
+    expect(countClients(stamped)).toBe(base + 1); // ★ opِ اضافیِ createBoardDoc
   });
 });

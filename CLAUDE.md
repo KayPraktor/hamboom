@@ -233,16 +233,18 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
     برعکسِ M2 شد** (`APP_ENV=production` بالا می‌آید). **هر ۷ سنجه + bench سبز با auth+storageِ واقعی** (bench بایت‌به‌بایت
     مثلِ M2: ۳٫۶۶MB/۷۶٫۱۱MB)، و `DevBoardAuthority`+`FsSnapshotStore` **حذف شدند** (تست‌های سرور با بدلِ تستیِ
     `BoardAuthority` بازسیم‌کشی شدند). `pnpm verify` سبز.
-  - **★ فاز ۸ (`apps/web`) — ۸٫۱–۸٫۴ کامل + فولدر/سطلِ ۸٫۳ در مرورگر با سرورِ واقعی اثبات شد (۱۴۰۵/۰۶/۱۰):**
+  - **★ فاز ۸ (`apps/web`) — ۸٫۱–۸٫۵ در مرورگر با سرورِ واقعی اثبات شد (۱۴۰۵/۰۶/۱۰):**
     اسکلت (React 19 + Vite + TanStack + RTL + Vazirmatnِ خودمیزبان) · احرازِ موبایل/OTP (access در حافظه،
     نشست از کوکی) · داشبورد + تیم (لیست/ساخت/نشان بورد؛ **تغییرِ نقشِ عضو**) · **پوسته‌ی بورد: `HamboomCanvas`+
     `YjsSyncAdapter` روی realtimeِ واقعی — دو تب همگام، `Ctrl+Z` یک‌ژست، حضور**. ★★ **ADR-028 (بوم+StrictMode)
     تجربی حل شد**. · **فولدر + سطلِ بازیافت (۸٫۳):** ریلِ پیمایشِ per-team + جابه‌جاییِ بورد + سطل
     (`GET /boards?trashed=true` به api، گیتِ owner؛ **shared-types دست‌نخورد**). · **بستنِ ۸٫۴:** **emitِ زنده‌ی
     میان‌درگ** (حذفِ debounceِ اپ؛ throttle مالِ scheduler است؛ `queueMicrotask` نه rAF — رسمِ واقعی=۳ emit در یک ژست)،
-    **E2Eِ وبِ viewer** (کاربرِ دومِ viewer → view-mode/«فقط‌خواندنی»/تلاشِ رسم فقط pan)، و **§۲ → [ADR-047](ARCHITECTURE_DECISIONS.md#adr-047)**
-    (پیام‌های کلاینت در canvas-sync می‌مانند؛ اپ نوتیس نشان می‌دهد). جزئیات و درس‌ها در
-    [`PROGRESS-M3`](PROGRESS-M3-backend-api.md). **قدمِ بعد:** ⚠️ **۸٫۵ (سه یافته‌ی M2) تاییدِ مالک می‌خواهد**، بعد فاز ۹ (نوار ابزار).
+    **E2Eِ وبِ viewer** (کاربرِ دومِ viewer → view-mode/«فقط‌خواندنی»/تلاشِ رسم فقط pan)، و **§۲ → [ADR-047](ARCHITECTURE_DECISIONS.md#adr-047)**.
+    · **★ ۸٫۵ (سه یافته‌ی M2، تاییدِ تک‌تکِ مالک):** یافته‌ی ۳ (**مکان‌نمای زنده** — propِ افزایشیِ `onPointerUpdate` روی
+    `HamboomCanvas`/**M1** + رندرِ `PeerCursors` در اپ) و یافته‌ی ۲ (**مهرِ تنبلِ `schemaVersion`** در adapter/**M2**)
+    اعمال و اثبات شدند؛ **یافته‌ی ۴ (انزوای متن) موکول شد** (مالک رد کرد). لمسِ M1/M2 در PROGRESS ثبت شد.
+    جزئیات و درس‌ها در [`PROGRESS-M3`](PROGRESS-M3-backend-api.md). **قدمِ بعد:** فاز ۹ (نوار ابزار).
 - **★★★ M2 (`realtime-sync`) تمام و تحویل شد** (۱۴۰۵/۰۵/۲۳) — هر ۳۰ گامِ
   [TODO.md](TODO.md) تیک خورده. نقطه‌ی ورودِ M3: [`docs/m3-handoff.md`](docs/m3-handoff.md)
   (چهار پورت، دو موردِ به‌ارث‌رسیده، چهار یافته‌ی M2، سقف‌های اندازه‌گیری‌شده).

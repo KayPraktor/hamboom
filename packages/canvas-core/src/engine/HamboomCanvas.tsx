@@ -1,6 +1,6 @@
 import { Excalidraw } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentProps } from "react";
 
 import { defaultTextAlignFor, type TextDirection } from "../text/bidi";
 import { assertAssetPathConfigured } from "./asset-path";
@@ -27,6 +27,14 @@ export interface HamboomCanvasProps {
    * متن‌های واقعی جهتشان از محتوای خودشان می‌آید (ADR-024).
    */
   defaultDirection?: TextDirection;
+  /**
+   * موقعیتِ مکان‌نمای محلی در مختصاتِ **صحنه** — برای کانالِ حضور.
+   *
+   * ★ موتور `onPointerUpdate` را از قبل در مختصاتِ **صحنه** می‌دهد، پس مصرف‌کننده
+   *   بی هیچ تبدیلِ پیکسل→صحنه آن را emit می‌کند. این propِ نازک همان گپِ ثبت‌شده‌ی
+   *   M2 (§۴) را می‌بندد: دیگر لازم نیست اپ فرمولِ معکوس را از نو بنویسد (ADR-024).
+   */
+  onPointerUpdate?: (pointer: { x: number; y: number }) => void;
 }
 
 /**
@@ -50,6 +58,7 @@ export function HamboomCanvas({
   viewModeEnabled = false,
   langCode = "fa-IR",
   defaultDirection = "rtl",
+  onPointerUpdate,
 }: HamboomCanvasProps) {
   // اگر مسیر دارایی‌ها ست نشده باشد باید همین اول بشکند، نه اینکه بی‌صدا
   // از اینترنت فونت بگیرد. throw داخل بدنه‌ی رندر تا error boundary بگیردش.
@@ -89,12 +98,18 @@ export function HamboomCanvas({
     );
   }
 
+  // ★ payloadِ موتور در مختصاتِ صحنه است؛ فقط `{x,y}` را به مصرف‌کننده می‌دهیم.
+  const handlePointer: ComponentProps<typeof Excalidraw>["onPointerUpdate"] = onPointerUpdate
+    ? (payload) => onPointerUpdate({ x: payload.pointer.x, y: payload.pointer.y })
+    : undefined;
+
   return (
     <Excalidraw
       excalidrawAPI={onReady}
       viewModeEnabled={viewModeEnabled}
       langCode={langCode}
       detectScroll={false}
+      onPointerUpdate={handlePointer}
       initialData={{
         appState: {
           // spike گام ۱٫۳ب: `text-align` ویرایشگر inline از همین مقدار می‌آید و

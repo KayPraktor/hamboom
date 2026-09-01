@@ -441,6 +441,14 @@ pnpm --filter @hamboom/canvas-sync typecheck
 pnpm --filter @hamboom/canvas-sync lint
 ```
 
+## ★ مهرِ تنبلِ `schemaVersion` (M3 گام ۸٫۵، تاییدِ مالک ۱۴۰۵/۰۶/۱۰)
+
+`commitChanges` نسخه را روی **اولین نوشتنِ** واقعی و **فقط اگر `getSchemaVersion===undefined`** مهر می‌زند
+(در `meta`، **بیرونِ دامنه‌ی UndoManager** که فقط `elements` را می‌بیند — پس undoِ اولین ویرایش نسخه را پاک
+نمی‌کند). دلیل (یافته‌ی ۲ M2): اپ پیش‌تر روی هر باز شدنِ تب `createBoardDoc()` می‌ساخت که یک opِ اضافی با
+`clientID`ِ نو به state vector می‌داد — حتی برای بازکردنِ فقط‌خواندنی. حالا اپ `new Y.Doc()`ِ ساده می‌دهد و
+نسخه با اولین ویرایش می‌آید (بوردِ موجود از sync دارد). نگهبان: تست‌های «یافته‌ی ۲» در `adapter.test.ts`.
+
 ## چیزهایی که اینجا انجام نمی‌شوند
 
 سرور، اتاق، پایداری، Redis، احراز هویت (کارِ [`apps/realtime`](../../apps/realtime/))؛
