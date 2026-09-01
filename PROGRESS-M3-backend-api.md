@@ -22,6 +22,7 @@
 | لمس | تغییر | چرا این شکل | اثبات |
 |---|---|---|---|
 | **M1** [`Toolbar.tsx`](packages/canvas-core/src/ui/Toolbar.tsx) + `toolbar.css` + `overlay-layout.css` | propِ **افزایشیِ** `orientation?: "horizontal"\|"vertical"` (پیش‌فرض افقی، سازگار با گذشته) + اسلاتِ `--center-start` + flexِ ستونی | Toolbarِ canonical جای درستِ یک toolbar است (`src/ui`)؛ یک نوار/آیکون/مدلِ مشترک (DRY). جای‌گذاری با logical properties (`inset-inline-start` + `translateY`ِ محورِ بلوک) — RTL خودش، بی‌آینه، Stylelint-clean | ۲ تستِ نو در `Toolbar.test.tsx` (پیش‌فرض افقی می‌مانَد؛ vertical کلاس/aria درست)؛ در مرورگر روی لبه‌ی راست |
+| **M1** (پولیش) [`HamboomCanvas.tsx`](packages/canvas-core/src/engine/HamboomCanvas.tsx) + [`canvas-chrome.css`](packages/canvas-core/src/engine/canvas-chrome.css) | propِ **افزایشیِ** `hideNativeUI` (پیش‌فرض `false`) → wrapperِ `display:contents` + `display:none` روی chromeِ نیتیو | برای «شبیه‌میرو» باید chromeِ **تکراریِ** excalidraw برود؛ opt-in تا دمو/تست‌های M1 دست‌نخورند. **CSS نه zenMode** (زن‌مود فوترِ نیتیو + «خروج از زن‌مود» را نگه می‌دارد). سلکتورْ ظرفِ ساختاریِ ۰٫۱۸٫۱ (پین، ADR-003=npm؛ با ارتقا بازبینی) | مرورگر: نوار/منو/فوترِ نیتیو `display:none`؛ نوارِ عمودی، رسمِ مستطیل، و زوم سالم |
 
 **نکاتِ کلیدی:**
 - **★ حضورِ ابزارِ فعال از قبل کامل بود — صفر لمسِ M2/shared-types.** قراردادِ `CanvasOutbound.emitActiveTool` و
@@ -42,9 +43,12 @@
   خطا می‌دهد (تزریقِ تستیِ فایل نشانش داد). وایرینگِ کامل و **آماده‌ی ۱۱٫۲** است (فقط `assets:` به adapter اضافه
   می‌شود)؛ تا آن‌وقت به‌جای کرش یک نوتیسِ روشن. `createLocalAssetTransport` عمداً استفاده **نشد** — بلابِ per-page
   است و بینِ تب‌ها sync نمی‌شود (نیمه‌فیچرِ گیج‌کننده)؛ مسیرِ synced همان فاز ۱۱٫۲ (`upload→api.addFiles`) است.
-- **⚠️ نوار ابزارِ نیتیوِ excalidraw هنوز بالای بوم دیده می‌شود** (کنارِ نوارِ عمودیِ ما، تکراری). خارج از معیارِ
-  پذیرشِ ۹٫۱، ولی برای ظاهرِ «شبیه‌میرو» بهتر است پنهان شود — **یک لمسِ M1ِ جدا** (`UIOptions`/zenMode روی
-  `HamboomCanvas`)، نیازمندِ تاییدِ مالک. برای فاز بعد پیشنهاد شد.
+- **✅ نوار ابزارِ نیتیوِ excalidraw پنهان شد** (پولیشِ ۹٫۱، تاییدِ مالک ۱۴۰۵/۰۶/۱۲): propِ `hideNativeUI` روی
+  `HamboomCanvas` (لمسِ M1ِ دوم، جدولِ بالا) نوار/منو/فوترِ نیتیو را با CSS پنهان می‌کند. چون فوترِ زوم/undoِ نیتیو
+  هم رفت، `ZoomControl`ِ خودِ canvas-core (**reuse**، ADR-024) در `BoardPage` وصل شد و با CSSِ اپ به گوشه‌ی مقابلِ
+  نوار (**bottom-end**) برده شد تا با نوارِ center-start تصادم نکند (undo با `Ctrl+Z` هست). ⚠️ **CSS نه zenMode**:
+  زن‌مود فوترِ نیتیو و افردنسِ «خروج از زن‌مود» را نگه می‌دارد؛ CSSِ روی دو ظرفِ ساختاری کنترلِ دقیق می‌دهد (پین‌شده،
+  با ارتقای excalidraw بازبینی شود). در مرورگر: نوار/فوتر ناپدید، رسمِ مستطیل + زوم ۱۰۰→۱۲۰→۱۰۰ + fit همه کار کرد.
 
 **اثباتِ نهایی:** `pnpm verify` سبز (هر ۸ گیت). دو تب همگام (استیکیِ فارسی/کانکتور/فریم/قلم)، ابزارِ فعالِ همتا
 دوطرفه، پالتِ ۱۲رنگه، میانبر، و ذخیره‌ی پایدار همه در مرورگر با سرورِ واقعی.

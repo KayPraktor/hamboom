@@ -101,6 +101,12 @@ Playwright یک Chromiumِ **واقعی** اجرا می‌کند که composite 
   پایین-وسط، سازگار با گذشته) یا `"vertical"` (لبه‌ی `--center-start`، ستونی). افزایشی و backward-compatible —
   مصرف‌کننده‌های موجود بی‌تغییر می‌مانند. جای‌گذاری از همان `overlay-layout.css` (اسلاتِ نو `--center-start`)، با
   logical properties (RTL بی‌آینه، Stylelint-clean). `apps/web` (نوار ابزارِ بورد) با `orientation="vertical"` مصرفش می‌کند.
+- ★ **`HamboomCanvas` propِ `hideNativeUI` دارد** (M3 گام ۹٫۱ پولیش، تاییدِ مالک ۱۴۰۵/۰۶/۱۲): وقتی مصرف‌کننده
+  رابطِ خودش را می‌گذارد (نوار ابزارِ عمودی)، chromeِ نیتیوِ excalidraw (نوار/منو/فوتر) تکراری است. با این prop یک
+  wrapperِ `display:contents` (بی‌تأثیر بر چیدمان) کلاسِ chromeless می‌گیرد و [`canvas-chrome.css`](src/engine/canvas-chrome.css)
+  دو **ظرفِ ساختاریِ** بالادست را `display:none` می‌کند. **opt-in، پیش‌فرض `false`** (دمو/تست دست‌نخورده). ⚠️ **CSS نه
+  zenMode** (زن‌مود فوتر + «خروج» را نگه می‌دارد) و سلکتورْ داخلیِ excalidraw **۰٫۱۸٫۱** است (پین، ADR-003=npm) — **با
+  ارتقا بازبینی شود**. چون فوترِ زومِ نیتیو هم می‌رود، مصرف‌کننده باید `ZoomControl` را وصل کند (undo با `Ctrl+Z`).
 - **پکیج JIT است:** `exports` مستقیماً به `src/*.ts` اشاره می‌کند و build ندارد.
   مصرف‌کننده‌ها (همه Vite هستند) خودشان transpile می‌کنند. الگوی internal package
   در Turborepo. اگر روزی یک مصرف‌کننده‌ی Node خالص اضافه شد، آن‌وقت build لازم می‌شود.

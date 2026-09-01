@@ -1,0 +1,24 @@
+/*
+ * پنهان‌کردنِ chromeِ نیتیوِ excalidraw — M3 گام ۹٫۱ (پولیش، تاییدِ مالک ۱۴۰۵/۰۶/۱۲).
+ *
+ * `HamboomCanvas` با propِ `hideNativeUI` این کلاس را روی یک wrapperِ **بدونِ باکس**
+ * (`display: contents`) می‌گذارد — پس چیدمانِ بوم دست‌نخورده می‌مانَد و این فقط یک
+ * قلابِ CSS است. مصرف‌کننده (نوار ابزارِ عمودیِ apps/web) رابطِ خودش را می‌گذارد،
+ * پس نوار ابزار/منو/کتابخانه/فوترِ نیتیو تکراری و بی‌مصرف‌اند.
+ *
+ * ⚠️ این سلکتورها **کلاس‌های ساختاریِ داخلیِ excalidraw 0.18.1‌اند** (نه API عمومی).
+ *    چون نسخه پین است (ADR-003 = «npm»)، پایدارند؛ **با هر ارتقای excalidraw بازبینی
+ *    شوند**. عمداً بالاترین ظرفِ هر ناحیه هدف است (نه دکمه‌های تک)، تا کم‌شکننده بماند:
+ *      · `.FixedSideContainer_side_top` = کلِ نوارِ بالا (منو + نوار ابزار + کتابخانه)
+ *      · `.layer-ui__wrapper__footer`   = فوترِ پایین (بزرگ‌نمایی + undo/redo)
+ *    زوم را `ZoomControl`ِ خودمان می‌دهد و undo با `Ctrl+Z` (bindUndoShortcuts) کار می‌کند.
+ */
+
+.hb-canvas {
+  display: contents;
+}
+
+.hb-canvas--chromeless .excalidraw .FixedSideContainer_side_top,
+.hb-canvas--chromeless .excalidraw .layer-ui__wrapper__footer {
+  display: none;
+}

@@ -251,8 +251,10 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
     propِ افزایشیِ `orientation` روی `Toolbar` (**M1، تاییدِ صریحِ مالک ۱۴۰۵/۰۶/۱۲**، در PROGRESS مثلِ B-1 ثبت).
     **★ ابزارِ فعالِ همتا از قبل در قرارداد بود** (`emitActiveTool`/`PeerState.activeTool` از M2؛ awareness relayش
     می‌کند) — **صفر لمسِ M2/shared-types**. اثبات در دو تب: استیکیِ فارسی/کانکتور/فریم/قلم همگام، ابزارِ فعالِ همتا
-    دوطرفه. **تصویر به فاز ۱۱٫۲ موکول** (adapter بدونِ `assets`؛ نوتیسِ گراسفول). ⚠️ **نوار ابزارِ نیتیوِ excalidraw
-    هنوز دیده می‌شود** — پنهان‌کردنش یک لمسِ M1ِ جدا (نیازِ تایید). `pnpm verify` سبز. **قدمِ بعد:** فاز ۱۱ (فاز ۱۰ موکول).
+    دوطرفه. **تصویر به فاز ۱۱٫۲ موکول** (adapter بدونِ `assets`؛ نوتیسِ گراسفول). **★ پولیش (تاییدِ مالک ۱۴۰۵/۰۶/۱۲):
+    نوار ابزارِ نیتیوِ excalidraw پنهان شد** — propِ افزایشیِ `hideNativeUI` روی `HamboomCanvas` (لمسِ M1ِ دوم، با CSS نه
+    zenMode) + `ZoomControl`ِ canvas-core (reuse) جای فوترِ زوم (bottom-end، بی‌تصادم با نوار). `pnpm verify` سبز.
+    **قدمِ بعد:** فاز ۱۱ (فاز ۱۰ موکول).
 - **★★★ M2 (`realtime-sync`) تمام و تحویل شد** (۱۴۰۵/۰۵/۲۳) — هر ۳۰ گامِ
   [TODO.md](TODO.md) تیک خورده. نقطه‌ی ورودِ M3: [`docs/m3-handoff.md`](docs/m3-handoff.md)
   (چهار پورت، دو موردِ به‌ارث‌رسیده، چهار یافته‌ی M2، سقف‌های اندازه‌گیری‌شده).

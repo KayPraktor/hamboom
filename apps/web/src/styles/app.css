@@ -896,3 +896,11 @@ body {
   outline: 2px solid var(--hb-accent);
   outline-offset: 2px;
 }
+
+/* ZoomControl پیش‌فرض bottom-start است (در RTL راست) و با نوارِ عمودیِ center-startِ
+   راست تصادم می‌کند؛ به گوشه‌ی مقابل (bottom-end = در RTL چپ) می‌بریمش. اپ مالکِ
+   چیدمانِ overlayِ بوردِ خودش است؛ منطقی و Stylelint-clean. */
+.board-canvas .hb-zoom {
+  inset-inline-start: auto;
+  inset-inline-end: var(--hb-overlay-gap, 16px);
+}

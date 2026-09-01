@@ -11,6 +11,7 @@ import { guardEditorDirection } from "./editor-direction";
 import "@excalidraw/excalidraw/index.css";
 // فونت‌ها بخشی از پکیج‌اند تا مصرف‌کننده نتواند فراموششان کند.
 import "../theme/fonts.css";
+import "./canvas-chrome.css";
 
 export interface HamboomCanvasProps {
   /**
@@ -35,6 +36,12 @@ export interface HamboomCanvasProps {
    *   M2 (§۴) را می‌بندد: دیگر لازم نیست اپ فرمولِ معکوس را از نو بنویسد (ADR-024).
    */
   onPointerUpdate?: (pointer: { x: number; y: number }) => void;
+  /**
+   * chromeِ نیتیوِ موتور (نوار ابزار/منو/فوتر) را پنهان کن — برای وقتی مصرف‌کننده
+   * رابطِ خودش را می‌گذارد (نوار ابزارِ عمودیِ M3 گام ۹٫۱). **opt-in، پیش‌فرض `false`**
+   * تا دمو و تست‌های M1 دست‌نخورده بمانند. جزئیات در [`canvas-chrome.css`](./canvas-chrome.css).
+   */
+  hideNativeUI?: boolean;
 }
 
 /**
@@ -59,6 +66,7 @@ export function HamboomCanvas({
   langCode = "fa-IR",
   defaultDirection = "rtl",
   onPointerUpdate,
+  hideNativeUI = false,
 }: HamboomCanvasProps) {
   // اگر مسیر دارایی‌ها ست نشده باشد باید همین اول بشکند، نه اینکه بی‌صدا
   // از اینترنت فونت بگیرد. throw داخل بدنه‌ی رندر تا error boundary بگیردش.
@@ -103,25 +111,29 @@ export function HamboomCanvas({
     ? (payload) => onPointerUpdate({ x: payload.pointer.x, y: payload.pointer.y })
     : undefined;
 
+  // wrapperِ نازک فقط برای قلابِ CSSِ `hideNativeUI` است — `display: contents` دارد
+  // (canvas-chrome.css) پس هیچ باکسی نمی‌سازد و چیدمانِ بوم عوض نمی‌شود.
   return (
-    <Excalidraw
-      excalidrawAPI={onReady}
-      viewModeEnabled={viewModeEnabled}
-      langCode={langCode}
-      detectScroll={false}
-      onPointerUpdate={handlePointer}
-      initialData={{
-        appState: {
-          // spike گام ۱٫۳ب: `text-align` ویرایشگر inline از همین مقدار می‌آید و
-          // پیش‌فرض موتور `"left"` است — یعنی متن فارسی چپ‌چین. مقدار منطقی از
-          // `defaultTextAlignFor` می‌آید تا با بقیه‌ی لایه‌ها یک منبع داشته باشد.
-          currentItemTextAlign: defaultTextAlignFor(defaultDirection),
-          // گام ۵٫۱ — snap به عناصر + خطوطِ راهنمای هم‌ترازی هنگام درگ، به‌صورت
-          // پیش‌فرض روشن (سبکِ میرو). snap به شبکه با `gridModeEnabled` جداست و
-          // در دمو با یک toggle آزمودنی است.
-          objectsSnapModeEnabled: true,
-        },
-      }}
-    />
+    <div className={`hb-canvas${hideNativeUI ? " hb-canvas--chromeless" : ""}`}>
+      <Excalidraw
+        excalidrawAPI={onReady}
+        viewModeEnabled={viewModeEnabled}
+        langCode={langCode}
+        detectScroll={false}
+        onPointerUpdate={handlePointer}
+        initialData={{
+          appState: {
+            // spike گام ۱٫۳ب: `text-align` ویرایشگر inline از همین مقدار می‌آید و
+            // پیش‌فرض موتور `"left"` است — یعنی متن فارسی چپ‌چین. مقدار منطقی از
+            // `defaultTextAlignFor` می‌آید تا با بقیه‌ی لایه‌ها یک منبع داشته باشد.
+            currentItemTextAlign: defaultTextAlignFor(defaultDirection),
+            // گام ۵٫۱ — snap به عناصر + خطوطِ راهنمای هم‌ترازی هنگام درگ، به‌صورت
+            // پیش‌فرض روشن (سبکِ میرو). snap به شبکه با `gridModeEnabled` جداست و
+            // در دمو با یک toggle آزمودنی است.
+            objectsSnapModeEnabled: true,
+          },
+        }}
+      />
+    </div>
   );
 }

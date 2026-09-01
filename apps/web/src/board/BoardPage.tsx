@@ -18,6 +18,9 @@ import {
   Toolbar,
   toolForShortcut,
   type ToolId,
+  ZoomControl,
+  zoomAroundCenter,
+  zoomStep,
 } from "@hamboom/canvas-core";
 import type {
   CanvasOutbound,
@@ -224,6 +227,55 @@ export function BoardPage() {
       showNoticeRef.current?.("درجِ تصویر با گامِ ذخیره‌سازی (فاز بعد) فعال می‌شود.");
     }
     selectToolRef.current?.("select");
+  }, []);
+
+  // بزرگ/کوچک‌نماییِ حولِ مرکز (`zoom.ts`) و برازش با صفحه — چون chromeِ نیتیوِ زوم را
+  // پنهان کردیم، `ZoomControl`ِ خودِ canvas-core جایش را می‌گیرد (reuse، ADR-024).
+  // appState-only، بی‌ورودیِ undo. ★ گامِ بعدی از zoomِ فعلیِ **موتور** حساب می‌شود، نه state.
+  const applyZoom = useCallback((direction: 1 | -1) => {
+    const engine = canvasApiRef.current;
+    if (!engine) return;
+    const s = engine.getAppState();
+    const next = zoomAroundCenter(
+      {
+        zoom: s.zoom.value,
+        scrollX: s.scrollX,
+        scrollY: s.scrollY,
+        width: s.width,
+        height: s.height,
+      },
+      zoomStep(s.zoom.value, direction),
+    );
+    engine.updateScene({
+      appState: {
+        zoom: { value: next.zoom },
+        scrollX: next.scrollX,
+        scrollY: next.scrollY,
+      } as never,
+      captureUpdate: "NEVER",
+    });
+    // updateSceneِ برنامه‌ای `onScrollChange` نمی‌دهد — نمای معتبر را خودمان می‌گذاریم.
+    setViewport({ scrollX: next.scrollX, scrollY: next.scrollY, zoom: next.zoom });
+  }, []);
+
+  const fitToScreen = useCallback(() => {
+    const engine = canvasApiRef.current;
+    if (!engine) return;
+    const live = engine.getSceneElements().filter((el) => !el.isDeleted);
+    if (live.length === 0) {
+      engine.updateScene({
+        appState: { zoom: { value: 1 }, scrollX: 0, scrollY: 0 } as never,
+        captureUpdate: "NEVER",
+      });
+      setViewport({ scrollX: 0, scrollY: 0, zoom: 1 });
+      return;
+    }
+    engine.scrollToContent(live, { fitToContent: true });
+    // یک تیک صبر تا نما بنشیند، بعد نمای معتبرِ کامل (scroll + zoom) را بخوان.
+    setTimeout(() => {
+      const s = canvasApiRef.current?.getAppState();
+      if (s) setViewport({ scrollX: s.scrollX, scrollY: s.scrollY, zoom: s.zoom.value });
+    }, 0);
   }, []);
 
   // نما را از `onScrollChange` نگه می‌داریم (مقدارِ اولیه از getAppState، بعد زنده).
@@ -549,11 +601,19 @@ export function BoardPage() {
           onReady={setCanvasApi}
           viewModeEnabled={readOnly}
           onPointerUpdate={handlePointerUpdate}
+          hideNativeUI
         />
         {/* روکشِ استروکِ قلمِ محلی — pointer-events:none، پس کلیک به بوم می‌رسد. */}
         <canvas ref={overlayRef} className="board-draw-overlay" />
         {/* لایه‌ی روکشِ مکان‌نمای همتاها — pointer-events:none. */}
         <PeerCursors peers={peers} project={projectPeer} />
+        {/* کنترلِ بزرگ‌نمایی — جای فوترِ نیتیوِ پنهان‌شده (برای viewer هم، ناوبری است). */}
+        <ZoomControl
+          zoom={viewport.zoom}
+          onZoomIn={() => applyZoom(1)}
+          onZoomOut={() => applyZoom(-1)}
+          onFit={fitToScreen}
+        />
         {/* ابزارِ فعالِ همتاها (گام ۹٫۱) — بالا-انتها (inline-end)، جدا از نوارِ inline-start. */}
         {peers.length > 0 && (
           <div className="board-peers" aria-label="همکاران">

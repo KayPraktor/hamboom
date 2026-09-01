@@ -99,9 +99,12 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 - **استیکی بعد از یک قراردهی خودش deactivate می‌شود (M1)** → `onCreated` UI را به «انتخاب» برمی‌گرداند (پالت بسته می‌شود).
 - **⚠️ تصویر به فاز ۱۱٫۲ موکول:** adapter بدونِ `assets` است → `requestAssetUpload` خطا می‌دهد؛ نوتیسِ گراسفول
   (وایرینگ آماده، فقط `assets:` به adapter در ۱۱٫۲). `createLocalAssetTransport` عمداً **نه** (بلابِ per-page، بی‌sync).
-- **⚠️ نوار ابزارِ نیتیوِ excalidraw هنوز دیده می‌شود** — پنهان‌کردنش یک لمسِ M1ِ جدا (`UIOptions`/zenMode روی
-  `HamboomCanvas`)، نیازِ تایید.
-- **viewer:** نوار ابزار/پالت/روکش فقط برای **ویرایشگر** رندر می‌شوند؛ `selectTool` هم edit-toolها را برای readOnly گیت می‌کند.
+- **✅ نوار ابزارِ نیتیوِ excalidraw پنهان شد** (پولیشِ ۹٫۱، تاییدِ مالک ۱۴۰۵/۰۶/۱۲): `HamboomCanvas` با `hideNativeUI`
+  رندر می‌شود (لمسِ M1ِ دوم، با CSS نه zenMode). چون فوترِ زوم/undoِ نیتیو هم رفت، `ZoomControl`ِ **خودِ canvas-core**
+  (reuse) وصل شد (`applyZoom`/`fitToScreen` با `zoomAroundCenter`/`zoomStep`) و با CSSِ اپ به **bottom-end** برده شد تا
+  با نوارِ عمودیِ center-start تصادم نکند؛ undo با `Ctrl+Z`.
+- **viewer:** نوار ابزار/پالت/روکش فقط برای **ویرایشگر** رندر می‌شوند (`ZoomControl` برای همه — ناوبری است)؛
+  `selectTool` هم edit-toolها را برای readOnly گیت می‌کند.
 
 ## ★★ درسِ اندازه‌گیریِ بوم در مرورگر (فاز ۸٫۴)
 
