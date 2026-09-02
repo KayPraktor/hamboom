@@ -311,16 +311,27 @@ export function BoardPage() {
         { offsetLeft: state.offsetLeft, offsetTop: state.offsetTop },
         { left: rect.left, top: rect.top },
       );
-    // دنباله‌ی لیزرِ همتاها — رنگِ خودِ همتا.
+    // ephemeralِ همتاها روی روکش: **لیزر** (رنگِ همتا) و **استروکِ زنده‌ی قلم** (رنگ/عرضِ
+    // خودِ استروک). هر دو از همان کانالِ `peer.ephemeral` می‌آیند (ADR-036).
     for (const peer of peersRef.current) {
       const eph = peer.ephemeral;
-      if (!eph || eph.kind !== "laser" || eph.points.length < 2) continue;
-      drawTrail(
-        ctx,
-        eph.points.map(([x, y]) => toPixel(x, y)),
-        peer.user.color,
-        3,
-      );
+      if (!eph) continue;
+      if (eph.kind === "laser" && eph.points.length >= 2) {
+        drawTrail(
+          ctx,
+          eph.points.map(([x, y]) => toPixel(x, y)),
+          peer.user.color,
+          3,
+        );
+      } else if (eph.kind === "draw-stroke" && eph.points.length >= 2) {
+        // عرضِ استروک در واحدِ **صحنه** است؛ برای روکشِ پیکسلی به زوم مقیاس می‌شود.
+        drawTrail(
+          ctx,
+          eph.points.map(([x, y]) => toPixel(x, y)),
+          eph.color,
+          Math.max(1, eph.width * viewportRef.current.zoom),
+        );
+      }
     }
     // لیزرِ **خودم** — تا مستقل از رندرِ نیتیوِ موتور (که با هر ابزار/رویداد رفتارش
     // فرق دارد) همیشه بازخوردِ محلی ببینم. همتاها همین را در رنگِ من می‌بینند.
