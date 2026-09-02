@@ -49,6 +49,7 @@ import { api } from "../api/client.ts";
 import { errorMessage } from "../api/error-message.ts";
 import { useSession } from "../auth/session-context.ts";
 import { useRenameBoard, useTrashBoard } from "../dashboard/boards-queries.ts";
+import { createApiAssetTransport } from "./asset-transport.ts";
 import { BoardMenu } from "./BoardMenu.tsx";
 import { createGestureTracker } from "./gesture-tracker.ts";
 import { colorForId } from "./presence-color.ts";
@@ -472,11 +473,9 @@ export function BoardPage() {
     canvasApiRef.current?.setActiveTool({ type: kind });
   }, []);
 
-  // انتخابِ فایلِ تصویر از نوار → درج، سپس برگشت به ابزارِ انتخاب.
-  // ⚠️ **درجِ تصویر به «حملِ دارایی» نیاز دارد که فاز ۱۱٫۲ (ذخیره‌سازیِ واقعی) سیم
-  //    می‌کند**: adapter اینجا بدونِ `assets` است، پس `requestAssetUpload` خطا می‌دهد.
-  //    وایرینگ کامل و آماده‌ی ۱۱٫۲ است (فقط `assets:` به adapter اضافه می‌شود)؛ تا آن‌وقت
-  //    به‌جای کرشِ بی‌صدا یک نوتیسِ روشن نشان می‌دهیم.
+  // انتخابِ فایلِ تصویر از نوار → درج (آپلود از راهِ storageِ واقعی، فاز ۱۱٫۲)، سپس برگشت به
+  // ابزارِ انتخاب. adapter حالا `assets` دارد، پس `requestAssetUpload` واقعاً presign→POST→commit
+  // می‌زند و روی همتا هم resolve می‌شود؛ خطای واقعیِ آپلود (نه «به‌زودی») به کاربر نشان داده می‌شود.
   const onImageFilePicked = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = ""; // اجازه‌ی انتخابِ دوباره‌ی همان فایل
@@ -485,7 +484,7 @@ export function BoardPage() {
       await imageToolRef.current?.ingestFile(file);
     } catch (error) {
       console.warn("HB_IMAGE", error);
-      showNoticeRef.current?.("درجِ تصویر با گامِ ذخیره‌سازی (فاز بعد) فعال می‌شود.");
+      showNoticeRef.current?.("درجِ تصویر ناموفق بود؛ دوباره تلاش کنید.");
     }
     selectToolRef.current?.("select");
   }, []);
@@ -649,10 +648,16 @@ export function BoardPage() {
       token: async () => (await api.boards.rtToken(boardId)).token,
     });
 
+    // ★ فاز ۱۱٫۲: پورتِ داراییِ **واقعی** (presign→POST→commit روی storage) — درجِ تصویر که در گام ۹٫۱
+    //   به همین‌جا موکول شده بود. همان interfaceِ M2، backingِ واقعی. **یک نمونه، دو مصرف‌کننده:** adapter
+    //   (آپلودِ محلی) و binding (resolveِ تصویرِ همتا/بارگذاریِ سند) — وگرنه تصویرِ remote/reload قابِ خالی می‌مانَد.
+    const assetTransport = createApiAssetTransport({ boardId, uploadedBy: user.id });
+
     const adapter = new YjsSyncAdapter({
       doc,
       transport,
       localStore,
+      assets: assetTransport,
       onProtocolError: (error) => {
         console.warn(`HB_ERROR ${error.code}: ${error.message}`);
         showNotice(error.message.length > 0 ? error.message : "تغییرِ شما اعمال نشد.");
@@ -747,6 +752,10 @@ export function BoardPage() {
         setPermissions,
         applyPeers: setPeers,
       },
+      // ★★ فاز ۱۱٫۲: بدونِ این، `registerSceneAssets` صدا زده نمی‌شود و تصویرِ همتا/بارگذاریِ سند
+      //    «قابِ خالی» می‌مانَد (کامنتِ خودِ canvas-binding). همان پورتِ adapter.
+      assets: assetTransport,
+      onAssetError: (asset, cause) => console.warn("HB_ASSET", asset.fileId, cause),
     });
     const wrappedBinding: typeof binding = {
       ...binding,

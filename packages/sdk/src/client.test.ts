@@ -110,13 +110,14 @@ describe("createClient", () => {
     await expect(client.boards.remove("x")).resolves.toBeUndefined();
   });
 
-  it("asset.resolve → Location را از ۳۰۲ می‌دهد (بدونِ دنبال‌کردن)", async () => {
+  it("asset.resolveBlob → بایت‌ها را می‌دهد (۳۰۲ با follow دنبال می‌شود؛ در مرورگر manual پاسخِ opaque است)", async () => {
     const client = createClient({
       baseUrl: "",
-      fetch: () =>
-        Promise.resolve(new Response(null, { status: 302, headers: { location: "https://s3/presigned" } })),
+      // مرورگر ۳۰۲ را دنبال می‌کند و پاسخِ **نهایی** بایت است؛ fetchِ دروغین همان را می‌دهد.
+      fetch: () => Promise.resolve(new Response(new Blob(["PNGBYTES"]), { status: 200 })),
     });
     client.setAccessToken("t");
-    await expect(client.assets.resolve("f1")).resolves.toBe("https://s3/presigned");
+    const blob = await client.assets.resolveBlob("f1");
+    await expect(blob.text()).resolves.toBe("PNGBYTES");
   });
 });

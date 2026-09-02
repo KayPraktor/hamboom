@@ -293,14 +293,18 @@ export function createClient(options: ClientOptions) {
         request("POST", `/boards/${boardId}/assets/presign`, { body }),
       commit: (boardId: string, fileId: string): Promise<CommitResult> =>
         request("POST", `/boards/${boardId}/assets/${fileId}/commit`),
-      /** URLِ امضاشده‌ی نمایش (۳۰۲ را دنبال می‌کند و Location را می‌دهد؛ برای `<img src>`). */
-      async resolve(fileId: string): Promise<string> {
-        const res = await rawAuthed("GET", `/assets/${fileId}`, { redirect: "manual" });
-        if (res.status === 302 || res.status === 303) {
-          const loc = res.headers.get("location");
-          if (loc !== null) return loc;
-        }
-        return parse<never>(res); // خطا (۴۰۴/۴۰۳) را می‌اندازد
+      /**
+       * بایت‌های فایل برای نمایش. ⚠️ **`redirect: "follow"`، نه `manual`:** `/assets/:fileId` یک ۳۰۲ به
+       * URLِ امضاشده‌ی Object Storage می‌دهد؛ در **مرورگر** `redirect:"manual"` پاسخِ **opaque** (status 0،
+       * بی‌هدر) می‌دهد و Location اصلاً خوانده نمی‌شود — در Node نه، پس تستِ mockـیِ قدیمی سبز بود ولی مرورگر
+       * می‌شکست (کشفِ M3 گام ۱۱٫۲). با follow، مرورگر ۳۰۲ را دنبال می‌کند (Bearer روی ری‌دایرکتِ بین‌مبدأ حذف
+       * می‌شود، URLِ امضاشده به auth نیاز ندارد) و **بایت‌ها** می‌رسند. مصرف‌کننده‌ی مرورگری از این یک
+       * `objectURL`ِ هم‌مبدأ می‌سازد (آنیْ لود، بی‌وابستگی به CORS/taintِ Object Storage).
+       */
+      async resolveBlob(fileId: string): Promise<Blob> {
+        const res = await rawAuthed("GET", `/assets/${fileId}`, { redirect: "follow" });
+        if (!res.ok) return parse<never>(res); // خطا (۴۰۴/۴۰۳) را می‌اندازد
+        return res.blob();
       },
     },
   };
