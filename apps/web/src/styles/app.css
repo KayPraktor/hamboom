@@ -248,13 +248,32 @@ body {
   gap: 2px;
 }
 
+/* بخشِ «فضاها» — برچسبِ بخش + تیم‌ها، جدا از ناوبریِ بالا (بخش‌بندیِ تمیزِ سبکِ میرو). */
+.folder-nav__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* برچسبِ بخش — کوچک و کم‌رنگ. ⚠️ بدونِ letter-spacing (خطِ فارسی متصل است و می‌شکند). */
+.folder-nav__section-label {
+  margin: 0;
+  padding-inline: 10px;
+  padding-block: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--hb-muted);
+}
+
 .nav-item {
-  display: block;
+  display: flex;
+  gap: 10px;
+  align-items: center;
   inline-size: 100%;
   font: inherit;
   font-size: 14px;
   text-align: start;
-  padding-inline: 12px;
+  padding-inline: 10px;
   padding-block: 8px;
   color: var(--hb-fg);
   background: transparent;
@@ -273,6 +292,24 @@ body {
   font-weight: 600;
 }
 
+/* آیکونِ آیتم — پیش‌فرض کم‌رنگ، در حالتِ فعال هم‌رنگِ اکسنت (currentColor نیست تا مستقل کنترل شود). */
+.nav-item__icon {
+  flex: none;
+  display: inline-flex;
+  color: var(--hb-muted);
+}
+
+.nav-item--on .nav-item__icon {
+  color: var(--hb-accent);
+}
+
+.nav-item__label {
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .folder-nav__team {
   display: flex;
   flex-direction: column;
@@ -284,18 +321,22 @@ body {
   gap: 8px;
   align-items: center;
   justify-content: space-between;
-  padding-inline: 12px;
-  padding-block: 4px;
+  padding-inline: 10px;
+  padding-block: 2px;
 }
 
 .folder-nav__team-name {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--hb-muted);
+  color: var(--hb-fg);
   text-decoration: none;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.folder-nav__team-name:hover {
+  color: var(--hb-accent);
 }
 
 .folder-nav__add {
@@ -356,6 +397,7 @@ body {
   flex-direction: column;
   gap: 2px;
   padding: 0;
+  padding-inline-start: 8px; /* تورفتگیِ نرم زیرِ سرتیترِ تیم (تودرتوییِ سبکِ میرو) */
   margin: 0;
   list-style: none;
 }
@@ -368,9 +410,7 @@ body {
 
 .folder-nav__folder-btn {
   flex: 1;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  min-inline-size: 0; /* برشِ ellipsisِ نامِ فولدر داخلِ ردیفِ flex (روی .nav-item__label) */
 }
 
 .folder-nav__folder-actions {
@@ -758,38 +798,154 @@ body {
 }
 
 /* ── پوسته‌ی بورد ──────────────────────────────────────────── */
+/* ── پوسته‌ی بورد: تمام‌صفحه (مثلِ میرو) ──────────────────────────────────
+   بوم کلِ ویوپورت را می‌گیرد و روی هدرِ سراسری می‌نشیند؛ کنترل‌ها روی بوم شناورند.
+   `position: fixed` خودش را از پدینگِ `app-main` و هدر جدا می‌کند، بی‌دست‌زدن به RootLayout. */
 .board-shell {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: var(--hb-bg);
 }
 
-.board-topbar {
+.board-canvas {
+  position: relative;
+  block-size: 100%;
+  inline-size: 100%;
+  overflow: hidden;
+}
+
+/* خوشه‌ی کنترلِ شناورِ بالا-شروع: بازگشت + عنوان(کلیک=تغییرِ نام) + وضعیت + منوی ⋯. */
+.board-chrome {
+  position: absolute;
+  inset-block-start: var(--hb-overlay-gap, 16px);
+  inset-inline-start: var(--hb-overlay-gap, 16px);
+  z-index: 12; /* بالای همه‌ی روکش‌های canvas-core (نوار/زوم=۶، مکان‌نما=۷، منوی راست‌کلیک=۱۰) */
   display: flex;
-  gap: 12px;
+  gap: 4px;
   align-items: center;
+  max-inline-size: calc(100% - 2 * var(--hb-overlay-gap, 16px));
+  padding: 4px;
+  padding-inline-end: 6px;
+  background: var(--hb-surface);
+  border: 1px solid var(--hb-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 10%);
 }
 
-.board-topbar .back-link {
-  margin-block-end: 0;
-}
-
-.board-title {
-  font-size: 17px;
-  font-weight: 600;
-}
-
-.board-status {
-  display: flex;
-  gap: 10px;
+.board-chrome__back {
+  display: inline-flex;
+  flex: none;
   align-items: center;
-  margin-inline-start: auto;
-  font-size: 13px;
-  color: var(--hb-muted);
-}
-
-.board-status__conn {
+  justify-content: center;
+  inline-size: 30px;
+  block-size: 30px;
+  font-size: 18px;
+  line-height: 1;
   color: var(--hb-fg);
+  text-decoration: none;
+  border-radius: 8px;
+}
+
+.board-chrome__back:hover {
+  background: color-mix(in srgb, var(--hb-fg) 8%, transparent);
+}
+
+.board-chrome__title {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--hb-fg);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding-inline: 8px;
+  padding-block: 4px;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-inline-size: 36ch;
+}
+
+.board-chrome__title:hover {
+  background: color-mix(in srgb, var(--hb-fg) 8%, transparent);
+}
+
+.board-chrome__title--static,
+.board-chrome__title--static:hover {
+  cursor: default;
+  background: transparent;
+}
+
+.board-chrome__rename {
+  display: flex;
+  align-items: center;
+}
+
+.board-chrome__rename .input {
+  inline-size: 22ch;
+  min-inline-size: 0;
+}
+
+.board-chrome__status {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding-inline: 6px;
+  font-size: 12px;
+  color: var(--hb-muted);
+  white-space: nowrap;
+}
+
+.board-chrome__dot {
+  flex: none;
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+}
+
+.board-chrome__menu-wrap {
+  position: relative;
+  flex: none;
+}
+
+.board-chrome__menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 30px;
+  block-size: 30px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--hb-fg);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.board-chrome__menu-btn:hover {
+  background: color-mix(in srgb, var(--hb-fg) 8%, transparent);
+}
+
+/* منوی بورد از زیرِ دکمه‌ی ⋯ (بالا-شروع) رو به inline-end باز می‌شود تا در فضایِ بازِ بوم بمانَد. */
+.board-menu {
+  inset-inline-start: 0;
+  inset-inline-end: auto;
+}
+
+.board-menu__item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.board-menu__icon {
+  flex: none;
+  inline-size: 16px;
+  font-size: 13px;
+  text-align: center;
 }
 
 .board-notice {
@@ -802,13 +958,17 @@ body {
   border-radius: 8px;
 }
 
-.board-canvas {
-  position: relative;
-  block-size: calc(100vh - 170px);
-  min-block-size: 420px;
-  overflow: hidden;
-  border: 1px solid var(--hb-border);
-  border-radius: var(--hb-radius);
+/* نوتیسِ شناور — بالا-وسط، مستقل از جهت (inset-inline:0 + margin auto). */
+.board-notice--float {
+  position: absolute;
+  inset-block-start: var(--hb-overlay-gap, 16px);
+  inset-inline: 0;
+  z-index: 11;
+  margin-inline: auto;
+  inline-size: fit-content;
+  max-inline-size: min(90%, 460px);
+  background: var(--hb-bg);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
 }
 
 /* روکشِ استروکِ قلمِ محلی — کلیک به بوم می‌رسد (pointer-events:none). زیرِ نوار ابزار. */

@@ -7,6 +7,34 @@ import { useCreateFolder, useDeleteFolder, useFolders, useRenameFolder } from ".
 import type { Selection } from "./selection.ts";
 
 /**
+ * آیکون‌های خطیِ سایدبار — تک‌رنگ (`currentColor`، پس با حالتِ فعال/هاور هم‌رنگ می‌شوند)،
+ * به‌جای ایموجیِ درون‌متن تا در یک ستون تراز شوند (نظمِ سبکِ میرو). فقط تزئینی (`aria-hidden`).
+ */
+const IconBoards = (
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+  </svg>
+);
+const IconStar = (
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 3.5l2.5 5.2 5.7.5-4.3 3.8 1.3 5.6L12 15.9 6.8 18.6l1.3-5.6-4.3-3.8 5.7-.5z" />
+  </svg>
+);
+const IconTrash = (
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9L17.5 7" />
+  </svg>
+);
+const IconFolder = (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3.5 7a2 2 0 012-2H9l2 2h7.5a2 2 0 012 2v7.5a2 2 0 01-2 2h-13a2 2 0 01-2-2z" />
+  </svg>
+);
+
+/**
  * ریلِ پیمایشِ داشبورد — دسته‌های سراسری (همه/نشان‌شده/سطل) + فولدرهای **هر تیم**.
  * فولدرها per-team اند، پس برای هر تیمِ کاربر یک `TeamFolders` (که hookِ فولدرِ خودش را دارد —
  * hook در حلقه ممنوع است، پس فرزندِ جدا).
@@ -22,22 +50,28 @@ export function FolderNav({
   return (
     <aside className="folder-nav" aria-label="پیمایشِ بوردها">
       <nav className="folder-nav__group">
-        <NavItem active={selection.kind === "all"} onClick={() => onSelect({ kind: "all" })}>
+        <NavItem icon={IconBoards} active={selection.kind === "all"} onClick={() => onSelect({ kind: "all" })}>
           همه‌ی بوردها
         </NavItem>
         <NavItem
+          icon={IconStar}
           active={selection.kind === "favorites"}
           onClick={() => onSelect({ kind: "favorites" })}
         >
-          ★ نشان‌شده‌ها
+          نشان‌شده‌ها
         </NavItem>
-        <NavItem active={selection.kind === "trash"} onClick={() => onSelect({ kind: "trash" })}>
-          🗑 سطلِ بازیافت
+        <NavItem icon={IconTrash} active={selection.kind === "trash"} onClick={() => onSelect({ kind: "trash" })}>
+          سطلِ بازیافت
         </NavItem>
       </nav>
-      {teams.map((team) => (
-        <TeamFolders key={team.id} team={team} selection={selection} onSelect={onSelect} />
-      ))}
+      {teams.length > 0 && (
+        <div className="folder-nav__section">
+          <p className="folder-nav__section-label">فضاها</p>
+          {teams.map((team) => (
+            <TeamFolders key={team.id} team={team} selection={selection} onSelect={onSelect} />
+          ))}
+        </div>
+      )}
     </aside>
   );
 }
@@ -45,10 +79,12 @@ export function FolderNav({
 function NavItem({
   active,
   onClick,
+  icon,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -58,7 +94,12 @@ function NavItem({
       aria-current={active ? "page" : undefined}
       onClick={onClick}
     >
-      {children}
+      {icon && (
+        <span className="nav-item__icon" aria-hidden="true">
+          {icon}
+        </span>
+      )}
+      <span className="nav-item__label">{children}</span>
     </button>
   );
 }
@@ -196,7 +237,10 @@ function TeamFolders({
                     })
                   }
                 >
-                  📁 {f.name}
+                  <span className="nav-item__icon" aria-hidden="true">
+                    {IconFolder}
+                  </span>
+                  <span className="nav-item__label">{f.name}</span>
                 </button>
                 <span className="folder-nav__folder-actions">
                   <button

@@ -65,6 +65,18 @@ export function useRestoreBoard() {
   });
 }
 
+/** تغییرِ نامِ بورد (editor+ — api گیت می‌کند). */
+export function useRenameBoard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => api.boards.update(id, { title }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["boards"] });
+      void qc.invalidateQueries({ queryKey: ["board"] }); // کشِ boards.get پوسته‌ی بورد
+    },
+  });
+}
+
 /** جابه‌جاییِ بورد به یک فولدر، یا `null` برای خروج از فولدر. */
 export function useMoveBoard() {
   const qc = useQueryClient();

@@ -41,15 +41,20 @@ import {
 import { t } from "@hamboom/i18n";
 import type { HbElement, HbStickyColor } from "@hamboom/shared-types";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { type ChangeEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 
 import { api } from "../api/client.ts";
 import { errorMessage } from "../api/error-message.ts";
 import { useSession } from "../auth/session-context.ts";
+import { useRenameBoard, useTrashBoard } from "../dashboard/boards-queries.ts";
+import { BoardMenu } from "./BoardMenu.tsx";
 import { createGestureTracker } from "./gesture-tracker.ts";
 import { colorForId } from "./presence-color.ts";
+
+/** دسته‌ی undoِ Yjs (از getterِ `adapter.undo`) — بدونِ importِ تایپِ جدا، از خودِ adapter مشتق می‌شود. */
+type UndoScope = NonNullable<YjsSyncAdapter["undo"]>;
 
 /** نوعِ apiِ موتور — از خودِ propِ `onReady` مشتق می‌شود (نه تعریفِ موازی). */
 type CanvasApi = Parameters<NonNullable<HamboomCanvasProps["onReady"]>>[0];
@@ -200,6 +205,18 @@ export function BoardPage() {
   // ★ واریانتِ شکل/کانکتور (پوششِ بیضی/لوزی/خطِ نوارِ نیتیو) — فلای‌اوت انتخابشان می‌کند.
   const [shapeKind, setShapeKind] = useState<HbShapeKind>("rectangle");
   const [connectorKind, setConnectorKind] = useState<ConnectorKind>("arrow");
+  // ★ منوی سه‌نقطه + تنظیم‌های نمایشِ **محلی** (با همتاها هم‌گام نمی‌شوند — مثلِ View منوی میرو).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showGrid, setShowGrid] = useState(false); // gridModeEnabled — پیش‌فرضِ موتور خاموش
+  const [snapEnabled, setSnapEnabled] = useState(true); // objectsSnapModeEnabled — initialData روشن
+  const [showPeerCursors, setShowPeerCursors] = useState(true); // گیتِ رندرِ PeerCursors
+  // تغییرِ نامِ درجا (مثلِ «Click to rename» میرو) — از عنوان یا از منو باز می‌شود.
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+
+  const navigate = useNavigate();
+  const renameBoard = useRenameBoard();
+  const trashBoard = useTrashBoard();
 
   const paneRef = useRef<HTMLDivElement | null>(null);
   // outbound را در ref نگه می‌داریم تا هندلرهای سطحِ render (مکان‌نما/ابزار) به آن برسند.
@@ -217,6 +234,9 @@ export function BoardPage() {
   const selectToolRef = useRef<((id: ToolId) => void) | null>(null);
   const flushLocalRef = useRef<(() => void) | null>(null);
   const showNoticeRef = useRef<((message: string) => void) | null>(null);
+  // دسته‌ی undoِ Yjs — بعد از اتصال ست می‌شود؛ منوی سه‌نقطه واگرد/ازنو را از همین می‌زند
+  // (همان مسیرِ `Ctrl+Z`، چون `adapter.undo` خودش بعدِ undo/redo روی همتاها flush می‌کند).
+  const undoScopeRef = useRef<UndoScope | null>(null);
   // لایه‌ی روکش: قلمِ محلی + دنباله‌ی لیزرِ همتاها. یک redraw برای هر دو (وگرنه با clearRect
   // همدیگر را پاک می‌کنند). refها تا redrawِ سطحِ effect/رویداد آخرین مقدار را ببیند.
   const penPointsRef = useRef<StrokePoint[] | null>(null);
@@ -519,11 +539,60 @@ export function BoardPage() {
     }, 0);
   }, []);
 
-  // نما را از `onScrollChange` نگه می‌داریم (مقدارِ اولیه از getAppState، بعد زنده).
+  // ── منوی سه‌نقطه ────────────────────────────────────────────────────────
+  // شبکه/چسبیدن روی `appState`ِ موتور اند — **محلی** (با همتاها هم‌گام نمی‌شوند) و با
+  // `captureUpdate:"NEVER"` تا ورودیِ undo نسازند. مرجعِ حقیقت خودِ getAppState است.
+  const toggleGrid = useCallback(() => {
+    const engine = canvasApiRef.current;
+    if (!engine) return;
+    const next = !engine.getAppState().gridModeEnabled;
+    engine.updateScene({ appState: { gridModeEnabled: next }, captureUpdate: "NEVER" });
+    setShowGrid(next);
+  }, []);
+
+  const toggleSnap = useCallback(() => {
+    const engine = canvasApiRef.current;
+    if (!engine) return;
+    const next = !engine.getAppState().objectsSnapModeEnabled;
+    engine.updateScene({ appState: { objectsSnapModeEnabled: next }, captureUpdate: "NEVER" });
+    setSnapEnabled(next);
+  }, []);
+
+  const toggleCursors = useCallback(() => setShowPeerCursors((v) => !v), []);
+
+  // واگرد/ازنو از همان دسته‌ی Yjs که `Ctrl+Z` می‌زند (ADR-035)؛ بعد از اتصال موجود است.
+  const doUndo = useCallback(() => undoScopeRef.current?.undo(), []);
+  const doRedo = useCallback(() => undoScopeRef.current?.redo(), []);
+
+  // تغییرِ نام — از کلیکِ عنوان یا از منو. mutation کشِ `["board"]`/`["boards"]` را باطل می‌کند.
+  const startRename = useCallback(() => {
+    setMenuOpen(false);
+    setRenameValue(board.data?.title ?? "");
+    setRenaming(true);
+  }, [board.data?.title]);
+
+  const submitRename = useCallback(() => {
+    const title = renameValue.trim();
+    setRenaming(false);
+    if (title.length === 0 || title === board.data?.title) return;
+    renameBoard.mutate({ id: boardId, title });
+  }, [renameValue, board.data?.title, boardId, renameBoard]);
+
+  // حذف → سطلِ بازیافت (فقط owner؛ api گیت می‌کند)، سپس بازگشت به داشبورد.
+  const deleteBoard = useCallback(() => {
+    const title = board.data?.title ?? "این بورد";
+    if (!window.confirm(`«${title}» به سطلِ بازیافت منتقل شود؟ از داشبورد قابلِ بازیابی است.`)) return;
+    trashBoard.mutate(boardId, { onSuccess: () => void navigate({ to: "/dashboard" }) });
+  }, [board.data?.title, boardId, trashBoard, navigate]);
+
+  // نما را از `onScrollChange` نگه می‌داریم (مقدارِ اولیه از getAppState، بعد زنده)؛ و
+  // تنظیم‌های نمایشِ منو (شبکه/چسبیدن) را همان‌جا با حالتِ واقعیِ موتور هم‌تراز می‌کنیم.
   useEffect(() => {
     if (!canvasApi) return;
     const initial = canvasApi.getAppState();
     setViewport({ scrollX: initial.scrollX, scrollY: initial.scrollY, zoom: initial.zoom.value });
+    setShowGrid(initial.gridModeEnabled);
+    setSnapEnabled(initial.objectsSnapModeEnabled);
     return canvasApi.onScrollChange((scrollX, scrollY, zoom) =>
       setViewport({ scrollX, scrollY, zoom: zoom.value }),
     );
@@ -700,9 +769,12 @@ export function BoardPage() {
         outbound = ob;
         outboundRef.current = ob; // هندلرهای سطحِ render از این می‌خوانند.
         // ★★ Ctrl+Z باید به UndoManager برسد، نه تاریخچه‌ی موتور (ADR-035، اجباری).
-        if (paneRef.current && adapter.undo) {
-          unbindUndo = bindUndoShortcuts(paneRef.current, adapter.undo);
+        //    همان دسته را در ref هم می‌گذاریم تا منوی سه‌نقطه واگرد/ازنو را از آن بزند.
+        const undoScope = adapter.undo;
+        if (paneRef.current && undoScope) {
+          unbindUndo = bindUndoShortcuts(paneRef.current, undoScope);
         }
+        undoScopeRef.current = undoScope;
 
         // ── ابزارهای سفارشی (گام ۹٫۱) — بعد از اتصال، چون image/pen به outbound
         //    نیاز دارند. هر سه برنامه‌ای به صحنه می‌نویسند، پس در callbackِ پایان
@@ -765,6 +837,7 @@ export function BoardPage() {
       if (laserIdleRef.current) clearTimeout(laserIdleRef.current);
       offChange();
       unbindUndo?.();
+      undoScopeRef.current = null;
       // ابزارها listenerِ document دارند؛ باید نابود شوند (StrictMode: دو نمونه نماند).
       stickyToolRef.current?.destroy();
       stickyToolRef.current = null;
@@ -793,24 +866,12 @@ export function BoardPage() {
     );
   }
 
+  const myRole = board.data?.myRole;
+  const canEditBoard = myRole === "owner" || myRole === "editor";
+  const isOwner = myRole === "owner";
+
   return (
     <div className="board-shell">
-      <div className="board-topbar">
-        <Link to="/dashboard" className="back-link">
-          ← داشبورد
-        </Link>
-        <span className="board-title">{board.data?.title ?? "بوم"}</span>
-        <div className="board-status">
-          {readOnly && <span className="role-badge">فقط‌خواندنی</span>}
-          <span className="board-status__save">{saveLabel(save)}</span>
-          <span className="board-status__conn">{connectionLabel(connection)}</span>
-        </div>
-      </div>
-      {notice !== null && (
-        <div className="board-notice" role="status">
-          {notice}
-        </div>
-      )}
       <div className="board-canvas" ref={paneRef}>
         <HamboomCanvas
           onReady={setCanvasApi}
@@ -820,8 +881,8 @@ export function BoardPage() {
         />
         {/* روکشِ استروکِ قلمِ محلی — pointer-events:none، پس کلیک به بوم می‌رسد. */}
         <canvas ref={overlayRef} className="board-draw-overlay" />
-        {/* لایه‌ی روکشِ مکان‌نمای همتاها — pointer-events:none. */}
-        <PeerCursors peers={peers} project={projectPeer} />
+        {/* مکان‌نمای زنده‌ی همتاها — با تنظیمِ منو گیت می‌شود (فقط cursors، نوارِ حضور جداست). */}
+        {showPeerCursors && <PeerCursors peers={peers} project={projectPeer} />}
         {/* کنترلِ بزرگ‌نمایی — جای فوترِ نیتیوِ پنهان‌شده (برای viewer هم، ناوبری است). */}
         <ZoomControl
           zoom={viewport.zoom}
@@ -829,6 +890,100 @@ export function BoardPage() {
           onZoomOut={() => applyZoom(-1)}
           onFit={fitToScreen}
         />
+
+        {/* ── خوشه‌ی کنترلِ شناورِ بالا-شروع (مثلِ میرو) — بوم کلِ صفحه، کنترل‌ها روی آن ── */}
+        <div className="board-chrome">
+          <Link
+            to="/dashboard"
+            className="board-chrome__back"
+            aria-label="بازگشت به داشبورد"
+            title="داشبورد"
+          >
+            ←
+          </Link>
+          {renaming ? (
+            <form
+              className="board-chrome__rename"
+              onSubmit={(event) => {
+                event.preventDefault();
+                submitRename();
+              }}
+            >
+              <input
+                className="input input--sm"
+                value={renameValue}
+                onChange={(event) => setRenameValue(event.target.value)}
+                onBlur={submitRename}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setRenaming(false);
+                }}
+                aria-label="نامِ بورد"
+                autoFocus
+              />
+            </form>
+          ) : canEditBoard ? (
+            <button
+              type="button"
+              className="board-chrome__title"
+              onClick={startRename}
+              title="کلیک برای تغییرِ نام"
+            >
+              {board.data?.title ?? "بوم"}
+            </button>
+          ) : (
+            <span className="board-chrome__title board-chrome__title--static">
+              {board.data?.title ?? "بوم"}
+            </span>
+          )}
+          {readOnly && <span className="role-badge">فقط‌خواندنی</span>}
+          <span
+            className="board-chrome__status"
+            title={`${connectionLabel(connection)} · ${saveLabel(save)}`}
+          >
+            <span
+              className="board-chrome__dot"
+              style={{ background: connDotColor(connection) }}
+              aria-hidden="true"
+            />
+            <span className="board-chrome__status-text">{statusText(connection, save)}</span>
+          </span>
+          <div className="board-chrome__menu-wrap">
+            <button
+              type="button"
+              className="board-chrome__menu-btn"
+              aria-label="گزینه‌های بورد"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((value) => !value)}
+            >
+              ⋯
+            </button>
+            {menuOpen && (
+              <BoardMenu
+                canEdit={canEditBoard}
+                isOwner={isOwner}
+                showGrid={showGrid}
+                snapEnabled={snapEnabled}
+                showPeerCursors={showPeerCursors}
+                onToggleGrid={toggleGrid}
+                onToggleSnap={toggleSnap}
+                onToggleCursors={toggleCursors}
+                onUndo={doUndo}
+                onRedo={doRedo}
+                onRename={startRename}
+                onDelete={deleteBoard}
+                onClose={() => setMenuOpen(false)}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* نوتیسِ شناورِ خطای پروتکل — بالا-وسط، روی بوم (نه در جریانِ صفحه). */}
+        {notice !== null && (
+          <div className="board-notice board-notice--float" role="status">
+            {notice}
+          </div>
+        )}
         {/* ابزارِ فعالِ همتاها (گام ۹٫۱) — بالا-انتها (inline-end)، جدا از نوارِ inline-start. */}
         {peers.length > 0 && (
           <div className="board-peers" aria-label="همکاران">
@@ -923,5 +1078,27 @@ function saveLabel(state: SaveState | null): string {
       return "در حال ذخیره…";
     case "unsaved":
       return "ذخیره‌نشده";
+  }
+}
+
+/** یک متنِ کوتاهِ وضعیت برای خوشه‌ی جمع‌وجور: مشکلِ اتصال مهم‌تر است، وگرنه وضعیتِ ذخیره. */
+function statusText(conn: ConnectionState | null, save: SaveState | null): string {
+  if (conn && conn.status !== "connected") return connectionLabel(conn);
+  const label = saveLabel(save);
+  return label.length > 0 ? label : connectionLabel(conn);
+}
+
+/** رنگِ نقطه‌ی وضعیت (سلامتِ اتصال در یک نگاه) — رنگ‌های معناییِ سازگار با روشن/تیره. */
+function connDotColor(conn: ConnectionState | null): string {
+  if (!conn) return "#9aa1ad";
+  switch (conn.status) {
+    case "connected":
+      return "#3fb950";
+    case "connecting":
+    case "reconnecting":
+      return "#d29922";
+    case "offline":
+    case "error":
+      return "#d14343";
   }
 }

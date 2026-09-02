@@ -119,6 +119,33 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 - **viewer:** نوار ابزار/پالت/روکش فقط برای **ویرایشگر** رندر می‌شوند (`ZoomControl` برای همه — ناوبری است)؛
   `selectTool` هم edit-toolها را برای readOnly گیت می‌کند.
 
+## ★ چیدمانِ رابط — بوردِ تمام‌صفحه + منوی ⋯ + سایدبار (پیش‌فاز ۱۱)
+
+سه پالایشِ رابط، **فقط `apps/web`** (صفر لمسِ M1/M2/shared-types، صفر ADR؛ همه reuse). ★ لیستِ منو **پیش از ساخت**
+به تاییدِ مالک رسید (هر آیتم یک قابلیتِ واقعی).
+
+- **بومِ تمام‌صفحه:** `.board-shell` = `position: fixed; inset: 0` (z-۲۰) — کلِ ویوپورت را می‌گیرد و هدرِ سراسری/پدینگِ
+  `app-main` را می‌پوشاند، **بی‌دست‌زدن به `RootLayout`** (خودکفا، بی‌side-effectِ سراسری). بوم و همه‌ی کنترل‌ها داخلِ
+  `.board-canvas`ِ `position:relative` شناورند.
+- **خوشه‌ی کنترل (`.board-chrome`):** بالا-شروع، z-۱۲ (بالای روکش‌های canvas-core: نوار/زوم=۶، مکان‌نما=۷، context-menu=۱۰).
+  بازگشت به داشبورد + **عنوان (کلیک = تغییرِ نامِ درجا، مثلِ «Click to rename» میرو)** + نشانگرِ وضعیت (نقطه‌ی رنگی +
+  متنِ کوتاه) + دکمه‌ی `⋯`. نوتیسِ خطا شناور شد (`.board-notice--float`، وسطِ بالا با `inset-inline:0 + margin auto`).
+- **منوی ⋯ ([`BoardMenu.tsx`](src/board/BoardMenu.tsx)):** فقط قابلیت‌های **واقعی**، هیچ فاز-۱۰ی (نه Export/History/
+  Template/Comment)، **نه Duplicate** (endpointش content-less است) و **نه ★** (به‌خواستِ مالک). استایل از `.card-menu`ِ
+  `BoardCardMenu` reuse. آیتم‌ها:
+  - **نمایش (محلی، هم‌گام‌نمی‌شود):** شبکه (`gridModeEnabled`)/چسبیدن (`objectsSnapModeEnabled`) با
+    `updateScene({appState}, captureUpdate:"NEVER")` · مکان‌نمای همکاران (فقط گیتِ رندرِ `PeerCursors`؛ نوارِ حضور همیشه
+    هست). ⚠️ `appState` اصلاً sync نمی‌شود (فقط `elements`)، پس این‌ها per-user اند — عمدی و صادقانه برچسب‌خورده.
+  - **ویرایش (ویرایشگر+):** واگرد/ازنو از `undoScopeRef` (= `adapter.undo`، **همان مسیرِ `Ctrl+Z`** که خودش
+    `flushRemote` می‌زند). صفر منطقِ نو.
+  - **بورد:** تغییرِ نام (`useRenameBoard`→`PATCH /boards`، ویرایشگر+، از عنوان یا منو) · حذف (`useTrashBoard`→`DELETE
+    /boards`→بازگشت به داشبورد، فقط owner، با confirm). گیتِ نقش از `board.data.myRole`.
+- **سایدبارِ داشبورد ([`FolderNav.tsx`](src/dashboard/FolderNav.tsx)):** فقط نظم — آیکون‌های خطیِ تک‌رنگِ **هم‌تراز**
+  (`.nav-item__icon`/`.nav-item__label`) جای ایموجیِ درون‌متن + برچسبِ بخشِ **«فضاها»** + سرتیترِ تیمِ روشن‌تر +
+  تورفتگیِ فولدر. ⚠️ **بدونِ `letter-spacing`** روی برچسبِ فارسی (خطِ متصل می‌شکند). صفر فیچرِ نو.
+- ⚠️ **screenshot در این محیط time-out می‌کند** (بومِ excalidraw روی GPU composite)؛ اثباتِ رابط با اندازه‌گیریِ
+  `getBoundingClientRect` + کلیکِ واقعی + `read_network_requests` انجام شد، نه صرفاً چشمی.
+
 ## ★★ درسِ اندازه‌گیریِ بوم در مرورگر (فاز ۸٫۴)
 
 اثباتِ رفتارِ بوم دو تله دارد که هر دو وقتم را گرفتند:
