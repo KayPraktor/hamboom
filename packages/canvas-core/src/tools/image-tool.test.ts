@@ -19,6 +19,8 @@ function fakeApi() {
     ids: string[];
   }> = [];
   const addFilesCalls: Array<Record<string, unknown>> = [];
+  // ترتیبِ درهم‌بافته‌ی فراخوانی‌ها — تا بتوان «addFiles بعد از flip» را قفل کرد (M3 گام ۱۱٫۲).
+  const callSeq: string[] = [];
 
   const api = {
     getSceneElements: () => elements,
@@ -45,9 +47,11 @@ function fakeApi() {
           : null,
         ids: elements.map((e) => e.id as string),
       });
+      callSeq.push(`update:${data.captureUpdate ?? "?"}`);
     },
     addFiles: (files: Array<Record<string, unknown>>) => {
       addFilesCalls.push(...files);
+      callSeq.push("addFiles");
     },
   } as unknown as ExcalidrawImperativeAPI;
 
@@ -55,6 +59,7 @@ function fakeApi() {
     api,
     updateSceneCalls,
     addFilesCalls,
+    callSeq,
     getElements: () => elements,
   };
 }
@@ -93,7 +98,7 @@ describe("createImageTool — orchestration", () => {
     vi.restoreAllMocks();
   });
 
-  it("★ جریان کامل: pending → addFiles → saved، در دو ژست undo درست", async () => {
+  it("★ جریان کامل: pending → saved → addFiles، در دو ژست undo درست", async () => {
     const f = fakeApi();
     const o = fakeOutbound(["f_1"]);
     const tool = createImageTool({
@@ -125,6 +130,11 @@ describe("createImageTool — orchestration", () => {
       dataURL: "blob:f_1",
       mimeType: "image/png",
     });
+
+    // ★★ ترتیبِ حیاتی (M3 گام ۱۱٫۲، لمسِ M1 با تاییدِ مالک): `addFiles` باید **بعد از** flip به saved بیاید.
+    //    اگر روی عنصرِ pending ثبت شود (ترتیبِ قبلی)، موتور تصویر را بعد از flip رندر نمی‌کند و «قابِ خالی»
+    //    می‌مانَد تا reload — در مرورگر سنجیده شد. این ترتیب همان مسیرِ بارگذاریِ سند/همتاست (اول saved، بعد addFiles).
+    expect(f.callSeq).toEqual(["update:IMMEDIATELY", "update:NEVER", "addFiles"]);
   });
 
   it("★ ابعاد به کادر بیشینه جا می‌شود و درج، وسطِ نقطه می‌نشیند", async () => {

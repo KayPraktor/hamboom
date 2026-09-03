@@ -1,6 +1,36 @@
 # PROGRESS — M3 (`backend-api` + اتصالِ `apps/web`)
 
-تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۶/۱۳ (2026-09-02)
+تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۶/۱۴ (2026-09-03)
+
+## ★★ فاز ۱۱ (ظرفیت + تصویر) — ✅ **۱۱٫۱ (ADR-048) + ۱۱٫۲ تصویر** (۱۴۰۵/۰۶/۱۴)
+
+### گام ۱۱٫۱ — سقفِ حافظه / room affinity → **ثبتِ trigger** (تاییدِ مالک ۱۴۰۵/۰۶/۱۳)
+تصمیمِ مالک: **ثبتِ trigger، نه پیاده‌سازی.** [ADR-048](ARCHITECTURE_DECISIONS.md#adr-048) فاز ۳ی ADR-006
+(room affinity) را به **M5** موکول کرد **با عدد**: ۷۶MB/بوردِ ۵۰۰۰عنصری → ظرفیتِ نود حافظه‌محور (heapِ ۴GB ≈ ~۴۰
+بورد)؛ تریگرِ فعال‌سازی = **≥۲ رِپلیکا + حافظه‌ی مقیمِ یک نود >~۶۰٪ heap**. علتِ تعویق: M3 تک‌نود/لوکال (P3)،
+`sessionAffinity` مالِ Service/K8s = M5. جزئیات در ADR-048.
+
+### گام ۱۱٫۲ — درجِ تصویر از راهِ storageِ واقعی + **رفعِ سه باگِ نمایش**
+**چه شد:** پورتِ داراییِ واقعی ([`asset-transport.ts`](apps/web/src/board/asset-transport.ts)) وصل شد و نمایشِ
+تصویر — که **هرگز در مرورگر اثبات نشده بود** (تست‌ها Nodeِ mock بودند) — درست شد. اثبات در مرورگر (screenshot +
+network): **آپلود، ماندگاری، و نمایشِ فوری + همتا + reload همه کار می‌کنند.**
+
+- **آپلود:** sha256 → presign → POST به S3 (فیلدها، بعد `file`؛ ADR-044) → commit (سرور بایت را بازمی‌سنجد). اثبات: presign ۲۰۰ → S3 ۲۰۴ → commit ۲۰۰.
+
+| باگِ نمایش | لایه | رفع |
+|---|---|---|
+| `assets.resolve` با `redirect:"manual"` در **مرورگر** پاسخِ **opaque** (status 0، بی‌Location) می‌داد → URL هرگز خوانده نمی‌شد | **sdk (فاز ۶)** | `resolveBlob` (redirect:follow، **بایت** می‌دهد)؛ مصرف‌کننده `data:URI` می‌سازد. تستِ mockِ Node سبز بود چون manual در Node opaque نیست — کلاسیکِ Node↔browser |
+| `createCanvasBinding` **بدونِ resolver** صدا زده می‌شد → `registerSceneAssets` اجرا نمی‌شد → تصویرِ همتا/reload «قابِ خالی» (کامنتِ خودِ canvas-binding پیش‌بینی‌اش کرده بود) | **apps/web** | یک نمونه transport به **هردو** adapter و binding |
+| موتور `blob:`/URLِ httpِ خام را در `addFiles` رندر نمی‌کرد (فقط placeholder) | **apps/web** | `data:URI` — فرمتِ نیتیوِ excalidraw |
+
+**★ لمسِ M1 (image-tool، تاییدِ صریحِ مالک ۱۴۰۵/۰۶/۱۴ — ثبت مثلِ B-1):**
+
+| لمس | تغییر | چرا این شکل | اثبات |
+|---|---|---|---|
+| **M1** [`image-tool.ts`](packages/canvas-core/src/tools/image-tool.ts) | `addFiles` را **بعد از** flip به «saved» بردم (نه قبلش) | ثبتِ باینری روی عنصرِ **pending** و بعد flip → موتور بعدِ flip رندر نمی‌کند و «قابِ خالی» می‌مانَد تا reload؛ مسیرِ **بارگذاریِ سند/همتا** برعکس است (عنصر از اول saved، بعد addFiles) و درست رندر می‌کند — همان ترتیب را گرفتم. undo دست‌نخورد (addFiles تغییرِ صحنه نیست) | مرورگر: تصویرِ «LIVE» **بلافاصله** رندر شد (نه placeholder). تستِ ترتیب در [`image-tool.test.ts`](packages/canvas-core/src/tools/image-tool.test.ts) (`callSeq`) قفلش کرد — با **move-break** قرمز شد |
+
+**اثبات:** `pnpm verify` سبز (هر ۸ گیت؛ ۴۷۶ تستِ canvas-core). در مرورگر با api/realtime/storageِ واقعی: آپلود،
+نمایشِ **فوری**، و رندرِ **۷/۷** تصویر بعد از reload. **قدمِ بعدِ ۱۱٫۲:** smokeِ کامل + READMEها + `m4-handoff.md`.
 
 ## ★★ چیدمانِ رابط (`apps/web` — پیش‌فاز ۱۱) — ✅ **بوردِ تمام‌صفحه + منوی ⋯ + سایدبار** (۱۴۰۵/۰۶/۱۳)
 

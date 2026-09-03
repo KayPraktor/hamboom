@@ -160,21 +160,14 @@ export function createImageTool(options: ImageToolOptions): ImageTool {
       select: [pending.id],
     });
 
-    // ۴) resolve (کش‌شونده) → ثبت باینری در موتور.
+    // ۴) resolve (کش‌شونده). ⚠️ **خودِ `addFiles` را بعد از flip به «saved» می‌زنیم (گام ۶)، نه اینجا.**
+    //    اگر باینری روی عنصرِ **pending** ثبت شود و بعد flip شود، موتور تصویر را رندر نمی‌کند و «قابِ خالی»
+    //    می‌مانَد تا reload — مسیرِ **بارگذاریِ سند/همتا** برعکس عمل می‌کند (عنصر از اول saved، بعد addFiles)
+    //    و درست رندر می‌شود. پس همان ترتیب را می‌گیریم: اول saved، بعد addFiles (سنجیده در M3 گام ۱۱٫۲، مرورگر).
     let url = urlCache.get(asset.fileId);
     if (url === undefined) {
       url = await outbound.resolveAssetUrl(asset.fileId);
       urlCache.set(asset.fileId, url);
-    }
-    if (url) {
-      api.addFiles([
-        {
-          id: asset.fileId,
-          dataURL: url,
-          mimeType: file.type || asset.mime,
-          created: Date.now(),
-        },
-      ] as never);
     }
 
     // ۵) status → saved، بدون ثبت جداگانه (`NEVER`) — خطِ پایه به «saved» جلو
@@ -189,6 +182,18 @@ export function createImageTool(options: ImageToolOptions): ImageTool {
       api,
       api.getSceneElements().map((el) => (el.id === pending.id ? toExcalidraw(saved) : el)),
     );
+
+    // ۶) حالا که عنصر «saved» است، باینری را ثبت کن — موتور همان لحظه رندرش می‌کند (همان ترتیبِ مسیرِ reload).
+    if (url) {
+      api.addFiles([
+        {
+          id: asset.fileId,
+          dataURL: url,
+          mimeType: file.type || asset.mime,
+          created: Date.now(),
+        },
+      ] as never);
+    }
 
     onInserted?.(saved);
     return saved;

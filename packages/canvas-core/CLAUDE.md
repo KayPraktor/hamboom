@@ -111,6 +111,11 @@ Playwright یک Chromiumِ **واقعی** اجرا می‌کند که composite 
   آیکون در [`toolbar-icons.tsx`](src/ui/toolbar-icons.tsx) + کلیدِ `tool.laser` در i18n — نوار **۱۲ ابزار** شد
   (تست‌های شمارش به‌روز). خودِ **رفتارِ** لیزر سمتِ مصرف‌کننده است (`emitEphemeral({kind:"laser"})` + رندرِ روکش)؛ اینجا
   فقط مدلِ ابزار. `EphemeralPayload` لیزر از M2 در قرارداد بود.
+- ★ **`image-tool` — `addFiles` بعد از flip به saved** (M3 گام ۱۱٫۲، تاییدِ مالک ۱۴۰۵/۰۶/۱۴): ترتیبِ پیشین
+  (pending → addFiles → saved) باعث می‌شد **آپلودکننده تصویرِ خودش را رندرشده نبیند** (قابِ خالی تا reload) — چون
+  موتور باینریِ ثبت‌شده روی عنصرِ pending را بعدِ flip به saved رندر نمی‌کند. حالا (pending → saved → **addFiles**)
+  همان ترتیبِ مسیرِ بارگذاریِ سند/همتاست و فوری رندر می‌شود. undo دست‌نخورد (addFiles تغییرِ صحنه/ژست نیست). نگهبان:
+  ادعای `callSeq` در [`image-tool.test.ts`](src/tools/image-tool.test.ts) (با move-break قرمز شد). اثباتِ رندر مرورگر است.
 - **پکیج JIT است:** `exports` مستقیماً به `src/*.ts` اشاره می‌کند و build ندارد.
   مصرف‌کننده‌ها (همه Vite هستند) خودشان transpile می‌کنند. الگوی internal package
   در Turborepo. اگر روزی یک مصرف‌کننده‌ی Node خالص اضافه شد، آن‌وقت build لازم می‌شود.
