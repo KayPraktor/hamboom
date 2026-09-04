@@ -224,7 +224,8 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   - **`shared-types`:** claimهای `rtToken` → به `shared-types` (تاییدِ ADR-021، ۱۴۰۵/۰۵/۲۴)؛
     `CommentPin` عمداً در `ydoc-schema` مانْد؛ فقط DTOهای **مصرف‌کننده‌دار** اضافه می‌شوند، نه کلِ §۵٫۱.
   - ⚠️ **رفعِ سه یافته‌ی M2 که به `canvas-core`/`canvas-sync` دست می‌زند تک‌تک تاییدِ مالک می‌خواهد** (گام ۸٫۵).
-  - **وضعیت الان:** فاز ۰–۷ کامل ✅ — فاز ۳ (`storage`/`assets`)، فاز ۴ (`auth-core`)، **فاز ۵ (`apps/api`)** (کلِ
+  - **★★ وضعیت الان: M3 تحویل شد** (۱۴۰۵/۰۶/۱۴) — فاز ۰–۹ + ۱۱ کامل ✅ (فاز ۱۰ موکولِ M4). **ورودیِ M4:**
+    [`docs/m4-handoff.md`](docs/m4-handoff.md). جزئیاتِ فازها (تاریخی) — فاز ۳ (`storage`/`assets`)، فاز ۴ (`auth-core`)، **فاز ۵ (`apps/api`)** (کلِ
     سطحِ REST + migration + OpenAPI 3.1 + Idempotency؛ MinIO روی پورتِ ۹۸۰۰)، **فاز ۶ (`packages/sdk`)** (کلاینتِ
     typedِ REST؛ [ADR-045](ARCHITECTURE_DECISIONS.md#adr-045): api پاسخ را به شکلِ **دقیقِ DTOی shared-types** می‌دهد)،
     و **فاز ۷ (اتصالِ `apps/realtime`) تمام شد (۱۴۰۵/۰۶/۱۰):** چهار پورت پیاده و تزریق شدند — `main.ts` حالا
@@ -268,7 +269,16 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
     /boards`، owner). **Duplicate و ★ عمداً حذف شدند** (تکثیرِ content-less گمراه‌کننده؛ تاییدِ مالک). **(۳)** سایدبارِ
     داشبورد: آیکون‌های خطیِ هم‌تراز جای ایموجی + برچسبِ بخشِ «فضاها» + سرتیترِ روشن‌تر. **rename سرتاسر اثبات شد**
     (`PATCH→۲۰۰`→refetch→عنوان). `pnpm verify` سبز. ⚠️ screenshot در این محیط time-out می‌کند (بومِ excalidraw روی
-    GPU)، پس اثبات با اندازه‌گیریِ DOM + کلیکِ واقعی + بازرسیِ شبکه. **قدمِ بعد:** فاز ۱۱ (فاز ۱۰ موکول).
+    GPU)، پس اثبات با اندازه‌گیریِ DOM + کلیکِ واقعی + بازرسیِ شبکه.
+  - **★★ فاز ۱۱ (ظرفیت + تصویر + تحویل) تمام شد — M3 تحویل شد (۱۴۰۵/۰۶/۱۴):** **۱۱٫۱** ظرفیت →
+    [ADR-048](ARCHITECTURE_DECISIONS.md#adr-048) (room affinity به M5 موکول با تریگرِ عددیِ حافظه؛ تصمیمِ مالک).
+    **۱۱٫۲ تصویر:** درجِ تصویر از storageِ واقعی وصل شد و حین آن **سه باگِ نمایش** رفع شد که هرگز در مرورگر اثبات
+    نشده بودند — (۱) `sdk.resolveBlob` (redirect:manual در مرورگر opaque بود)، (۲) `createCanvasBinding` بدونِ
+    resolver («قابِ خالی»)، (۳) `data:URI` (موتور blob:/http را رندر نمی‌کرد)؛ **+ لمسِ M1** (`image-tool` addFiles
+    بعد از saved، تاییدِ مالک، تستِ order قفل). تصویر **فوری + همتا + reload** رندر می‌شود (مرورگر). **۱۱٫۲ تحویل:**
+    ۵ README + [`docs/m4-handoff.md`](docs/m4-handoff.md) + **هر ۷ سنجه‌ی زنده سبز** (postgres+redis+MinIOِ واقعی).
+    `pnpm verify` سبز. **قدمِ بعد:** M4 (billing) — از `m4-handoff.md`. ⚠️ MinIO حالا روی **۹۶۰۰** (۹۸۰۰ به رنجِ
+    excludedِ ویندوز افتاد؛ `.env`ِ محلی)، redis روی **۷۳۷۹**.
 - **★★★ M2 (`realtime-sync`) تمام و تحویل شد** (۱۴۰۵/۰۵/۲۳) — هر ۳۰ گامِ
   [TODO.md](TODO.md) تیک خورده. نقطه‌ی ورودِ M3: [`docs/m3-handoff.md`](docs/m3-handoff.md)
   (چهار پورت، دو موردِ به‌ارث‌رسیده، چهار یافته‌ی M2، سقف‌های اندازه‌گیری‌شده).
