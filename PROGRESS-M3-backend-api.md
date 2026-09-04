@@ -30,7 +30,16 @@ network): **آپلود، ماندگاری، و نمایشِ فوری + همتا 
 | **M1** [`image-tool.ts`](packages/canvas-core/src/tools/image-tool.ts) | `addFiles` را **بعد از** flip به «saved» بردم (نه قبلش) | ثبتِ باینری روی عنصرِ **pending** و بعد flip → موتور بعدِ flip رندر نمی‌کند و «قابِ خالی» می‌مانَد تا reload؛ مسیرِ **بارگذاریِ سند/همتا** برعکس است (عنصر از اول saved، بعد addFiles) و درست رندر می‌کند — همان ترتیب را گرفتم. undo دست‌نخورد (addFiles تغییرِ صحنه نیست) | مرورگر: تصویرِ «LIVE» **بلافاصله** رندر شد (نه placeholder). تستِ ترتیب در [`image-tool.test.ts`](packages/canvas-core/src/tools/image-tool.test.ts) (`callSeq`) قفلش کرد — با **move-break** قرمز شد |
 
 **اثبات:** `pnpm verify` سبز (هر ۸ گیت؛ ۴۷۶ تستِ canvas-core). در مرورگر با api/realtime/storageِ واقعی: آپلود،
-نمایشِ **فوری**، و رندرِ **۷/۷** تصویر بعد از reload. **قدمِ بعدِ ۱۱٫۲:** smokeِ کامل + READMEها + `m4-handoff.md`.
+نمایشِ **فوری**، و رندرِ **۷/۷** تصویر بعد از reload.
+
+### گام ۱۱٫۲ — تحویلِ M3: اسناد + سنجه‌ها ✅
+- **۵ README** (api/auth-core/storage/sdk/web) + **[`docs/m4-handoff.md`](docs/m4-handoff.md)** (نقطه‌ی ورودِ
+  billingِ M4: مدلِ team/subscription، جدول‌های plans/subscriptions/payments/invoices در schema، ارثیه‌های
+  به‌تعویق‌افتاده، و درس‌های روشیِ M3).
+- **★ هر ۷ سنجه‌ی زنده سبز** (durability/compaction/permission/presence/cluster/shutdown/reconnect) روی postgres
+  + redis + MinIOِ واقعی. ⚠️ **درسِ محیطی:** سه سنجه اول روی snapshot **قرمز** شدند چون MinIO بعد از ری‌استارتِ
+  ماشین پایین بود و پورتِ ۹۸۰۰ در رنجِ excludedِ ویندوز افتاده بود؛ MinIO روی **۹۶۰۰** rebind شد (`.env`ِ محلی) و هر
+  سه سبز شدند — همان تله‌ی جابه‌جاییِ پورتِ CLAUDE.md. سرورِ realtime از فاز ۷ **دست‌نخورده** است، پس سنجه‌ها معتبر ماندند.
 
 ## ★★ چیدمانِ رابط (`apps/web` — پیش‌فاز ۱۱) — ✅ **بوردِ تمام‌صفحه + منوی ⋯ + سایدبار** (۱۴۰۵/۰۶/۱۳)
 
