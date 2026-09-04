@@ -13,7 +13,7 @@ import کند (اصل **P4**، [ADR-013](../../ARCHITECTURE_DECISIONS.md#adr-013
 import { createS3ObjectStore } from "@hamboom/storage";
 
 const store = createS3ObjectStore({
-  endpoint: config.S3_ENDPOINT,        // MinIO در dev (پورتِ ۹۸۰۰ روی این ماشین)
+  endpoint: config.S3_ENDPOINT,        // MinIO در dev (پورتِ ۹۶۰۰ روی این ماشین؛ .envِ محلی)
   region, accessKeyId, secretAccessKey, bucket,
   forcePathStyle: true,                // MinIO
 });
@@ -36,8 +36,8 @@ const signedGetUrl = await store.presignGet(key);   // برای `GET /assets/:id
 
 ## ⚠️ تله‌ی محیطیِ ویندوز
 
-MinIO روی این ماشین **۹۸۰۰/۹۸۰۱** است نه ۹۰۰۰/۹۰۰۱ — پورت‌های ۹۰۰۰/۹۰۰۱ در رنجِ excludedِ ویندوز افتاده‌اند
-و `docker` نمی‌تواند bind کند. در `.env`ِ محلی override شده؛ compose/`.env.example` روی پیش‌فرضِ PLAN ماندند.
+MinIO روی این ماشین **۹۶۰۰/۹۶۰۱** است نه ۹۰۰۰/۹۰۰۱ (بود ۹۸۰۰؛ رنجِ excludedِ ویندوز با هر ری‌استارت جابه‌جا
+می‌شود و ۹۸۰۰ داخلش افتاد → ۹۶۰۰). در `.env`ِ محلی override شده؛ compose/`.env.example` روی پیش‌فرضِ PLAN ماندند.
 جزئیات در [CLAUDE.mdِ ریشه](../../CLAUDE.md).
 
 ## دستورات

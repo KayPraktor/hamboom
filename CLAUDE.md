@@ -158,11 +158,12 @@ threshold گذاشت؛ گذاشتنشان بیرونِ گیت یعنی تکرا�
 > (سرویس ویندوز) ۵۴۳۲ را گرفته. در `.env` محلی تنظیم شده؛ `.env.example` و compose
 > روی پیش‌فرض PLAN (۵۴۳۲) ماندند تا روی ماشین تمیز همان PLAN کار کند.
 
-> **MinIO روی این ماشین ۹۸۰۰/۹۸۰۱ است، نه ۹۰۰۰/۹۰۰۱** (M3 گام ۵٫۴) — پورت‌های ۹۰۰۰/۹۰۰۱
-> در **رنجِ excludedِ ویندوز** (Hyper-V) افتاده‌اند (`netsh interface ipv4 show excludedportrange
-> protocol=tcp` → ۸۹۰۶–۹۱۰۵)، پس `docker` نمی‌تواند bind کند («socket... forbidden»)، حتی وقتی
-> هیچ‌کس listen نمی‌کند. ⚠️ این رنج **بعد از ری‌استارت جابه‌جا می‌شود** — اگر باز شد، یک پورتِ
-> بیرونِ رنج انتخاب کن. در `.env` محلی: `MINIO_PORT`/`MINIO_CONSOLE_PORT`/`S3_ENDPOINT`؛ compose و
+> **MinIO روی این ماشین حالا ۹۶۰۰/۹۶۰۱ است، نه ۹۰۰۰/۹۰۰۱** (M3 گام ۵٫۴؛ ۹۸۰۰/۹۸۰۱ **بود** تا M3 گام ۱۱٫۲
+> که با ری‌استارتِ ماشین رنجِ excluded جابه‌جا شد و ۹۸۰۰ داخلِ ۹۷۳۶–۹۸۳۵ افتاد → به ۹۶۰۰ منتقل شد). پورت‌های
+> ۹۰۰۰/۹۰۰۱ و ۹۸۰۰ در **رنجِ excludedِ ویندوز** (Hyper-V) افتاده‌اند (`netsh interface ipv4 show excludedportrange
+> protocol=tcp`)، پس `docker` نمی‌تواند bind کند («socket... forbidden»)، حتی وقتی
+> هیچ‌کس listen نمی‌کند. ⚠️ این رنج **بعد از هر ری‌استارت جابه‌جا می‌شود** (سه بار در M3 دیده شد) — اگر باز شد،
+> `netsh` را ببین و یک پورتِ بیرونِ رنج انتخاب کن. در `.env` محلی: `MINIO_PORT`/`MINIO_CONSOLE_PORT`/`S3_ENDPOINT`؛ compose و
 > `.env.example` روی پیش‌فرض PLAN (۹۰۰۰) ماندند. **`docker compose up` حالا `minio-init` را هم دارد**
 > (ساختِ باکت‌های assets/snapshots، P3).
 
@@ -226,7 +227,7 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   - ⚠️ **رفعِ سه یافته‌ی M2 که به `canvas-core`/`canvas-sync` دست می‌زند تک‌تک تاییدِ مالک می‌خواهد** (گام ۸٫۵).
   - **★★ وضعیت الان: M3 تحویل شد** (۱۴۰۵/۰۶/۱۴) — فاز ۰–۹ + ۱۱ کامل ✅ (فاز ۱۰ موکولِ M4). **ورودیِ M4:**
     [`docs/m4-handoff.md`](docs/m4-handoff.md). جزئیاتِ فازها (تاریخی) — فاز ۳ (`storage`/`assets`)، فاز ۴ (`auth-core`)، **فاز ۵ (`apps/api`)** (کلِ
-    سطحِ REST + migration + OpenAPI 3.1 + Idempotency؛ MinIO روی پورتِ ۹۸۰۰)، **فاز ۶ (`packages/sdk`)** (کلاینتِ
+    سطحِ REST + migration + OpenAPI 3.1 + Idempotency)، **فاز ۶ (`packages/sdk`)** (کلاینتِ
     typedِ REST؛ [ADR-045](ARCHITECTURE_DECISIONS.md#adr-045): api پاسخ را به شکلِ **دقیقِ DTOی shared-types** می‌دهد)،
     و **فاز ۷ (اتصالِ `apps/realtime`) تمام شد (۱۴۰۵/۰۶/۱۰):** چهار پورت پیاده و تزریق شدند — `main.ts` حالا
     `createRealtimeAuthority` (verifyِ auth-core + `createPgBoardAccessReader` از **`packages/board-access-db`**،

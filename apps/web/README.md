@@ -10,7 +10,7 @@ React 19 + Vite 6 + TypeScript + TanStack Router (**code-based**) + TanStack Que
 بورد به **هر سه** سرویس نیاز دارد (api برای rt-token، realtime برای WS، web):
 
 ```bash
-pnpm db:up                                                                          # postgres ۵۴۳۳ + redis ۶۳۷۹ + minio ۹۸۰۰
+pnpm db:up                                                                          # postgres ۵۴۳۳ + redis ۷۳۷۹ + minio ۹۶۰۰ (پورت‌ها در .envِ محلی)
 APP_ENV=local node --env-file-if-exists=.env apps/api/src/server.ts                 # api روی ۳۰۰۲ (OTP در لاگ)
 RT_PORT=3001 APP_ENV=local node --env-file-if-exists=.env apps/realtime/src/main.ts # realtime روی ۳۰۰۱
 pnpm --filter @hamboom/web dev                                                      # web روی ۱۵۳۸۰ (پروکسی به ۳۰۰۲، WS به ۳۰۰۱)

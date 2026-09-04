@@ -121,9 +121,9 @@ DTOهای `Plan`/`Subscription`/`Invoice` و فیلدهای مالیِ `Team` **
 ساخته نشود.
 
 **۵. تله‌های محیطیِ ویندوز — پورت‌ها جابه‌جا می‌شوند.** رنجِ excludedِ ویندوز با هر
-ری‌استارت عوض می‌شود و پورتِ داکر را می‌گیرد بی‌آنکه کسی listen کند: **DB روی ۵۴۳۳،
-MinIO روی ۹۸۰۰، Redis روی ۶۳۷۹/۷۳۷۹** (در `.env`ِ محلی override شده؛ compose/`.env.example`
-روی پیش‌فرضِ PLAN ماندند). اگر سرویسی bind نشد: `netsh interface ipv4 show
+ری‌استارت عوض می‌شود و پورتِ داکر را می‌گیرد بی‌آنکه کسی listen کند: امروز **DB ۵۴۳۳،
+Redis ۷۳۷۹، MinIO ۹۶۰۰** (پیش‌فرضِ PLAN ۵۴۳۲/۶۳۷۹/۹۰۰۰؛ همه در `.env`ِ محلی override؛ MinIO در M3
+سه بار جابه‌جا شد: ۹۰۰۰→۹۸۰۰→۹۶۰۰). اگر سرویسی bind نشد: `netsh interface ipv4 show
 excludedportrange protocol=tcp` و یک پورتِ بیرونِ رنج بگذار. جزئیات در [CLAUDE.mdِ ریشه](../CLAUDE.md).
 
 **۶. `pnpm verify` تنها گیتِ قابلِ‌استناد است** (میراثِ M2). `lint`/`test` برای حلقه‌ی

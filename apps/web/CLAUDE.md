@@ -177,7 +177,7 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 ## ★ اجرای محلیِ کاملِ زنجیره
 
 ```bash
-pnpm db:up                                   # postgres 5433 + redis 7379 + minio 9800
+pnpm db:up                                   # postgres 5433 + redis 7379 + minio 9600 (پورت‌ها در .envِ محلی)
 APP_ENV=local node --env-file-if-exists=.env apps/api/src/server.ts            # api روی 3002 (SMS mock → کد در لاگ)
 RT_PORT=3001 APP_ENV=local node --env-file-if-exists=.env apps/realtime/src/main.ts  # realtime روی 3001 (برای بورد، ۸٫۴)
 pnpm --filter @hamboom/web dev               # web روی 15380، پروکسی به 3002، WS به 3001
