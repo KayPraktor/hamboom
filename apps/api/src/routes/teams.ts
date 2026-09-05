@@ -23,6 +23,7 @@ import {
   patchMemberRoleBody,
   patchTeamBody,
 } from "../schemas.ts";
+import { assertQuota } from "../services/quota.ts";
 import { getTeamRole, requireTeamRole } from "../services/teams.ts";
 
 export interface TeamRouteDeps {
@@ -213,6 +214,17 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
       );
       if (rows.length === 0) throw new HttpError(404, "NOT_FOUND", "دعوت نامعتبر یا منقضی است.");
       const invite = rows[0]!;
+      // ★★ گیتِ ظرفیت فقط برای عضوِ **واقعاً تازه**.
+      //    ⚠️ این `ON CONFLICT DO UPDATE` یک upsert است، نه insert: اگر کاربر از قبل عضو
+      //    باشد فقط نقشش عوض می‌شود و **هیچ ردیفی اضافه نمی‌شود**. گیت‌زدن بی‌قید یعنی
+      //    عضوِ موجودی که صرفاً نقشش تغییر می‌کند بی‌دلیل رد شود. `xmax = 0` در
+      //    RETURNING دقیقاً می‌گوید کدام‌یک رخ داد.
+      const already = await tx.query(
+        "SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2",
+        [invite.team_id, sub],
+      );
+      if (already.rows.length === 0) await assertQuota(tx, invite.team_id, "members");
+
       await tx.query(
         `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)
          ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role`,

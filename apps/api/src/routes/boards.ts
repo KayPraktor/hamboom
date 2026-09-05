@@ -18,6 +18,7 @@ import { HttpError } from "../errors.ts";
 import { withTransaction } from "../plugins/db.ts";
 import { assertUuid, createBoardBody, parseBody, patchBoardBody } from "../schemas.ts";
 import { assertDeletedBoardOwner, requireBoardRole } from "../services/boards.ts";
+import { assertQuota } from "../services/quota.ts";
 
 export interface BoardRouteDeps {
   pool: pg.Pool;
@@ -144,6 +145,10 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
         if (t.rows.length === 0) throw new HttpError(404, "TEAM_NOT_FOUND", "فضای شخصی یافت نشد.");
         teamId = t.rows[0]!.id;
       }
+
+      // ★★ گیتِ ظرفیت — **داخلِ همان تراکنش** و بعد از تعیینِ تیم (ADR-053). ردیفِ تیم را
+      //    قفل می‌کند، پس دو ساختِ هم‌زمان روی آخرین ظرفیت هر دو رد نمی‌شوند.
+      await assertQuota(tx, teamId, "boards");
 
       // ★ ساختِ بورد تک‌ردیفی است: `created_by` مالک را در همان INSERT تعیین می‌کند → بوردِ بی‌مالک ناممکن.
       const boardId = randomUUID();
@@ -275,9 +280,21 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     const { id } = req.params as { id: string };
     if (!UUID_RE.test(id)) throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
     await assertDeletedBoardOwner(deps.pool, sub, id);
-    await deps.pool.query("UPDATE boards SET deleted_at = NULL, updated_at = now() WHERE id = $1", [id]);
-    const { rows } = await deps.pool.query<BoardRow>(BOARD_FULL_SELECT, [sub, id]);
-    return toBoard(rows[0]!, "owner");
+    // ★★ **بازیابی هم یک «ساخت» است.** یافته‌ی بازبینیِ فاز ۶: تیمی که به پلنِ کوچک‌تر تنزل
+    //    کرده می‌توانست ده‌ها بوردِ سطلِ بازیافت را یکی‌یکی برگردانَد و از سقف رد شود — و چون
+    //    سیاستِ M4-D8 «هیچ حذفی» است، سطل یک انبارِ دائمی است.
+    return withTransaction(deps.pool, async (tx) => {
+      const owner = await tx.query<{ team_id: string }>(
+        "SELECT team_id FROM boards WHERE id = $1 FOR UPDATE",
+        [id],
+      );
+      const teamId = owner.rows[0]?.team_id;
+      if (teamId === undefined) throw new HttpError(404, "BOARD_NOT_FOUND", "بورد یافت نشد.");
+      await assertQuota(tx, teamId, "boards");
+      await tx.query("UPDATE boards SET deleted_at = NULL, updated_at = now() WHERE id = $1", [id]);
+      const { rows } = await tx.query<BoardRow>(BOARD_FULL_SELECT, [sub, id]);
+      return toBoard(rows[0]!, "owner");
+    });
   });
 
   // ── تکثیرِ بورد (editor+) — فقط متادیتا؛ محتوای Y.Doc = فاز بعد (کپیِ snapshot از storage) ──
@@ -286,19 +303,25 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     const { id } = req.params as { id: string };
     if (!UUID_RE.test(id)) throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
     await requireBoardRole(deps.pool, sub, id, "editor");
-    const src = await deps.pool.query<{ team_id: string; folder_id: string | null; title: string }>(
-      "SELECT team_id, folder_id, title FROM boards WHERE id = $1 AND deleted_at IS NULL",
-      [id],
-    );
-    if (src.rows.length === 0) throw new HttpError(404, "BOARD_NOT_FOUND", "بورد یافت نشد.");
-    const s = src.rows[0]!;
-    const newId = randomUUID();
-    await deps.pool.query(
-      "INSERT INTO boards (id, team_id, folder_id, title, created_by) VALUES ($1, $2, $3, $4, $5)",
-      [newId, s.team_id, s.folder_id, `${s.title} (کپی)`, sub],
-    );
-    const { rows } = await deps.pool.query<BoardRow>(BOARD_FULL_SELECT, [sub, newId]);
-    return toBoard(rows[0]!, "owner"); // سازنده‌ی کپی مالک است
+    // ★★ **تکثیر مسیرِ دومِ ساخت است** و تا امروز نه تراکنش داشت نه گیت — و بدتر، فقط نقشِ
+    //    **بورد** را می‌سنجید: کسی که با لینکِ `link_edit` به بورد رسیده (بدونِ اینکه هرگز
+    //    عضوِ تیم شود) می‌توانست بی‌نهایت بورد در آن تیم بسازد. حالا ظرفیتِ **تیم** گیتش می‌کند.
+    return withTransaction(deps.pool, async (tx) => {
+      const src = await tx.query<{ team_id: string; folder_id: string | null; title: string }>(
+        "SELECT team_id, folder_id, title FROM boards WHERE id = $1 AND deleted_at IS NULL",
+        [id],
+      );
+      if (src.rows.length === 0) throw new HttpError(404, "BOARD_NOT_FOUND", "بورد یافت نشد.");
+      const s = src.rows[0]!;
+      await assertQuota(tx, s.team_id, "boards");
+      const newId = randomUUID();
+      await tx.query(
+        "INSERT INTO boards (id, team_id, folder_id, title, created_by) VALUES ($1, $2, $3, $4, $5)",
+        [newId, s.team_id, s.folder_id, `${s.title} (کپی)`, sub],
+      );
+      const { rows } = await tx.query<BoardRow>(BOARD_FULL_SELECT, [sub, newId]);
+      return toBoard(rows[0]!, "owner"); // سازنده‌ی کپی مالک است
+    });
   });
 
   // ── نشان‌کردن / برداشتنِ نشان (viewer+) ──────────────────────────────

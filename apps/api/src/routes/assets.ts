@@ -6,6 +6,8 @@ import type pg from "pg";
 
 import { requireSub } from "../auth-guard.ts";
 import { HttpError } from "../errors.ts";
+import { withTransaction } from "../plugins/db.ts";
+import { assertQuota } from "../services/quota.ts";
 import { parseBody } from "../schemas.ts";
 import { requireBoardRole } from "../services/boards.ts";
 
@@ -150,11 +152,19 @@ export function registerAssetRoutes(app: FastifyInstance, deps: AssetRouteDeps):
         finalKey = dup.rows[0]!.storage_key;
       }
 
-      await deps.pool.query(
-        `UPDATE files SET storage_key = $1, mime_type = $2, size_bytes = $3, sha256 = $4, status = 'ready'
-          WHERE id = $5`,
-        [finalKey, verified.mime, verified.sizeBytes, verified.sha256, fileId],
-      );
+      // ★★ گیتِ فضا روی بایتِ **اثبات‌شده**، نه اندازه‌ی ادعاییِ کلاینت — و درست پیش از
+      //    `ready`، چون تنها از آن لحظه است که این بایت‌ها شمرده می‌شوند.
+      //    ⚠️ اگر همین فایل با dedupe به کلیدِ موجود اشاره کند، بایتِ تازه‌ای مصرف نشده؛
+      //       پس delta صفر است و نباید تیم را بی‌جهت رد کند.
+      const dedup = finalKey !== file.storage_key;
+      await withTransaction(deps.pool, async (tx) => {
+        if (!dedup) await assertQuota(tx, file.team_id, "storage", verified.sizeBytes);
+        await tx.query(
+          `UPDATE files SET storage_key = $1, mime_type = $2, size_bytes = $3, sha256 = $4, status = 'ready'
+            WHERE id = $5`,
+          [finalKey, verified.mime, verified.sizeBytes, verified.sha256, fileId],
+        );
+      });
       return {
         fileId,
         boardId,

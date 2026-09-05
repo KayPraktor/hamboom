@@ -116,6 +116,37 @@ export function toTeam(r: TeamRow): Team {
 }
 
 /**
+ * ★★ **رزولوشنِ پلنِ یک تیم — تنها تعریفِ آن در کلِ ریپو.**
+ *
+ * تیمِ بی‌اشتراک پلنِ پیش‌فرض می‌گیرد، و آن پیش‌فرض برای **فضای شخصی** فرق دارد:
+ * `personal` (بوردِ نامحدود، یک نفر) در برابرِ `free` (۳ بورد، ۳ نفر) —
+ * [migration ۰۰۰۵](../migrations/0005_personal_plan.sql)، تصمیمِ مالک ۱۴۰۵/۰۶/۱۵.
+ *
+ * ★ عمداً **SQL** است و نه یک `if` در TypeScript: گیتِ ظرفیت باید یک مسیر بماند و سقف‌ها
+ * داده باشند نه کد. هرکس پلنِ تیمی را جای دیگری حساب کند، یک تعریفِ **دوم** ساخته است.
+ */
+export const PLAN_CODE_SQL =
+  "COALESCE(s.plan_code, CASE WHEN t.is_personal THEN 'personal' ELSE 'free' END)";
+
+/**
+ * ★★ فضای مصرف‌شده‌ی یک تیم، به بایت — **de-dupe شده**.
+ *
+ * ⚠️ سه تله که یک `SUM(size_bytes)`ِ ساده در هر سه می‌افتد:
+ *   ۱. **dedupeِ دارایی**: `routes/assets.ts` دو ردیفِ `files` را می‌تواند به **یک**
+ *      `storage_key` وصل کند (بایتِ تکراری حذف می‌شود). جمعِ ردیفی همان بایت را دوبار
+ *      می‌شمارد. پس `DISTINCT`ِ کلیدِ ذخیره‌سازی مبناست، نه ردیف.
+ *   ۲. **ردیف‌های `pending`**: presign یک ردیف با اندازه‌ی **ادعاییِ کلاینت** می‌سازد که اگر
+ *      commit نشود هرگز پاک نمی‌شود. فقط `ready` شمرده می‌شود.
+ *   ۳. **`sum` روی `bigint` نوعِ `numeric` (OID 1700) می‌دهد** که کوئرسِ `int8→number`
+ *      نمی‌گیردش و **رشته** برمی‌گردد (B-2، اثباتِ گام ۱٫۲). پس `::bigint` صریح.
+ */
+export const STORAGE_BYTES_SQL = `
+  SELECT COALESCE(sum(f.size_bytes), 0)::bigint
+    FROM (SELECT DISTINCT ON (storage_key) storage_key, size_bytes
+            FROM files
+           WHERE team_id = t.id AND status = 'ready' AND deleted_at IS NULL) f`;
+
+/**
  * ستون‌های مالیِ تیم — پلن، وضعیتِ اشتراک، سقف‌ها و مصرف (M4 فاز ۵، ADR-053).
  *
  * ★★ **مصرف با `count(*)`ِ واقعی خوانده می‌شود، نه از `usage_counters`** — که تا امروز
@@ -135,19 +166,18 @@ export const MC =
   "(SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count";
 
 export const TEAM_BILLING_COLUMNS = `
-         COALESCE(s.plan_code, 'free') AS plan_code,
+         ${PLAN_CODE_SQL} AS plan_code,
          COALESCE(s.status, 'none') AS subscription_status,
          p.max_members, p.max_boards, p.max_storage_bytes,
          (SELECT count(*) FROM boards b
            WHERE b.team_id = t.id AND b.deleted_at IS NULL) AS usage_boards,
-         COALESCE(uc.storage_bytes, 0) AS usage_storage_bytes`;
+         (${STORAGE_BYTES_SQL}) AS usage_storage_bytes`;
 
 /** JOINهایی که `TEAM_BILLING_COLUMNS` لازم دارد. همیشه با هم می‌آیند. */
 export const TEAM_BILLING_JOINS = `
     LEFT JOIN subscriptions s
            ON s.team_id = t.id AND s.status IN ('trialing', 'active', 'past_due')
-    LEFT JOIN plans p ON p.code = COALESCE(s.plan_code, 'free')
-    LEFT JOIN usage_counters uc ON uc.team_id = t.id`;
+    LEFT JOIN plans p ON p.code = ${PLAN_CODE_SQL}`;
 
 // ── TeamMember ──────────────────────────────────────────────────────────
 export interface TeamMemberRow {
