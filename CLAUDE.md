@@ -8,9 +8,10 @@
 | فایل | چه چیزی دارد |
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
-| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۴۴ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M3-backend-api.md](TODO-M3-backend-api.md) | **TODOی فعالِ M3** — ۱۲ فاز با معیار پذیرش؛ تصمیم‌های مرزی بسته (فاز ۱۰ به تعویق) |
-| ★ [docs/m3-handoff.md](docs/m3-handoff.md) | **نقطه‌ی ورودِ M3** — پورت‌ها، موارد به‌ارث‌رسیده، سقف‌ها، و درسِ روشی |
+| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۵۴ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
+| ★ [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | **TODOی فعالِ M4** — ۱۱ فاز با معیار پذیرش؛ فاز ۰ بسته (نُه تصمیم تاییدشده → ADR-049…۰۵۴) |
+| ★ [docs/m4-handoff.md](docs/m4-handoff.md) | **نقطه‌ی ورودِ M4** — مدلِ billing، ارثیه‌ها، و درس‌های روشیِ M3 |
+| [TODO-M3-backend-api.md](TODO-M3-backend-api.md) · [PROGRESS-M3-backend-api.md](PROGRESS-M3-backend-api.md) · [docs/m3-handoff.md](docs/m3-handoff.md) | بایگانیِ M3 (`backend-api`، تمام‌شده) — مرجعِ تاریخی |
 | [TODO.md](TODO.md) · [PROGRESS.md](PROGRESS.md) | بایگانیِ M2 (`realtime-sync`، تمام‌شده) — مرجعِ تاریخی |
 | [TODO-M1-canvas-core.md](TODO-M1-canvas-core.md) · [PROGRESS-M1-canvas-core.md](PROGRESS-M1-canvas-core.md) | بایگانیِ M1 (تمام‌شده) — مرجعِ تاریخی |
 | [docs/iranian-miro-spec.md](docs/iranian-miro-spec.md) | سند محصول |
@@ -215,7 +216,29 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★ M3 (`backend-api`) آغاز شد** (۱۴۰۵/۰۵/۲۴) — TODO در
+- **★★ M4 (`billing`) آغاز شد** (۱۴۰۵/۰۶/۱۴) — TODO در [`TODO-M4-billing.md`](TODO-M4-billing.md)،
+  دفترِ کار در [`PROGRESS-M4-billing.md`](PROGRESS-M4-billing.md). **فاز ۰ بسته شد:** هر نُه تصمیمِ
+  مرزی تایید و به شش ADR تبدیل شد ([ADR-049](ARCHITECTURE_DECISIONS.md#adr-049)…[ADR-054](ARCHITECTURE_DECISIONS.md#adr-054)).
+  - **دامنه:** فاز ۰–۱۰ — probe → قرارداد → `packages/billing-core` → migration `0004` → مسیرهای
+    billingِ api → اعمالِ ظرفیت → آشتی‌دهی → sdk → `apps/web` → تحویل. ⛔ **بیرون:** استردادِ کامل
+    (`refund` = GraphQL+OAuth، در dev اجراناپذیر) و `reverse` (whitelistِ IP می‌خواهد) → **M6** ·
+    فاکتورِ PDF (Chromium) و `apps/worker` → بعد از M4 · فاز ۱۰ی M3 دست‌نخورده.
+  - ★★ **برنامه‌ریزی با probeِ زنده شروع شد، نه با خواندنِ سند** — و شش چیز را عوض کرد:
+    میزبانِ درست **`payment.zarinpal.com`** است (نه `api.zarinpal.com`) · **verifyِ دوم همیشه کدِ
+    ۱۰۱ می‌دهد نه ۱۰۰** (چکِ `code === 100` مشتریِ پرداخت‌کرده را «ناموفق» ثبت می‌کند) · واحد
+    **ریال** است ولی باید صریح فرستاده شود · **ادعای سندباکسِ ADR-014 تایید شد** (فقط تعویضِ
+    میزبان + یک UUIDِ دلخواه) · شکلِ `errors` بینِ موفق و ناموفق **تغییرِ نوع** می‌دهد و خطاهای
+    عادی **non-2xx** برمی‌گردند · `refund` اصلاً در REST نیست.
+  - ★★ **پنج بمبِ ساعتی در کدِ خودمان** (B-1…B-5 در TODO). مهم‌ترین: **`idempotency.ts` روی
+    callbackِ زرین‌پال اصلاً اجرا نمی‌شود** — روی هر درخواستِ غیر-POST یا بدونِ `Authorization`
+    بی‌صدا `return` می‌کند، و callback دقیقاً هر دو است. حفاظ **به‌نظر می‌رسد** هست ولی نیست
+    ([ADR-050](ARCHITECTURE_DECISIONS.md#adr-050) جایگزینش کرد). بقیه: `SUM()` روی `bigint` **رشته**
+    برمی‌گرداند (فقط OID 20 ثبت شده) · کوئرسِ `int8` فقط داخلِ `createDbPool` است · **هیچ `CHECK`
+    روی هیچ ستونِ وضعیتِ billing نیست** · `usage_counters.members_count` **همیشه صفر** است.
+  - **قدمِ بعد: فاز ۱ (probeها)** — دروازه‌ی کلِ ماژول. ⚠️ چهار چیز هنوز نامعلوم‌اند: بازتولیدِ
+    گذارِ ۱۰۰→۱۰۱ در سندباکس · بازه‌ی مجازِ verify قبل از بازگشتِ خودکارِ پول (**عدد ندارد**) ·
+    `metadata.auto_verify` · بیشینه‌ی `ref_id`.
+- **★★ M3 (`backend-api`) تمام و تحویل شد** (۱۴۰۵/۰۶/۱۴) — تاریخچه‌ی فازها پایین. TODO در
   [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md) نوشته و **تصمیم‌های مرزی بسته شد**:
   - **دامنه:** فازهای ۰–۹ + ۱۱ (config+قرارداد → `storage` → `auth-core` → `apps/api` →
     `sdk` → اتصالِ `apps/realtime` → `apps/web` → نوار ابزار → ظرفیت/تحویل). ⛔ **فاز ۱۰
