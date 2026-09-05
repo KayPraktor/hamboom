@@ -1,7 +1,7 @@
 # TODO-M4-billing.md — ماژول M4: `billing` (پرداخت و اشتراک)
 
-> **وضعیت (۱۴۰۵/۰۶/۱۴): فاز ۰ ✅ · فاز ۱ ✅ · فاز ۲ ✅ (جز ۲٫۴ که موکول شد) · فاز ۳ ✅.**
-> قدمِ بعد: **فاز ۴ (migration `0004`)**. نُه تصمیمِ مرزی تایید و به
+> **وضعیت (۱۴۰۵/۰۶/۱۴): فاز ۰–۴ ✅ (جز گام ۲٫۴ که به ۵٫۵ موکول شد).**
+> قدمِ بعد: **فاز ۵ (مسیرهای billingِ `apps/api`)**. نُه تصمیمِ مرزی تایید و به
 > ADR-049…ADR-054 تبدیل شدند؛ دروازه‌ی probeها با یک پرداختِ واقعیِ سندباکس باز شد.
 >
 > **نقطه‌ی ورود:** [`docs/m4-handoff.md`](docs/m4-handoff.md) — سندِ تحویلِ M3 به M4.
@@ -295,7 +295,7 @@ M4 مسئولِ پنج چیز است:
 
 ---
 
-### فاز ۴ — migration `0004` (بستنِ حفره‌های schema)
+### ✅ فاز ۴ — migration `0004` (بستنِ حفره‌های schema) — **تمام شد (۱۴۰۵/۰۶/۱۴)**
 
 > ⚠️ **`0001_init.sql` منجمد است.** ویرایشش روی ماشینی که migrate کرده خطای checksum
 > می‌دهد و روی ماشینِ تازه schemaی متفاوت می‌سازد. هر اصلاحی در `0004` می‌آید.
@@ -303,12 +303,31 @@ M4 مسئولِ پنج چیز است:
 
 | # | گام | معیار پذیرش |
 |---|---|---|
-| ۴٫۱ | `CHECK` روی هر ستونِ وضعیتِ billing (رفعِ **B-4**) | `INSERT … status='Active'` باید **رد** شود |
-| ۴٫۲ | جدولِ `coupon_redemptions` با یکتاییِ `(coupon_code, team_id)` | دو redeemِ هم‌زمانِ یک کوپن ⇒ دومی ۲۳۵۰۵، نه دو تخفیف |
-| ۴٫۳ | پیوندِ `subscriptions.activated_by_payment_id` + قیمتِ منجمدِ `subscriptions.unit_price_rial` | «پرداخت شد ولی سرویس داده نشد» با یک join قابلِ گزارش شود؛ تغییرِ قیمتِ پلن وسطِ پرداخت verify را خراب نکند |
-| ۴٫۴ | اصلاحِ FK/ON DELETE: `payments.initiated_by` و `invoices.team_id` | ⚠️ **به `invoices` هرگز `ON DELETE CASCADE` نده** — سوابقِ مالی را نابود می‌کند. رفتارِ درست `RESTRICT`ِ صریح است |
-| ۴٫۵ | ستونِ `payments.card_hash` + نرخِ VATِ منجمد روی `invoices` | `card_hash` دیگر بی‌صدا در `verify_payload` گم نشود؛ `vat_percent` هر فاکتور در خودش باشد |
-| ۴٫۶ | افزودنِ سناریوهای billing به [`scripts/db-fk-test.ts`](scripts/db-fk-test.ts) | حذفِ تیم با فاکتورِ پرداخت‌شده باید **مسدود** شود؛ `pnpm db:fk-test` سبز |
+| ✅ ۴٫۱ | `CHECK` روی هر ستونِ وضعیتِ billing (رفعِ **B-4**) | `INSERT … status='Active'` باید **رد** شود |
+| ✅ ۴٫۲ | جدولِ `coupon_redemptions` با یکتاییِ `(coupon_code, team_id)` | دو redeemِ هم‌زمانِ یک کوپن ⇒ دومی ۲۳۵۰۵، نه دو تخفیف |
+| ✅ ۴٫۳ | پیوندِ `subscriptions.activated_by_payment_id` + قیمتِ منجمدِ `subscriptions.unit_price_rial` | «پرداخت شد ولی سرویس داده نشد» با یک join قابلِ گزارش شود؛ تغییرِ قیمتِ پلن وسطِ پرداخت verify را خراب نکند |
+| ✅ ۴٫۴ | اصلاحِ FK/ON DELETE: `payments.initiated_by` و `invoices.team_id` | ⚠️ **به `invoices` هرگز `ON DELETE CASCADE` نده** — سوابقِ مالی را نابود می‌کند. رفتارِ درست `RESTRICT`ِ صریح است |
+| ✅ ۴٫۵ | ستونِ `payments.card_hash` + نرخِ VATِ منجمد روی `invoices` | `card_hash` دیگر بی‌صدا در `verify_payload` گم نشود؛ `vat_percent` هر فاکتور در خودش باشد |
+| ✅ ۴٫۶ | افزودنِ سناریوهای billing به [`scripts/db-fk-test.ts`](scripts/db-fk-test.ts) | حذفِ تیم با فاکتورِ پرداخت‌شده باید **مسدود** شود؛ `pnpm db:fk-test` سبز |
+
+**[`0004_billing_integrity.sql`](apps/api/migrations/0004_billing_integrity.sql)** اعمال شد و
+**۷ سناریوی تازه** به [`db-fk-test`](scripts/db-fk-test.ts) اضافه شد (۱۰ چک، همه سبز).
+
+★★ **دو چیز فراتر از برنامه اضافه شد، چون probeها لازمشان کردند:**
+
+۱. **رابطه‌ی ADR-052 حالا یک `CHECK` دیتابیسی هم هست** — `subtotal − discount + vat = total`،
+   به‌علاوه‌ی `discount <= subtotal`. یعنی حتی اگر روزی کسی «مسیرِ دومِ محاسبه» بسازد (همان
+   چیزی که probeِ ۱٫۵ مبلغِ **منفی**ش را دید)، درج **رد** می‌شود. کد و دیتابیس هر دو نگهبانند.
+۲. **`invoice_sequences`** — شماره‌ی فاکتور با `INSERT … ON CONFLICT DO UPDATE … RETURNING`
+   اتمیک گرفته می‌شود، نه `max(number)+1` که دو درخواستِ هم‌زمان را **بعد از جابه‌جاییِ پول**
+   می‌شکست.
+
+★ **خودآزمون:** با حذفِ `invoices_total_ck` و `subscriptions_status_ck` دو چک **قرمز** شدند،
+و با بازگرداندنشان دوباره سبز.
+
+⚠️ **seedِ پلن‌ها عمداً ناقص است:** فقط `free` فعال است (قیمتش صفر، پس عددی اختراع نشده).
+`pro` و `team` با `is_active = false` نشسته‌اند چون **قیمت‌گذاری تصمیمِ مالک است، نه این
+migration** — تا کسی عددِ واقعی نگذارد، در فهرستِ عمومی نمی‌آیند و قابلِ خرید نیستند.
 
 ---
 
