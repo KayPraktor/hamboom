@@ -19,6 +19,7 @@
     "@fastify/rate-limit": "^10.2.2",
     "@hamboom/assets": "workspace:*",
     "@hamboom/auth-core": "workspace:*",
+    "@hamboom/billing-core": "workspace:*",
     "@hamboom/board-access-db": "workspace:*",
     "@hamboom/config": "workspace:*",
     "@hamboom/shared-types": "workspace:*",

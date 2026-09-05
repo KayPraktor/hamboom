@@ -6,6 +6,9 @@ import {
   boardMember,
   boardSummary,
   folder,
+  invoice,
+  plan,
+  subscription,
   paginated,
   rtTokenClaims,
   team,
@@ -17,6 +20,7 @@ import { z } from "zod";
 
 import {
   addBoardMemberBody,
+  checkoutBody,
   createBoardBody,
   createFolderBody,
   createInviteBody,
@@ -81,6 +85,11 @@ const COMPONENT_SCHEMAS: Record<string, z.ZodType> = {
   ResolveLinkBody: resolveLinkBody,
   AddBoardMemberBody: addBoardMemberBody,
   PatchBoardMemberRoleBody: patchBoardMemberRoleBody,
+  // ── billing (M4 فاز ۵) ──
+  Plan: plan,
+  Subscription: subscription,
+  Invoice: invoice,
+  CheckoutBody: checkoutBody,
 };
 
 interface RouteDoc {
@@ -155,6 +164,18 @@ const ROUTES: RouteDoc[] = [
   { method: "post", path: "/boards/:boardId/assets/presign", tag: "assets", summary: "presignِ آپلود (editor+)", body: "AssetPresignRequest", ok: { schema: "AssetPresignResponse" } },
   { method: "post", path: "/boards/:boardId/assets/:fileId/commit", tag: "assets", summary: "commit: تاییدِ بایتِ واقعی (sha/نوع/اندازه) + دی‌دوپ (editor+)" },
   { method: "get", path: "/assets/:fileId", tag: "assets", summary: "۳۰۲ به presigned GET (viewer+)", ok: { code: 302, description: "ریدایرکت به URLِ امضاشده" } },
+
+  // ── پرداخت و اشتراک (M4 فاز ۵) ──
+  { method: "get", path: "/billing/plans", tag: "billing", summary: "فهرستِ پلن‌های **فعال** (عمومی — صفحه‌ی قیمت)", public: true, ok: { schema: "Plan" } },
+  { method: "post", path: "/teams/:teamId/billing/checkout", tag: "billing", summary: "شروعِ خرید (owner) — مبلغ کاملاً سمتِ سرور محاسبه می‌شود", body: "CheckoutBody" },
+  { method: "get", path: "/billing/zarinpal/callback", tag: "billing", summary: "بازگشت از درگاه → verifyِ سرور-به-سرور → ریدایرکت به وب (عمومی)", public: true },
+  { method: "post", path: "/billing/payments/:paymentId/verify", tag: "billing", summary: "verifyِ دستی — بازیابیِ پرداختِ گم‌شده (owner)" },
+  { method: "get", path: "/teams/:teamId/billing/subscription", tag: "billing", summary: "اشتراکِ فعلی (admin؛ `null` یعنی تیمِ رایگان)", ok: { schema: "Subscription" } },
+  { method: "get", path: "/teams/:teamId/billing/invoices", tag: "billing", summary: "فاکتورها (admin)", ok: { schema: "Invoice" } },
+  { method: "post", path: "/teams/:teamId/billing/cancel", tag: "billing", summary: "لغو در پایانِ دوره (owner)", ok: { schema: "Subscription" } },
+  // ⚠️ فقط در غیر-production ثبت می‌شود، ولی **مستند می‌مانَد**: گاردِ دریفت با `buildApp`ِ
+  //    محیطِ تست می‌سنجد و اگر اینجا نباشد قرمز می‌شود. جای درگاهِ واقعی را در توسعه می‌گیرد (P3).
+  { method: "get", path: "/billing/mock/pay/:authority", tag: "billing", summary: "صفحه‌ی ساختگیِ پرداخت — **فقط توسعه** (در production ثبت نمی‌شود)", public: true },
 ];
 
 /** فهرستِ مسیرهای مستندشده به‌صورتِ `METHOD path` (مسیرِ Fastify) — گاردِ دریفتِ تست از این استفاده می‌کند. */
@@ -243,6 +264,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
       { name: "boards" },
       { name: "board-access" },
       { name: "assets" },
+      { name: "billing" },
     ],
     components: {
       securitySchemes: {

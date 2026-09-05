@@ -4,7 +4,15 @@ import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type pg from "pg";
 
 import { requireSub } from "../auth-guard.ts";
-import { toTeam, toTeamMember, type TeamMemberRow, type TeamRow } from "../dto.ts";
+import {
+  MC,
+  TEAM_BILLING_COLUMNS,
+  TEAM_BILLING_JOINS,
+  toTeam,
+  toTeamMember,
+  type TeamMemberRow,
+  type TeamRow,
+} from "../dto.ts";
 import { HttpError } from "../errors.ts";
 import { withTransaction } from "../plugins/db.ts";
 import {
@@ -55,8 +63,10 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
       ]);
       const { rows } = await tx.query<TeamRow>(
         `SELECT t.id, t.slug, t.name, 'owner' AS my_role,
-                (SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count, t.created_at
-           FROM teams t WHERE t.id = $1`,
+                ${MC}, t.created_at,
+                ${TEAM_BILLING_COLUMNS}
+           FROM teams t ${TEAM_BILLING_JOINS}
+          WHERE t.id = $1`,
         [teamId],
       );
       return toTeam(rows[0]!);
@@ -71,8 +81,10 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
     const role = await requireTeamRole(deps.pool, id, sub, "member");
     const { rows } = await deps.pool.query<TeamRow>(
       `SELECT t.id, t.slug, t.name, $2::text AS my_role,
-              (SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count, t.created_at
-         FROM teams t WHERE t.id = $1 AND t.deleted_at IS NULL`,
+              ${MC}, t.created_at,
+              ${TEAM_BILLING_COLUMNS}
+         FROM teams t ${TEAM_BILLING_JOINS}
+        WHERE t.id = $1 AND t.deleted_at IS NULL`,
       [id, role],
     );
     if (rows.length === 0) throw new HttpError(404, "TEAM_NOT_FOUND", "تیم یافت نشد.");
@@ -94,8 +106,10 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
     }
     const { rows } = await deps.pool.query<TeamRow>(
       `SELECT t.id, t.slug, t.name, $2::text AS my_role,
-              (SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count, t.created_at
-         FROM teams t WHERE t.id = $1`,
+              ${MC}, t.created_at,
+              ${TEAM_BILLING_COLUMNS}
+         FROM teams t ${TEAM_BILLING_JOINS}
+        WHERE t.id = $1`,
       [id, role],
     );
     return toTeam(rows[0]!);

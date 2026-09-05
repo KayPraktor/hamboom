@@ -48,7 +48,8 @@
     "billing:probe-db": "node --env-file-if-exists=.env scripts/billing-probe-db.ts",
     "billing:probe-idem": "node apps/api/probe/idempotency-callback.ts",
     "billing:probe-math": "node scripts/billing-probe-math.ts",
-    "billing:probe-gateway": "node scripts/billing-probe-gateway.ts"
+    "billing:probe-gateway": "node scripts/billing-probe-gateway.ts",
+    "billing:settle": "node --env-file-if-exists=.env scripts/billing-probe-settle.ts"
   },
   "devDependencies": {
     "@hamboom/auth-core": "workspace:*",

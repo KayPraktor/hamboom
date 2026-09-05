@@ -175,6 +175,7 @@ export class ZarinpalGateway implements PaymentGateway {
         //    تبدیل می‌شود چون ستون `varchar` است و بزرگیِ بیشینه‌اش مستند نیست.
         refId: data.ref_id === undefined || data.ref_id === null ? "" : String(data.ref_id),
         cardPanMasked: typeof data.card_pan === "string" ? data.card_pan : null,
+        cardHash: typeof data.card_hash === "string" ? data.card_hash : null,
         feeRial: typeof data.fee === "number" ? data.fee : null,
       };
     }

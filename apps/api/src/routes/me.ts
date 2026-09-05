@@ -2,7 +2,16 @@ import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type pg from "pg";
 
 import { requireSub } from "../auth-guard.ts";
-import { toTeam, toUser, USER_COLUMNS, type TeamRow, type UserRow } from "../dto.ts";
+import {
+  MC,
+  TEAM_BILLING_COLUMNS,
+  TEAM_BILLING_JOINS,
+  toTeam,
+  toUser,
+  USER_COLUMNS,
+  type TeamRow,
+  type UserRow,
+} from "../dto.ts";
 import { HttpError } from "../errors.ts";
 import { parseBody, patchMeBody } from "../schemas.ts";
 
@@ -24,10 +33,11 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeRouteDeps): void 
 
     const teams = await deps.pool.query<TeamRow>(
       `SELECT t.id, t.slug, t.name, tm.role AS my_role,
-              (SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count,
-              t.created_at
+              ${MC}, t.created_at,
+              ${TEAM_BILLING_COLUMNS}
          FROM teams t
          JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1
+         ${TEAM_BILLING_JOINS}
         WHERE t.deleted_at IS NULL
         ORDER BY t.is_personal DESC, t.created_at`,
       [sub],

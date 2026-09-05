@@ -4,6 +4,7 @@ import fastifyCookie from "@fastify/cookie";
 import fastifyRateLimit from "@fastify/rate-limit";
 import { createAssetService } from "@hamboom/assets";
 import { createMockSmsProvider, maskPhone } from "@hamboom/auth-core";
+import type { PaymentGateway } from "@hamboom/billing-core";
 import type { ObjectStore } from "@hamboom/storage";
 import Fastify, { type FastifyInstance } from "fastify";
 import type pg from "pg";
@@ -14,8 +15,10 @@ import { registerErrorHandler } from "./errors.ts";
 import { registerIdempotency } from "./idempotency.ts";
 import { loggerOptions } from "./logger.ts";
 import { createDbPool } from "./plugins/db.ts";
+import { createPaymentGateway } from "./plugins/payment.ts";
 import { createAssetObjectStore, createSnapshotObjectStore } from "./plugins/s3.ts";
 import { registerAssetRoutes } from "./routes/assets.ts";
+import { registerBillingRoutes } from "./routes/billing.ts";
 import { registerAuthRoutes } from "./routes/auth.ts";
 import { registerBoardAccessRoutes } from "./routes/board-access.ts";
 import { registerBoardRoutes } from "./routes/boards.ts";
@@ -47,6 +50,8 @@ export interface BuildAppOptions {
   snapshots?: ObjectStore;
   /** ObjectStoreِ باکتِ assets — تزریق‌پذیر تا تست بدونِ MinIO اجرا شود (وگرنه از config). */
   assets?: ObjectStore;
+  /** درگاهِ پرداخت — تزریق‌پذیر تا تست بدونِ شبکه (وگرنه از config، M4 فاز ۵). */
+  gateway?: PaymentGateway;
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -171,6 +176,24 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     assets: assetService,
     assetStore,
     assetBucket: config.S3_BUCKET_ASSETS,
+  });
+
+  // ── پرداخت و اشتراک (M4 فاز ۵) ──────────────────────────────────────
+  // ★★ `createPaymentGateway` خودش `assertGatewayAllowed` را صدا می‌زند، پس اگر
+  //    `APP_ENV=production` با `PAYMENT_PROVIDER=mock` بالا بیاید **همین‌جا** می‌شکند —
+  //    نه سرِ اولین «پرداختِ رایگانِ موفق» در production (ADR-049).
+  registerBillingRoutes(app, {
+    pool,
+    requireAuth,
+    gateway: options.gateway ?? createPaymentGateway(config),
+    vatPercent: config.VAT_PERCENT,
+    callbackUrl: config.ZARINPAL_CALLBACK_URL,
+    webBaseUrl: config.WEB_BASE_URL,
+    appEnv: config.APP_ENV,
+    callbackRateLimit: {
+      max: config.RATE_LIMIT_MAX,
+      timeWindow: config.RATE_LIMIT_WINDOW_SECONDS * 1000,
+    },
   });
 
   return app;

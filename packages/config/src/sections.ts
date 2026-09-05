@@ -227,5 +227,7 @@ export const paymentEnvSchema = z.object({
    * هنگامِ صدور روی **خودِ فاکتور** منجمد می‌شود، نه بازمحاسبه از این مقدار.
    */
   VAT_PERCENT: envIntFromZero(0),
+  /** ریشه‌ی اپِ وب — بازگشت از درگاه به این‌جا ریدایرکت می‌شود (نه به خودِ api). */
+  WEB_BASE_URL: z.url().default("http://localhost:5173"),
 });
 export type PaymentEnv = z.infer<typeof paymentEnvSchema>;

@@ -95,6 +95,9 @@ importers:
       '@hamboom/auth-core':
         specifier: workspace:*
         version: link:../../packages/auth-core
+      '@hamboom/billing-core':
+        specifier: workspace:*
+        version: link:../../packages/billing-core
       '@hamboom/board-access-db':
         specifier: workspace:*
         version: link:../../packages/board-access-db

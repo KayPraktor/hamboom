@@ -46,6 +46,8 @@ export type VerifyOutcome =
       /** شماره‌ی پیگیریِ بانک. **رشته** نگه داشته می‌شود، نه عدد (ستون `varchar`). */
       refId: string;
       cardPanMasked: string | null;
+      /** هشِ ۶۴کاراکتریِ کارت که درگاه برمی‌گرداند — ستونش در migration ۰۰۰۴. */
+      cardHash: string | null;
       feeRial: number | null;
     }
   | { status: "notPaid"; code: number | null; message: string }

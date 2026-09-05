@@ -1,7 +1,7 @@
 # TODO-M4-billing.md — ماژول M4: `billing` (پرداخت و اشتراک)
 
-> **وضعیت (۱۴۰۵/۰۶/۱۴): فاز ۰–۴ ✅ (جز گام ۲٫۴ که به ۵٫۵ موکول شد).**
-> قدمِ بعد: **فاز ۵ (مسیرهای billingِ `apps/api`)**. نُه تصمیمِ مرزی تایید و به
+> **وضعیت (۱۴۰۵/۰۶/۱۴): فاز ۰–۵ ✅ (گام ۲٫۴ هم در فاز ۵ بسته شد).**
+> قدمِ بعد: **فاز ۶ (اعمالِ ظرفیت)**. ⚠️ [ADR-055](ARCHITECTURE_DECISIONS.md#adr-055) **منتظرِ تاییدِ مالک** است. نُه تصمیمِ مرزی تایید و به
 > ADR-049…ADR-054 تبدیل شدند؛ دروازه‌ی probeها با یک پرداختِ واقعیِ سندباکس باز شد.
 >
 > **نقطه‌ی ورود:** [`docs/m4-handoff.md`](docs/m4-handoff.md) — سندِ تحویلِ M3 به M4.
@@ -251,7 +251,7 @@ M4 مسئولِ پنج چیز است:
 | ✅ ۲٫۱ | primitiveِ `rial` در [`primitives.ts`](packages/shared-types/src/api/primitives.ts): `z.number().int().nonnegative()` | ⚠️ **هیچ فیلدِ پولی `z.number()`ِ خام یا `z.bigint()` نباشد.** `z.bigint()` هنگامِ `JSON.stringify` می‌ترکد — ۵۰۰ی بی‌کد |
 | ✅ ۲٫۲ | سه enum: `subscriptionStatus` (۵)، `teamSubscriptionStatus` (۶، با `none`)، `billingPeriod`، `invoiceStatus` — طبقِ M4-D2a | هر enum یک tupleِ `as const` + `z.enum` + `z.infer`، مثلِ `boardRoles` |
 | ✅ ۲٫۳ | DTOها: `plan`، `subscription`، `invoice`، `invoiceLineItem` (**نام‌دار**، نه inline) | `pnpm typecheck` سبز؛ در OpenAPI هر کدام یک componentِ واقعی باشند نه شیءِ بی‌نام |
-| **[!] ۲٫۴** | چهار فیلدِ مالیِ `Team` — **به فاز ۵ موکول شد** | ⚠️ **بلوکه:** افزودنشان به‌صورتِ الزامی، `toTeam`ِ [`apps/api/src/dto.ts`](apps/api/src/dto.ts) را در **typecheck** می‌شکند، و هیچ‌چیز نمی‌تواند پُرشان کند تا seedِ پلن‌ها (فاز ۴) و کوئریِ ظرفیت (فاز ۶) بیایند. پُرکردنشان با مقدارِ ساختگی یعنی دروغ در قرارداد. جایش **گام ۵٫۵** است، کنارِ `GET /teams/:id/billing/subscription` |
+| ✅ ۲٫۴ | چهار فیلدِ مالیِ `Team` — **در فاز ۵ بسته شد** | ⚠️ **بلوکه:** افزودنشان به‌صورتِ الزامی، `toTeam`ِ [`apps/api/src/dto.ts`](apps/api/src/dto.ts) را در **typecheck** می‌شکند، و هیچ‌چیز نمی‌تواند پُرشان کند تا seedِ پلن‌ها (فاز ۴) و کوئریِ ظرفیت (فاز ۶) بیایند. پُرکردنشان با مقدارِ ساختگی یعنی دروغ در قرارداد. جایش **گام ۵٫۵** است، کنارِ `GET /teams/:id/billing/subscription` |
 | ✅ ۲٫۵ | کدهای خطا **به انتهای** `apiErrorCodes` اضافه شوند (قاعده‌ی خودِ فایل) | حداقل: `PLAN_NOT_FOUND`، `PLAN_INACTIVE`، `SUBSCRIPTION_NOT_FOUND`، `COUPON_INVALID`، `COUPON_EXHAUSTED`، `PAYMENT_NOT_FOUND`، `PAYMENT_FAILED`، `GATEWAY_UNAVAILABLE`، `QUOTA_EXCEEDED` |
 | ✅ ۲٫۶ | بدنه‌ها در `requests.ts`: `checkoutBody` | ★ **`checkoutBody` هیچ فیلدِ ریالی ندارد** (ADR-014: «هیچ مبلغی از کلاینت پذیرفته نمی‌شود») |
 | ✅ ۲٫۷ | schemaِ **query** برای callback (`Authority`/`Status` با حرفِ بزرگ) | اولین schemaی query بعد از `pageQuery` — جایش (requests یا primitives) در PROGRESS ثبت شود |
@@ -331,21 +331,31 @@ migration** — تا کسی عددِ واقعی نگذارد، در فهرستِ
 
 ---
 
-### فاز ۵ — `apps/api`: مسیرهای billing
+### ✅ فاز ۵ — `apps/api`: مسیرهای billing — **تمام شد (۱۴۰۵/۰۶/۱۴)**
 
 الگو دقیقاً همان [`routes/boards.ts`](apps/api/src/routes/boards.ts) است:
 `registerBillingRoutes(app, deps)` + فراخوانی در [`app.ts`](apps/api/src/app.ts).
 
 | # | گام | معیار پذیرش | خودآزمون |
 |---|---|---|---|
-| ۵٫۱ | `GET /billing/plans` (عمومی) | بدونِ auth کار کند؛ خروجی **دقیقاً** `plan[]`ِ shared-types (ADR-045) | — |
-| ۵٫۲ | `POST /teams/:id/billing/checkout` (نقشِ `owner`) | ★ مبلغ **کاملاً سمتِ سرور** از `plans` محاسبه شود؛ ردیفِ `payments` با `idempotency_key` قبل از تماس با درگاه ساخته شود | مبلغ را در بدنه بفرست ⇒ باید نادیده گرفته شود |
-| ۵٫۳ | ★★ `GET /billing/zarinpal/callback` | **قلبِ M4.** `SELECT … FOR UPDATE` روی `payments` → اگر از قبل `paid` بود همان نتیجه (بدونِ فعال‌سازیِ دوباره) → وگرنه verifyِ سرور-به-سرور → فعال‌سازیِ اشتراک + فاکتور **در همان تراکنش** | ⚠️ **B-1**: میان‌افزارِ `idempotency` اینجا **اجرا نمی‌شود**؛ تنها حفاظ همین قفلِ ردیف است. آزمون: دو callbackِ هم‌زمان ⇒ **یک** اشتراک، **یک** فاکتور |
-| ۵٫۴ | `POST /billing/payments/:id/verify` (بازیابیِ دستی، `owner`) | همان مسیرِ ۵٫۳ را با همان قفل بزند — نه یک کپیِ دوم | callbackِ واقعی و verifyِ دستی را هم‌زمان بزن ⇒ باز هم یک اشتراک |
-| ۵٫۵ | `GET /teams/:id/billing/{subscription,invoices}` (`admin`) + `POST …/cancel` (`owner`) | گیتِ نقش با `requireTeamRole`ِ موجود؛ **عدمِ عضویت ⇒ ۴۰۴، کم‌بودنِ نقش ⇒ ۴۰۳** (تقارنِ عمدیِ M3 حفظ شود) | با نقشِ `member` بزن ⇒ ۴۰۳ |
-| ۵٫۶ | ثبت در `ROUTES`ِ [`openapi.ts`](apps/api/src/openapi.ts) + تگِ `billing` + `COMPONENT_SCHEMAS` | ★ گاردِ دریفتِ [`openapi.test.ts`](apps/api/src/openapi.test.ts) خودش این را اجباری می‌کند — مسیرِ ثبت‌شده‌ی مستندنشده verify را می‌شکند | یک مسیر را از `ROUTES` بردار ⇒ verify باید قرمز شود |
-| ۵٫۷ | P7: افزودنِ `authority`، `refId`، `cardPan`، `merchantId` به `LOG_REDACT_PATHS` + قفل با تست | ⚠️ **redact فقط روی propertyِ شیء کار می‌کند، نه داخلِ template string.** دو جای موجود ([`app.ts:118`](apps/api/src/app.ts) کدِ OTP و [`teams.ts:178`](apps/api/src/routes/teams.ts) توکنِ دعوت) دقیقاً همین دور زدن را دارند و mockِ درگاه از رویشان کپی خواهد شد | یک `authority` در لاگ بگذار ⇒ تست باید قرمز شود |
-| ۵٫۸ | محدودیتِ نرخِ اختصاصی روی callback | مسیرِ عمومیِ callback نباید فقط سطلِ سراسریِ IP را داشته باشد (IPهای درگاه کم‌اند ⇒ throttleِ callbackِ واقعی) — الگوی [`routes/auth.ts:65`](apps/api/src/routes/auth.ts) | — |
+| ✅ ۵٫۱ | `GET /billing/plans` (عمومی) | بدونِ auth کار کند؛ خروجی **دقیقاً** `plan[]`ِ shared-types (ADR-045) | — |
+| ✅ ۵٫۲ | `POST /teams/:id/billing/checkout` (نقشِ `owner`) | ★ مبلغ **کاملاً سمتِ سرور** از `plans` محاسبه شود؛ ردیفِ `payments` با `idempotency_key` قبل از تماس با درگاه ساخته شود | مبلغ را در بدنه بفرست ⇒ باید نادیده گرفته شود |
+| ✅ ۵٫۳ | ★★ `GET /billing/zarinpal/callback` | **قلبِ M4.** `SELECT … FOR UPDATE` روی `payments` → اگر از قبل `paid` بود همان نتیجه (بدونِ فعال‌سازیِ دوباره) → وگرنه verifyِ سرور-به-سرور → فعال‌سازیِ اشتراک + فاکتور **در همان تراکنش** | ⚠️ **B-1**: میان‌افزارِ `idempotency` اینجا **اجرا نمی‌شود**؛ تنها حفاظ همین قفلِ ردیف است. آزمون: دو callbackِ هم‌زمان ⇒ **یک** اشتراک، **یک** فاکتور |
+| ✅ ۵٫۴ | `POST /billing/payments/:id/verify` (بازیابیِ دستی، `owner`) | همان مسیرِ ۵٫۳ را با همان قفل بزند — نه یک کپیِ دوم | callbackِ واقعی و verifyِ دستی را هم‌زمان بزن ⇒ باز هم یک اشتراک |
+| ✅ ۵٫۵ | `GET /teams/:id/billing/{subscription,invoices}` (`admin`) + `POST …/cancel` (`owner`) | گیتِ نقش با `requireTeamRole`ِ موجود؛ **عدمِ عضویت ⇒ ۴۰۴، کم‌بودنِ نقش ⇒ ۴۰۳** (تقارنِ عمدیِ M3 حفظ شود) | با نقشِ `member` بزن ⇒ ۴۰۳ |
+| ✅ ۵٫۶ | ثبت در `ROUTES`ِ [`openapi.ts`](apps/api/src/openapi.ts) + تگِ `billing` + `COMPONENT_SCHEMAS` | ★ گاردِ دریفتِ [`openapi.test.ts`](apps/api/src/openapi.test.ts) خودش این را اجباری می‌کند — مسیرِ ثبت‌شده‌ی مستندنشده verify را می‌شکند | یک مسیر را از `ROUTES` بردار ⇒ verify باید قرمز شود |
+| ✅ ۵٫۷ | P7: افزودنِ `authority`، `refId`، `cardPan`، `merchantId` به `LOG_REDACT_PATHS` + قفل با تست | ⚠️ **redact فقط روی propertyِ شیء کار می‌کند، نه داخلِ template string.** دو جای موجود ([`app.ts:118`](apps/api/src/app.ts) کدِ OTP و [`teams.ts:178`](apps/api/src/routes/teams.ts) توکنِ دعوت) دقیقاً همین دور زدن را دارند و mockِ درگاه از رویشان کپی خواهد شد | یک `authority` در لاگ بگذار ⇒ تست باید قرمز شود |
+| ✅ ۵٫۸ | محدودیتِ نرخِ اختصاصی روی callback | مسیرِ عمومیِ callback نباید فقط سطلِ سراسریِ IP را داشته باشد (IPهای درگاه کم‌اند ⇒ throttleِ callbackِ واقعی) — الگوی [`routes/auth.ts:65`](apps/api/src/routes/auth.ts) | — |
+
+★★ **سنجه‌ی [`pnpm billing:settle`](scripts/billing-probe-settle.ts)** روی Postgresِ زنده:
+دو تسویه‌ی هم‌زمان ⇒ **یک** اشتراک/فاکتور/پرداخت · تسویه‌ی دوباره ⇒ `alreadySettled` ·
+و سناریوی «callback گم شد» ⇒ **فعال می‌شود**. با برداشتنِ `FOR UPDATE` دو چک **قرمز**.
+
+⚠️ **[ADR-055](ARCHITECTURE_DECISIONS.md#adr-055) نوشته شد و منتظرِ تاییدِ مالک است** —
+یک بندِ ADR-050 برای سناریوی آشتی‌دهی غلط بود (جزئیات در ADR).
+
+★ **دو باگ که گیت‌های خودمان گرفتند:** `payments_gateway_ck`ِ فاز ۴ جای‌نگهدارِ `'pending'`
+را در ستونِ `gateway` ردّ کرد · و گاردِ دریفتِ OpenAPI مسیرِ mockِ مستندنشده را گرفت.
 
 ---
 

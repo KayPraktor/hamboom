@@ -5,6 +5,7 @@ import {
   databaseEnvSchema,
   loadEnv,
   otpEnvSchema,
+  paymentEnvSchema,
   rateLimitEnvSchema,
   s3EnvSchema,
   uploadEnvSchema,
@@ -24,7 +25,8 @@ const apiEnvSchema = appEnvSchema
   .and(apiServerEnvSchema)
   .and(rateLimitEnvSchema)
   .and(s3EnvSchema)
-  .and(uploadEnvSchema);
+  .and(uploadEnvSchema)
+  .and(paymentEnvSchema);
 
 export function loadApiConfig() {
   return loadEnv(apiEnvSchema);

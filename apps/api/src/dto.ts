@@ -3,6 +3,9 @@ import type {
   BoardMember,
   BoardSummary,
   Folder,
+  Invoice,
+  Plan,
+  Subscription,
   Team,
   TeamMember,
   User,
@@ -78,6 +81,13 @@ export interface TeamRow {
   name: string;
   my_role: string;
   member_count: number | string;
+  plan_code: string;
+  subscription_status: string;
+  max_members: number | string;
+  max_boards: number | string;
+  max_storage_bytes: number | string;
+  usage_boards: number | string;
+  usage_storage_bytes: number | string;
   created_at: unknown;
 }
 export function toTeam(r: TeamRow): Team {
@@ -88,9 +98,56 @@ export function toTeam(r: TeamRow): Team {
     avatarUrl: null,
     myRole: r.my_role as Team["myRole"],
     memberCount: Number(r.member_count),
+    planCode: r.plan_code,
+    subscriptionStatus: r.subscription_status as Team["subscriptionStatus"],
+    limits: {
+      maxMembers: Number(r.max_members),
+      maxBoards: Number(r.max_boards),
+      maxStorageBytes: Number(r.max_storage_bytes),
+    },
+    usage: {
+      // ★ `members` همان `member_count` است — یک عدد، دو نام در قرارداد (PLAN §۵٫۱).
+      members: Number(r.member_count),
+      boards: Number(r.usage_boards),
+      storageBytes: Number(r.usage_storage_bytes),
+    },
     createdAt: iso(r.created_at),
   };
 }
+
+/**
+ * ستون‌های مالیِ تیم — پلن، وضعیتِ اشتراک، سقف‌ها و مصرف (M4 فاز ۵، ADR-053).
+ *
+ * ★★ **مصرف با `count(*)`ِ واقعی خوانده می‌شود، نه از `usage_counters`** — که تا امروز
+ * درج می‌شد و هرگز به‌روز نمی‌شد (B-5)، پس `members_count`ش همیشه صفر بود. طبق ADR-053
+ * جدول فقط **کشِ نمایش** است؛ اینجا و در گیتِ ظرفیت، عددِ واقعی مبناست. فقط
+ * `storage_bytes` از کش می‌آید چون جمعِ اندازه‌ی فایل‌ها گران‌تر است و **دقتش حیاتی نیست**
+ * (سقفِ فضا با آپلود اعمال می‌شود، نه با این عدد).
+ *
+ * ★ تیمِ بی‌اشتراک `free` می‌گیرد و وضعیتِ `none` — پس `Team.planCode` هرگز خالی نیست.
+ * `subscriptions_active_uq` تضمین می‌کند این JOIN حداکثر یک ردیف بدهد.
+ *
+ * ⚠️ عمداً هیچ `sum()`ی اینجا نیست: `sum` روی `bigint` نوعِ `numeric` (OID 1700) می‌دهد که
+ * کوئرسِ `int8→number` نمی‌گیردش و **رشته** برمی‌گردد (B-2، اثباتِ گام ۱٫۲).
+ */
+/** شمارشِ اعضای تیم — همان زیرپرس‌وجویی که هر چهار SELECTِ تیم لازم دارد. */
+export const MC =
+  "(SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count";
+
+export const TEAM_BILLING_COLUMNS = `
+         COALESCE(s.plan_code, 'free') AS plan_code,
+         COALESCE(s.status, 'none') AS subscription_status,
+         p.max_members, p.max_boards, p.max_storage_bytes,
+         (SELECT count(*) FROM boards b
+           WHERE b.team_id = t.id AND b.deleted_at IS NULL) AS usage_boards,
+         COALESCE(uc.storage_bytes, 0) AS usage_storage_bytes`;
+
+/** JOINهایی که `TEAM_BILLING_COLUMNS` لازم دارد. همیشه با هم می‌آیند. */
+export const TEAM_BILLING_JOINS = `
+    LEFT JOIN subscriptions s
+           ON s.team_id = t.id AND s.status IN ('trialing', 'active', 'past_due')
+    LEFT JOIN plans p ON p.code = COALESCE(s.plan_code, 'free')
+    LEFT JOIN usage_counters uc ON uc.team_id = t.id`;
 
 // ── TeamMember ──────────────────────────────────────────────────────────
 export interface TeamMemberRow {
@@ -220,3 +277,95 @@ export function toFolder(r: FolderRow): Folder {
     createdAt: iso(r.created_at),
   };
 }
+
+// ── Billing (M4 فاز ۵) ───────────────────────────────────────────────────
+
+export interface PlanRow {
+  code: string;
+  name: string;
+  description: string | null;
+  price_monthly_rial: number | string;
+  price_yearly_rial: number | string;
+  max_members: number | string;
+  max_boards: number | string;
+  max_storage_bytes: number | string;
+  features: unknown;
+  is_active: boolean;
+  sort_order: number | string;
+}
+export function toPlan(r: PlanRow): Plan {
+  return {
+    code: r.code,
+    name: r.name,
+    description: r.description ?? "",
+    priceMonthlyRial: Number(r.price_monthly_rial),
+    priceYearlyRial: Number(r.price_yearly_rial),
+    maxMembers: Number(r.max_members),
+    maxBoards: Number(r.max_boards),
+    maxStorageBytes: Number(r.max_storage_bytes),
+    // `features` یک `jsonb` است؛ درایور آرایه می‌دهد، ولی ردیفِ خراب نباید ۵۰۰ بسازد.
+    features: Array.isArray(r.features) ? r.features.map(String) : [],
+    isActive: r.is_active,
+    sortOrder: Number(r.sort_order),
+  };
+}
+
+export interface SubscriptionRow {
+  id: string;
+  team_id: string;
+  plan_code: string;
+  status: string;
+  period: string;
+  seats: number | string;
+  current_period_start: unknown;
+  current_period_end: unknown;
+  cancel_at_period_end: boolean;
+}
+export function toSubscription(r: SubscriptionRow): Subscription {
+  return {
+    id: r.id,
+    teamId: r.team_id,
+    planCode: r.plan_code,
+    status: r.status as Subscription["status"],
+    period: r.period as Subscription["period"],
+    seats: Number(r.seats),
+    currentPeriodStart: iso(r.current_period_start),
+    currentPeriodEnd: iso(r.current_period_end),
+    cancelAtPeriodEnd: r.cancel_at_period_end,
+  };
+}
+
+export interface InvoiceRow {
+  id: string;
+  number: string;
+  subtotal_rial: number | string;
+  discount_rial: number | string;
+  vat_rial: number | string;
+  total_rial: number | string;
+  status: string;
+  line_items: unknown;
+  issued_at: unknown;
+  paid_at: unknown;
+}
+export function toInvoice(r: InvoiceRow): Invoice {
+  return {
+    id: r.id,
+    number: r.number,
+    subtotalRial: Number(r.subtotal_rial),
+    discountRial: Number(r.discount_rial),
+    vatRial: Number(r.vat_rial),
+    totalRial: Number(r.total_rial),
+    status: r.status as Invoice["status"],
+    issuedAt: iso(r.issued_at),
+    paidAt: isoOrNull(r.paid_at),
+    lineItems: Array.isArray(r.line_items) ? (r.line_items as Invoice["lineItems"]) : [],
+  };
+}
+
+/** ستون‌های `invoices` که `toInvoice` می‌خواهد — تا هیچ SELECTی یکی را جا نیندازد. */
+export const INVOICE_COLUMNS =
+  "id, number, subtotal_rial, discount_rial, vat_rial, total_rial, status, line_items, issued_at, paid_at";
+
+/** ستون‌های `subscriptions` که `toSubscription` می‌خواهد. */
+export const SUBSCRIPTION_COLUMNS =
+  "id, team_id, plan_code, status, period, seats, current_period_start, current_period_end, cancel_at_period_end";

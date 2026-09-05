@@ -61,7 +61,20 @@ describe("قراردادِ DTO — معتبر می‌گذرد، نامعتبر �
     expect(userPublic.parse(PUBLIC)).toEqual(PUBLIC);
     const m = { user: PUBLIC, role: "admin", joinedAt: DATE, invitedBy: null };
     expect(teamMember.parse(m)).toEqual(m);
-    const t = { id: ID, slug: "acme", name: "آکمه", avatarUrl: null, myRole: "owner", memberCount: 3, createdAt: DATE };
+    const t = {
+      id: ID,
+      slug: "acme",
+      name: "آکمه",
+      avatarUrl: null,
+      myRole: "owner",
+      memberCount: 3,
+      // ★ فیلدهای مالی — فاز ۵ی M4. تیمِ بی‌اشتراک `free`/`none` می‌گیرد.
+      planCode: "free",
+      subscriptionStatus: "none",
+      limits: { maxMembers: 3, maxBoards: 3, maxStorageBytes: 104857600 },
+      usage: { members: 3, boards: 1, storageBytes: 0 },
+      createdAt: DATE,
+    };
     expect(team.parse(t)).toEqual(t);
     // نقشِ تیمیِ نامعتبر رد می‌شود
     expect(teamMember.safeParse({ ...m, role: "editor" }).success).toBe(false);

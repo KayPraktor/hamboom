@@ -100,6 +100,7 @@ export class MockGateway implements PaymentGateway {
       alreadyVerified,
       refId: `MOCKREF${input.authority.slice(-8)}`,
       cardPanMasked: "502229******0000",
+      cardHash: null,
       feeRial: 0,
     };
   }

@@ -35,6 +35,15 @@ export const TEST_CONFIG: ApiConfig = {
   S3_BUCKET_ASSETS: "hamboom-assets",
   S3_BUCKET_SNAPSHOTS: "hamboom-snapshots",
   UPLOAD_MAX_BYTES: 10 * 1024 * 1024,
+  // ── billing (M4 فاز ۵) — تست هرگز به درگاهِ واقعی نمی‌رسد؛ `buildApp` هم `gateway`
+  //    را تزریق‌پذیر گرفته، پس این‌ها فقط برای کاملی تایپ‌اند.
+  PAYMENT_PROVIDER: "mock",
+  ZARINPAL_MODE: "sandbox",
+  ZARINPAL_MERCHANT_ID: undefined,
+  ZARINPAL_CURRENCY: "IRR",
+  ZARINPAL_CALLBACK_URL: "http://localhost:3002/api/v1/billing/zarinpal/callback",
+  VAT_PERCENT: 0,
+  WEB_BASE_URL: "http://localhost:5173",
 };
 
 /** استخرِ دروغینِ db — فقط `query`/`end`. تست بدونِ Postgres. */

@@ -31,6 +31,20 @@ export const LOG_REDACT_PATHS = [
   "*.codeHash",
   "*.code_hash",
   "*.secret",
+  // ── M4 (billing) — شناسه‌های پرداخت هرگز در لاگ (P7) ──────────────────
+  // ⚠️ `redact` فقط روی **propertyِ شیء** کار می‌کند، نه داخلِ template string. دو جای
+  //    موجود (کدِ OTP در app.ts و توکنِ دعوت در routes/teams.ts) دقیقاً همین را دور می‌زنند
+  //    و mockِ درگاه از رویشان کپی خواهد شد — پس آن‌جا باید **دستی** مواظب بود.
+  "*.authority",
+  "*.Authority",
+  "*.refId",
+  "*.ref_id",
+  "*.cardPan",
+  "*.card_pan",
+  "*.cardHash",
+  "*.card_hash",
+  "*.merchantId",
+  "*.merchant_id",
 ] as const;
 
 export const LOG_REDACT_CENSOR = "[Redacted]";
