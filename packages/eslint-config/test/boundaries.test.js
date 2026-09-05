@@ -9,6 +9,7 @@ import {
   apiBoundaries,
   assetsBoundaries,
   authCoreBoundaries,
+  billingCoreBoundaries,
   boardAccessDbBoundaries,
   canvasSyncBoundaries,
   processEnvDiscipline,
@@ -239,6 +240,36 @@ describe("لایه‌ی ۱ — الگوهای مرزی", () => {
     );
   });
 
+  describe("billingCoreBoundaries — منطقِ خالصِ پول؛ pg/fastify/UI ممنوع (M4 فاز ۳)", () => {
+    const config = billingCoreBoundaries();
+
+    it.each([
+      // ★ billing-core به DB وصل نمی‌شود (جدول‌ها در apps/api) و سرورِ HTTP هم نیست.
+      "pg",
+      "ioredis",
+      "fastify",
+      "@aws-sdk/client-s3",
+      "@hamboom/canvas-core",
+      "@hamboom/sdk",
+      "@hamboom/storage",
+      "react",
+      "ws",
+      // ⚠️ کلاینتِ HTTPِ شخصِ ثالث ممنوع است — آداپتور با fetchِ بومی نوشته می‌شود (P1).
+      "axios",
+      "ky",
+    ])("می‌گیرد: %s", (specifier) => {
+      expect(isForbidden(config, specifier)).toBe(true);
+    });
+
+    // مجاز: shared-types (قرارداد)، config، و ماژول‌های بومیِ Node.
+    it.each(["@hamboom/shared-types", "@hamboom/config", "node:crypto"])(
+      "مزاحمِ %s نمی‌شود",
+      (specifier) => {
+        expect(isForbidden(config, specifier)).toBe(false);
+      },
+    );
+  });
+
   describe("apiBoundaries — لایه‌ی REST؛ @aws-sdk/UI/sdk ممنوع، storage/auth-core مجاز (M3 فاز ۵)", () => {
     const config = apiBoundaries();
 
@@ -383,6 +414,8 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     ["packages/assets", 'import { S3Client } from "@aws-sdk/client-s3";'],
     // ★ auth-core منطقِ خالص است: importِ خامِ `pg` باید خطا بخورد (DB در apps/api، فاز ۵).
     ["packages/auth-core", 'import { Pool } from "pg";'],
+    // ★ billing-core هم منطقِ خالص است: importِ خامِ `fastify` باید خطا بخورد (سرور در apps/api).
+    ["packages/billing-core", 'import Fastify from "fastify";'],
     // ★ apps/api: importِ خامِ `@aws-sdk` باید خطا بخورد (به S3 فقط از راهِ storage، P4).
     ["apps/api", 'import { S3Client } from "@aws-sdk/client-s3";'],
     // ★ sdk: importِ لایه‌ی سرور (@hamboom/storage) باید خطا بخورد — sdk فقط با HTTP حرف می‌زند.
@@ -413,6 +446,11 @@ describe("لایه‌ی ۲ — سیم‌کشی به eslint.config.js واقعی"
     ],
     // ★ auth-core مجاز است `jose` را ببیند (JWT).
     ["packages/auth-core", 'import { SignJWT } from "jose";\nexport const s = SignJWT;'],
+    // ★ billing-core مجاز است قرارداد را ببیند (تایپِ Plan/BillingPeriod).
+    [
+      "packages/billing-core",
+      'import { plan } from "@hamboom/shared-types";\nexport const p = plan;',
+    ],
     // ★ apps/api مجاز است `@hamboom/storage` را ببیند (پلاگینِ s3 — مسیرِ درستِ P4).
     [
       "apps/api",
@@ -562,6 +600,20 @@ describe("لایه‌ی ۳ — وابستگی‌های اعلام‌شده در 
     expect(deps.filter((d) => d.startsWith("@aws-sdk/"))).toEqual([]);
     expect(deps).not.toContain("pg");
     expect(deps).not.toContain("ioredis");
+  });
+
+  // ★★ billing-core: مرزِ تعریف‌کننده‌اش **نفی** است — صفر dependencyِ زمانِ اجرا جز قرارداد.
+  //    اگر روزی `axios` یا `pg` اینجا اعلام شود، یعنی منطقِ پول دارد به لایه‌ی داده/شبکه نشت می‌کند.
+  it("billing-core منطقِ خالص است — فقط shared-types، نه pg/fastify/axios/@aws-sdk", () => {
+    const deps = declaredDeps("packages/billing-core");
+    expect(deps).toContain("@hamboom/shared-types");
+    expect(deps.filter((d) => d.startsWith("@aws-sdk/"))).toEqual([]);
+    expect(deps).not.toContain("pg");
+    expect(deps).not.toContain("ioredis");
+    expect(deps).not.toContain("fastify");
+    expect(deps).not.toContain("axios");
+    expect(deps).not.toContain("ky");
+    expect(deps).not.toContain("react");
   });
 
   // ★ apps/api لایه‌ی REST است: به S3 فقط از راهِ storage (نه @aws-sdk)، نه موتورِ رندر، نه sdk (دورِ باطل).

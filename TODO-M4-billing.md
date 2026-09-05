@@ -1,7 +1,7 @@
 # TODO-M4-billing.md — ماژول M4: `billing` (پرداخت و اشتراک)
 
-> **وضعیت (۱۴۰۵/۰۶/۱۴): فاز ۰ ✅ · فاز ۱ ✅ · فاز ۲ ✅ (به‌جز گام ۲٫۴ که موکول شد).**
-> قدمِ بعد: **فاز ۳ (`packages/billing-core`)**. نُه تصمیمِ مرزی تایید و به
+> **وضعیت (۱۴۰۵/۰۶/۱۴): فاز ۰ ✅ · فاز ۱ ✅ · فاز ۲ ✅ (جز ۲٫۴ که موکول شد) · فاز ۳ ✅.**
+> قدمِ بعد: **فاز ۴ (migration `0004`)**. نُه تصمیمِ مرزی تایید و به
 > ADR-049…ADR-054 تبدیل شدند؛ دروازه‌ی probeها با یک پرداختِ واقعیِ سندباکس باز شد.
 >
 > **نقطه‌ی ورود:** [`docs/m4-handoff.md`](docs/m4-handoff.md) — سندِ تحویلِ M3 به M4.
@@ -264,17 +264,34 @@ M4 مسئولِ پنج چیز است:
 
 ---
 
-### فاز ۳ — `packages/billing-core` (پورت + ریاضیِ پول)
+### ✅ فاز ۳ — `packages/billing-core` (پورت + ریاضیِ پول) — **تمام شد (۱۴۰۵/۰۶/۱۴)**
 
 | # | گام | معیار پذیرش | خودآزمون |
 |---|---|---|---|
-| ۳٫۱ | ساختِ پکیج با **کلِ چک‌لیستِ ۹تایی**: `package.json`، `tsconfig`، `eslint.config.js` (با `processEnvDiscipline()`)، factoryِ `billingCoreBoundaries()` در [`packages/eslint-config/boundaries.js`](packages/eslint-config/boundaries.js)، هر سه لایه‌ی تستش در `boundaries.test.js`، `vitest.config.ts` با **threshold ۹۰٪**، `test:coverage`، ثبت در `docs/dependencies.md` | ⚠️ **پکیجی که `test:coverage` نداشته باشد بی‌صدا از گیتِ پوشش معاف است** — turbo taskِ تعریف‌نشده را رد می‌کند و verify همچنان `✔` می‌زند. دقیقاً همان اشتباهی که گیت برای رفعش ساخته شد | یک importِ ممنوع (`pg`) بگذار ⇒ lint باید قرمز شود |
-| ۳٫۲ | پورتِ `PaymentGateway` با سه متد ADR-014 (`createPayment`، `verifyPayment`، `refund?` — اختیاری بماند) | interface خالص، بدونِ `fetch`، بدونِ `pg` | — |
-| ۳٫۳ | `MockGateway` — پیش‌فرضِ dev (M4-D5) | ★ فلگِ `developmentOnly` **روی خودِ پیاده‌سازی**، و ادعایش **داخلِ `buildApp()`** نه در فایلِ ورودی (قرینه‌ی [`board-authority.ts:43-49`](apps/realtime/src/auth/board-authority.ts)) | `APP_ENV=production` + `PAYMENT_PROVIDER=mock` ⇒ باید **بالا نیاید** |
-| ۳٫۴ | `ZarinpalGateway` روی `fetch` بومی | ★★ سه قاعده از probe: (۱) **هرگز روی `res.ok` شاخه نزن** — بدنه را همیشه بخوان و روی `code` تصمیم بگیر · (۲) schemaی پاسخ باید **هر دو شکلِ `errors`** (آرایه و شیء) را بپذیرد · (۳) `{100,101}` = پرداخت‌شده | پاسخِ `-51` (HTTP 401) را شبیه‌سازی کن ⇒ باید «پرداخت نشده» بدهد، نه exception |
-| ۳٫۵ | ریاضیِ پول: `computeInvoice(plan, period, seats, coupon, vatPercent)` — همه صحیحِ ریال، **یک** قاعده‌ی گِردکردنِ مستند | ★ `subtotal - discount + vat === total` **دقیقاً**؛ همان تابع هم مبلغِ درگاه را می‌دهد هم فاکتور را ⇒ اختلافِ ۱ ریال ساختاراً ناممکن | دو مسیرِ محاسبه بساز ⇒ تست باید قرمز شود |
-| ۳٫۶ | شماره‌ی فاکتور (`HB-1405-000123`) و محاسبه‌ی دوره | ⚠️ سالِ جلالی از `Asia/Tehran` ولی `issued_at` از `now()`ِ UTC — بینِ ۲۰:۳۰ UTC تا نیمه‌شبِ آخرِ اسفند این دو **سالِ متفاوت** می‌دهند. یک منبعِ زمانِ واحد، تست‌شده روی همان مرز | زمان را روی ۱۴۰۵/۱۲/۲۹ ساعت ۲۱:۰۰ UTC بگذار ⇒ باید همان سالی را بدهد که DB می‌دهد |
-| ۳٫۷ | `zarinpalEnvSchema` در [`config/src/sections.ts`](packages/config/src/sections.ts) + افزودن به `.env.example` | ⚠️ **`envInt` را برای `VAT_PERCENT` استفاده نکن** — `positive()` مقدارِ `0` را رد می‌کند و M4-D6 صفر را پیش‌فرض کرده. ⚠️ فیلدهای زرین‌پال در سطحِ schema **اختیاری** بمانند وگرنه `pnpm dev` merchant واقعی می‌خواهد (P3) | `VAT_PERCENT=0` بگذار ⇒ باید بالا بیاید |
+| ✅ ۳٫۱ | ساختِ پکیج با **کلِ چک‌لیستِ ۹تایی**: `package.json`، `tsconfig`، `eslint.config.js` (با `processEnvDiscipline()`)، factoryِ `billingCoreBoundaries()` در [`packages/eslint-config/boundaries.js`](packages/eslint-config/boundaries.js)، هر سه لایه‌ی تستش در `boundaries.test.js`، `vitest.config.ts` با **threshold ۹۰٪**، `test:coverage`، ثبت در `docs/dependencies.md` | ⚠️ **پکیجی که `test:coverage` نداشته باشد بی‌صدا از گیتِ پوشش معاف است** — turbo taskِ تعریف‌نشده را رد می‌کند و verify همچنان `✔` می‌زند. دقیقاً همان اشتباهی که گیت برای رفعش ساخته شد | یک importِ ممنوع (`pg`) بگذار ⇒ lint باید قرمز شود |
+| ✅ ۳٫۲ | پورتِ `PaymentGateway` با سه متد ADR-014 (`createPayment`، `verifyPayment`، `refund?` — اختیاری بماند) | interface خالص، بدونِ `fetch`، بدونِ `pg` | — |
+| ✅ ۳٫۳ | `MockGateway` — پیش‌فرضِ dev (M4-D5) | ★ فلگِ `developmentOnly` **روی خودِ پیاده‌سازی**، و ادعایش **داخلِ `buildApp()`** نه در فایلِ ورودی (قرینه‌ی [`board-authority.ts:43-49`](apps/realtime/src/auth/board-authority.ts)) | `APP_ENV=production` + `PAYMENT_PROVIDER=mock` ⇒ باید **بالا نیاید** |
+| ✅ ۳٫۴ | `ZarinpalGateway` روی `fetch` بومی | ★★ سه قاعده از probe: (۱) **هرگز روی `res.ok` شاخه نزن** — بدنه را همیشه بخوان و روی `code` تصمیم بگیر · (۲) schemaی پاسخ باید **هر دو شکلِ `errors`** (آرایه و شیء) را بپذیرد · (۳) `{100,101}` = پرداخت‌شده | پاسخِ `-51` (HTTP 401) را شبیه‌سازی کن ⇒ باید «پرداخت نشده» بدهد، نه exception |
+| ✅ ۳٫۵ | ریاضیِ پول: `computeInvoice(plan, period, seats, coupon, vatPercent)` — همه صحیحِ ریال، **یک** قاعده‌ی گِردکردنِ مستند | ★ `subtotal - discount + vat === total` **دقیقاً**؛ همان تابع هم مبلغِ درگاه را می‌دهد هم فاکتور را ⇒ اختلافِ ۱ ریال ساختاراً ناممکن | دو مسیرِ محاسبه بساز ⇒ تست باید قرمز شود |
+| ✅ ۳٫۶ | شماره‌ی فاکتور (`HB-1405-000123`) و محاسبه‌ی دوره | ⚠️ سالِ جلالی از `Asia/Tehran` ولی `issued_at` از `now()`ِ UTC — بینِ ۲۰:۳۰ UTC تا نیمه‌شبِ آخرِ اسفند این دو **سالِ متفاوت** می‌دهند. یک منبعِ زمانِ واحد، تست‌شده روی همان مرز | زمان را روی ۱۴۰۵/۱۲/۲۹ ساعت ۲۱:۰۰ UTC بگذار ⇒ باید همان سالی را بدهد که DB می‌دهد |
+| ✅ ۳٫۷ | `zarinpalEnvSchema` در [`config/src/sections.ts`](packages/config/src/sections.ts) + افزودن به `.env.example` | ⚠️ **`envInt` را برای `VAT_PERCENT` استفاده نکن** — `positive()` مقدارِ `0` را رد می‌کند و M4-D6 صفر را پیش‌فرض کرده. ⚠️ فیلدهای زرین‌پال در سطحِ schema **اختیاری** بمانند وگرنه `pnpm dev` merchant واقعی می‌خواهد (P3) | `VAT_PERCENT=0` بگذار ⇒ باید بالا بیاید |
+
+**★ سه گیتِ تازه، هر سه با شکستنِ عمدی قرمز شدند:**
+
+| شکستن | نتیجه |
+|---|---|
+| حذفِ `money.test.ts` | `✖ Coverage for lines (85%) does not meet global threshold (90%)` |
+| `import pg` در `src/money.ts` | `✖ no-restricted-imports` با همان پیامِ دلیل |
+| `ZARINPAL_CURRENCY=IRT` | رد شد (`z.literal("IRR")` — جلوی ضریبِ ۱۰) |
+
+★ و `VAT_PERCENT=0` **بالا می‌آید** — چون `envIntFromZero` جای `envInt` (که `positive()`
+است و صفر را رد می‌کرد) نوشته شد.
+
+⚠️ **یک ناسازگاریِ واقعی حین تست پیدا و رفع شد:** `MockGateway.createPayment` نوعِ
+`Promise` اعلام کرده بود ولی `assertGatewayAmount` را **همزمان** صدا می‌زد — یعنی پرتابش
+با `.catch()` گرفته نمی‌شد و فراخوان را غافلگیر می‌کرد. متدها `async` شدند.
+
+**پوشش: ۹۹٫۲۸٪ خط · ۹۴٫۲۳٪ شاخه · ۱۰۰٪ تابع** (۵۴ تست).
 
 ---
 

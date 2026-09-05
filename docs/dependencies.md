@@ -38,6 +38,7 @@
 |---|---|---|
 | `@playwright/test` | Apache-2.0 | تستِ E2E در مرورگرِ **واقعی** (گام ۶٫۱) — چیزی که jsdom نمی‌تواند: رندرِ پیکسل، رویدادِ trusted، undoِ موتور، جهتِ متنِ canvas (G-2/ADR-025) |
 | `@vitest/coverage-v8` | MIT | گیتِ پوششِ ≥۶۰٪ (گام ۶٫۱) |
+| `@vitest/coverage-v8` (در `billing-core`) | MIT | ★ گیتِ پوششِ **۹۰٪** برای کدِ پول — [ADR-049](../ARCHITECTURE_DECISIONS.md#adr-049) (M4 فاز ۳) |
 
 **دربارهٔ باینریِ مرورگرِ Playwright (P2/P3):** Playwright هنگام `playwright install`
 یک Chromium را از `cdn.playwright.dev` می‌گیرد و در دایرکتوریِ کاربر کش می‌کند — **نه در
@@ -48,6 +49,18 @@
 لازم شد، مثلِ فونت‌های Excalidraw می‌توان باینری را خودمیزبان کرد — کارِ M5 (infra).
 
 ---
+
+## ★ M4 (billing) — صفر وابستگیِ جدید
+
+`packages/billing-core` هیچ dependencyِ زمانِ اجرایی جز `@hamboom/shared-types` ندارد.
+آداپتورِ زرین‌پال با **`fetch`ِ بومیِ Node ۲۴** نوشته شده، نه با `axios`/`ky`، و هیچ SDKِ
+زرین‌پالی نصب نشده (P1). یک تستِ manifest در
+[`boundaries.test.js`](../packages/eslint-config/test/boundaries.test.js) این را قفل می‌کند:
+اگر روزی `pg`/`fastify`/`axios` آن‌جا اعلام شود، گیت قرمز می‌شود.
+
+⚠️ **گیتِ لایسنس بدونِ `--strict` اجرا می‌شود**، پس تخلفِ dev-scope فقط **هشدار** است و
+exit 0 می‌دهد ([`license-check.ts`](../scripts/license-check.ts)). برای پکیجِ پول این را
+دستی هم ببین.
 
 ## استثناهای لایسنس
 

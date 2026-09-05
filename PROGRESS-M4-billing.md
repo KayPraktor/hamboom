@@ -259,3 +259,64 @@ query است نه بدنه، ولی همه‌ی ورودی‌هایی که `apps
 ### وضعیتِ گیت
 
 `pnpm verify` — **سبز (۹/۹)**.
+
+---
+
+## ۱۴۰۵/۰۶/۱۴ (ادامه) — فاز ۳: `packages/billing-core`
+
+### چه شد
+
+پکیجِ جدید با **کلِ چک‌لیستِ ۹تایی** ساخته شد: `package.json`/`tsconfig`/`eslint.config.js`،
+factoryِ `billingCoreBoundaries()` + **هر سه لایه‌ی** تستش، `vitest.config.ts` با thresholdِ
+**۹۰٪**، `test:coverage`، ثبت در `docs/dependencies.md`، و devDependencyِ ریشه.
+تست‌های `eslint-config` از ۱۹۳ به ۲۱۰ رفت.
+
+محتوا: پورتِ `PaymentGateway` + `MockGateway` + `ZarinpalGateway` + `computeCharge` +
+`formatInvoiceNumber`/`computePeriod`. **۵۴ تست، پوششِ ۹۹٫۲۸٪ خط و ۹۴٫۲۳٪ شاخه.**
+`pnpm verify` سبز (۹/۹).
+
+**سه گیتِ تازه با شکستنِ عمدی قرمز شدند:** حذفِ `money.test.ts` ⇒ پوشش ۸۵٪ و سه خطای
+threshold · `import pg` در `src` ⇒ `no-restricted-imports` · `ZARINPAL_CURRENCY=IRT` ⇒ رد.
+
+### چه تصمیمی گرفتم
+
+**۱. ★ یک باگِ واقعی حین نوشتنِ تست پیدا شد و رفع شد.** `MockGateway.createPayment` نوعِ
+`Promise` اعلام کرده بود ولی `assertGatewayAmount` را **همزمان** صدا می‌زد — پس روی مبلغِ
+نامعتبر یک پرتابِ **synchronous** می‌داد که با `.catch()` گرفته نمی‌شود. تست اولش قرمز شد و
+من اول فکر کردم تست غلط است؛ ولی مسئله واقعی بود و متدها `async` شدند. (این دقیقاً همان
+جنس باگی است که فقط وقتی پیدا می‌شود که تست را **جدی** بگیری، نه اینکه به شکلِ دلخواه
+بازنویسی‌اش کنی.)
+
+**۲. `VerifyOutcome` سه حالت دارد، نه دو.** `notPaid` («کاربر پول نداد» ⇒ ردیف `failed`) از
+`gatewayError` («نمی‌دانیم» ⇒ ردیف `pending` بماند تا sweep) جدا شد. یکی‌کردنشان یعنی یا
+پرداختِ واقعی گم می‌شود یا یک ردیفِ مرده برای همیشه می‌مانَد. قطعیِ شبکه و بدنه‌ی غیر-JSON
+هر دو `gatewayError`اند.
+
+**۳. `envIntFromZero` کنارِ `envInt` اضافه شد.** `envInt` عمداً `positive()` است و
+`VAT_PERCENT=0` را **رد** می‌کرد — همان تله‌ای که در برنامه‌ریزی پیش‌بینی شده بود.
+
+**۴. `ZARINPAL_CURRENCY` یک `z.literal("IRR")` است، نه enum.** درگاه `IRT` را هم می‌پذیرد و
+اشتباهش ضریبِ ۱۰ روی هر تراکنش است؛ این‌طوری با متغیرِ محیطی هم قابلِ تغییر نیست.
+
+**۵. فیلدهای زرین‌پال در schema `optional` ماندند.** اجباری‌کردنشان یعنی `pnpm dev` یک
+merchantِ واقعی می‌خواهد و اولین کاری که هرکس می‌کند گذاشتنِ مقدارِ الکی است — «و از آن به
+بعد گیت مرده است» (هشدارِ خودِ `sections.ts`). اعتبارسنجیِ ۳۶ کاراکتر داخلِ سازنده‌ی
+`ZarinpalGateway` است و فقط وقتی provider واقعاً زرین‌پال باشد اجرا می‌شود.
+
+⚠️ **یک درسِ ابزاری:** ویرایشِ فایل‌های CRLF با anchorهای **چندخطی** در Python بی‌صدا
+شکست می‌خورد (چون anchor با `
+` نوشته می‌شود و فایل `
+` دارد). سه بار خورد به این.
+درست: یا `
+` را نرمال کن و آخر برگردان، یا anchorِ **تک‌خطی** بگیر و line-based درج کن.
+
+### قدم بعد
+
+**فاز ۴ — migration `0004`**: `CHECK` روی وضعیت‌های billing (B-4)، `coupon_redemptions`،
+`activated_by_payment_id` + `unit_price_rial`، اصلاحِ FK/ON DELETE (که probeِ فاز ۱ خودش
+به آن خورد)، ستونِ `card_hash`، `vat_percent`ِ منجمد، و seedِ پلن‌ها — که گام ۲٫۴ی موکول‌شده
+منتظرش است.
+
+### وضعیتِ گیت
+
+`pnpm verify` — **سبز (۹/۹)**.

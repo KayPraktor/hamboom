@@ -547,6 +547,42 @@ export function authCoreBoundaries() {
 }
 
 /**
+ * `packages/billing-core` — منطقِ خالصِ پول + پورتِ درگاه، افزوده‌ی M4 فاز ۳.
+ *
+ * ★ **قرینه‌ی دقیقِ `auth-core`:** ریاضیِ ریال، دوره، شماره‌ی فاکتور و آداپتورِ درگاه اینجا؛
+ * جدولِ `payments`/`invoices` و تراکنش در `apps/api` (فاز ۵). پس `pg`/`ioredis`/`fastify`
+ * جا ندارند و UI که اصلاً.
+ *
+ * ⚠️ `axios`/`ky` هم ممنوع‌اند: آداپتورِ زرین‌پال با `fetch`ِ بومیِ Node ۲۴ نوشته می‌شود
+ * (P1 — صفر dependencyِ جدید).
+ */
+export function billingCoreBoundaries() {
+  return packageBoundaries({
+    forbid: [
+      "@hamboom/canvas-core",
+      "@hamboom/canvas-sync",
+      "@hamboom/ydoc-schema",
+      "@hamboom/sdk",
+      "@hamboom/storage",
+      "@hamboom/assets",
+      "@aws-sdk/*",
+      "react",
+      "react-dom",
+      "@excalidraw/*",
+      "ws",
+      "pg",
+      "ioredis",
+      "fastify",
+      "axios",
+      "ky",
+    ],
+    reason:
+      "billing-core منطقِ خالص + پورت است: ریاضیِ ریال و آداپتورِ درگاه اینجا، ولی جدول و " +
+      "تراکنش در apps/api (فاز ۵). مجاز: shared-types و fetchِ بومی — نه pg/fastify/UI/HTTP-client.",
+  });
+}
+
+/**
  * `apps/api` — REST APIِ Fastify، افزوده‌ی M3 فاز ۵.
  *
  * ★ **لایه‌ی داده/REST است، نه UI و نه دروازه‌ی S3.** بالاترین مصرف‌کننده‌ی پکیج‌های M3:

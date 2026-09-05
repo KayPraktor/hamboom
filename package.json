@@ -52,6 +52,7 @@
   },
   "devDependencies": {
     "@hamboom/auth-core": "workspace:*",
+    "@hamboom/billing-core": "workspace:*",
     "@hamboom/board-access-db": "workspace:*",
     "@hamboom/canvas-sync": "workspace:*",
     "@hamboom/config": "workspace:*",

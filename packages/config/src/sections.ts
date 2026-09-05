@@ -25,6 +25,17 @@ function envBoolean(defaultValue: "true" | "false") {
     .transform((value) => value === "true");
 }
 
+/**
+ * عددِ صحیحِ **صفرپذیر** از رشته‌ی محیطی.
+ *
+ * ⚠️ `envInt` عمداً `positive()` است و مقدارِ `0` را **رد** می‌کند. ولی `VAT_PERCENT=0`
+ * پیش‌فرضِ توسعه است ([ADR-052](../../../ARCHITECTURE_DECISIONS.md#adr-052)/M4-D6) و باید
+ * بالا بیاید — پس هر آستانه‌ای که صفرش معنادار است باید از این بیاید، نه از `envInt`.
+ */
+function envIntFromZero(defaultValue: number) {
+  return z.coerce.number().int().min(0).default(defaultValue);
+}
+
 /** عددِ صحیحِ مثبت از رشته‌ی محیطی. */
 function envInt(defaultValue: number) {
   return z.coerce.number().int().positive().default(defaultValue);
@@ -186,3 +197,35 @@ export const uploadEnvSchema = z.object({
   UPLOAD_MAX_BYTES: envInt(10 * 1024 * 1024),
 });
 export type UploadEnv = z.infer<typeof uploadEnvSchema>;
+
+/**
+ * ── پرداخت و اشتراک (`apps/api` — M4 فاز ۳) ────────────────────────────
+ *
+ * ★★ **پیش‌فرضِ `PAYMENT_PROVIDER` عمداً `mock` است، نه `zarinpal`** — انحرافِ ثبت‌شده از
+ * [PLAN §۴](../../../PLAN.md) (M4-D5، [ADR-049](../../../ARCHITECTURE_DECISIONS.md#adr-049)).
+ * سندباکسِ زرین‌پال یک سرویسِ **خارجی روی اینترنت** است؛ پیش‌فرض‌کردنش یعنی ماشینِ آفلاین و
+ * CIِ بدونِ egress جریانِ پرداختِ مرده دارند — نقضِ P2 و P3.
+ *
+ * ⚠️ **فیلدهای زرین‌پال عمداً `optional`اند.** اگر `ZARINPAL_MERCHANT_ID` را اجباری کنیم،
+ * `pnpm dev` یک merchantِ واقعی می‌خواهد و اولین کاری که هرکس می‌کند گذاشتنِ یک مقدارِ الکی
+ * است — و از آن به بعد گیت مرده است (همان هشدارِ سرِ این فایل). اعتبارسنجیِ واقعی‌شان
+ * هنگامِ **ساختِ `ZarinpalGateway`** انجام می‌شود، آن هم فقط وقتی provider واقعاً زرین‌پال باشد.
+ */
+export const paymentEnvSchema = z.object({
+  PAYMENT_PROVIDER: z.enum(["mock", "zarinpal"]).default("mock"),
+  ZARINPAL_MODE: z.enum(["sandbox", "production"]).default("sandbox"),
+  ZARINPAL_MERCHANT_ID: z.string().optional(),
+  /**
+   * ★ `literal` است نه `enum`: درگاه `IRT` (تومان) را هم می‌پذیرد و اشتباهش یعنی ضریبِ ۱۰
+   * روی هر تراکنش (P5). این‌طوری کسی نمی‌تواند با یک متغیرِ محیطی عوضش کند.
+   */
+  ZARINPAL_CURRENCY: z.literal("IRR").default("IRR"),
+  ZARINPAL_CALLBACK_URL: z.url().default("http://localhost:3002/api/v1/billing/zarinpal/callback"),
+  /**
+   * ⚠️ **پیش‌فرض صفر، و این یک تصمیمِ حقوقی است نه فنی** (M4-D6): تا وقتی روشن نشده که
+   * هم‌بوم در نظامِ مالیاتی ثبت شده و حق دارد VAT بگیرد، عددِ امن صفر است. نرخِ هر فاکتور
+   * هنگامِ صدور روی **خودِ فاکتور** منجمد می‌شود، نه بازمحاسبه از این مقدار.
+   */
+  VAT_PERCENT: envIntFromZero(0),
+});
+export type PaymentEnv = z.infer<typeof paymentEnvSchema>;
