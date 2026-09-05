@@ -1,10 +1,8 @@
 # TODO-M4-billing.md — ماژول M4: `billing` (پرداخت و اشتراک)
 
-> **وضعیت: ★ فاز ۰ بسته شد (۱۴۰۵/۰۶/۱۴) — هر نُه تصمیمِ مرزی تاییدِ مالک خورد و
-> ADR-049…ADR-054 نوشته شدند.** قدمِ بعد: **فاز ۱ (probeها)**. طبق فرآیندِ پروژه
-> ([spec §۷](docs/iranian-miro-spec.md)) این فایل **قبل از هر کدی** نوشته و تایید شد؛
-> حالا با `/loop` اجرا می‌شود. **تا سبزشدنِ فاز ۱ هیچ کدِ محصولی نوشته نمی‌شود** —
-> همان دروازه‌ای که M1، M2 و M3 داشتند.
+> **وضعیت (۱۴۰۵/۰۶/۱۴): فاز ۰ ✅ · فاز ۱ ✅ · فاز ۲ ✅ (به‌جز گام ۲٫۴ که موکول شد).**
+> قدمِ بعد: **فاز ۳ (`packages/billing-core`)**. نُه تصمیمِ مرزی تایید و به
+> ADR-049…ADR-054 تبدیل شدند؛ دروازه‌ی probeها با یک پرداختِ واقعیِ سندباکس باز شد.
 >
 > **نقطه‌ی ورود:** [`docs/m4-handoff.md`](docs/m4-handoff.md) — سندِ تحویلِ M3 به M4.
 >
@@ -246,18 +244,18 @@ M4 مسئولِ پنج چیز است:
 
 ---
 
-### فاز ۲ — قرارداد (`packages/shared-types`) ★ ADR-021
+### ✅ فاز ۲ — قرارداد (`packages/shared-types`) ★ ADR-021 — **تمام شد (۱۴۰۵/۰۶/۱۴)**
 
 | # | گام | معیار پذیرش |
 |---|---|---|
-| ۲٫۱ | primitiveِ `rial` در [`primitives.ts`](packages/shared-types/src/api/primitives.ts): `z.number().int().nonnegative()` | ⚠️ **هیچ فیلدِ پولی `z.number()`ِ خام یا `z.bigint()` نباشد.** `z.bigint()` هنگامِ `JSON.stringify` می‌ترکد — ۵۰۰ی بی‌کد |
-| ۲٫۲ | سه enum: `subscriptionStatus` (۵)، `teamSubscriptionStatus` (۶، با `none`)، `billingPeriod`، `invoiceStatus` — طبقِ M4-D2a | هر enum یک tupleِ `as const` + `z.enum` + `z.infer`، مثلِ `boardRoles` |
-| ۲٫۳ | DTOها: `plan`، `subscription`، `invoice`، `invoiceLineItem` (**نام‌دار**، نه inline) | `pnpm typecheck` سبز؛ در OpenAPI هر کدام یک componentِ واقعی باشند نه شیءِ بی‌نام |
-| ۲٫۴ | چهار فیلدِ مالیِ `Team`: `planCode`، `subscriptionStatus`، `limits`، `usage` — و **حذفِ کامنتِ «نسخه‌ی لاغرِ M3»** از [`team.ts:16-22`](packages/shared-types/src/api/team.ts) | کامنتِ کهنه رفته باشد؛ `team.parse` روی نمونه‌ی کامل سبز |
-| ۲٫۵ | کدهای خطا **به انتهای** `apiErrorCodes` اضافه شوند (قاعده‌ی خودِ فایل) | حداقل: `PLAN_NOT_FOUND`، `PLAN_INACTIVE`، `SUBSCRIPTION_NOT_FOUND`، `COUPON_INVALID`، `COUPON_EXHAUSTED`، `PAYMENT_NOT_FOUND`، `PAYMENT_FAILED`، `GATEWAY_UNAVAILABLE`، `QUOTA_EXCEEDED` |
-| ۲٫۶ | بدنه‌ها در `requests.ts`: `checkoutBody` | ★ **`checkoutBody` هیچ فیلدِ ریالی ندارد** (ADR-014: «هیچ مبلغی از کلاینت پذیرفته نمی‌شود») |
-| ۲٫۷ | schemaِ **query** برای callback (`Authority`/`Status` با حرفِ بزرگ) | اولین schemaی query بعد از `pageQuery` — جایش (requests یا primitives) در PROGRESS ثبت شود |
-| ۲٫۸ | تست‌ها در `api.test.ts` + **به‌روزرسانیِ کامنتِ سرِ [`index.ts`](packages/shared-types/src/api/index.ts)** که می‌گوید این DTOها عمداً غایب‌اند | ★★ **سه خودآزمون:** `rial` عددِ اعشاری را رد کند · `rial` مقدارِ `bigint` را رد کند · هیچ فیلدِ پولی `.optional()` نباشد (فقط `.nullable()`) |
+| ✅ ۲٫۱ | primitiveِ `rial` در [`primitives.ts`](packages/shared-types/src/api/primitives.ts): `z.number().int().nonnegative()` | ⚠️ **هیچ فیلدِ پولی `z.number()`ِ خام یا `z.bigint()` نباشد.** `z.bigint()` هنگامِ `JSON.stringify` می‌ترکد — ۵۰۰ی بی‌کد |
+| ✅ ۲٫۲ | سه enum: `subscriptionStatus` (۵)، `teamSubscriptionStatus` (۶، با `none`)، `billingPeriod`، `invoiceStatus` — طبقِ M4-D2a | هر enum یک tupleِ `as const` + `z.enum` + `z.infer`، مثلِ `boardRoles` |
+| ✅ ۲٫۳ | DTOها: `plan`، `subscription`، `invoice`، `invoiceLineItem` (**نام‌دار**، نه inline) | `pnpm typecheck` سبز؛ در OpenAPI هر کدام یک componentِ واقعی باشند نه شیءِ بی‌نام |
+| **[!] ۲٫۴** | چهار فیلدِ مالیِ `Team` — **به فاز ۵ موکول شد** | ⚠️ **بلوکه:** افزودنشان به‌صورتِ الزامی، `toTeam`ِ [`apps/api/src/dto.ts`](apps/api/src/dto.ts) را در **typecheck** می‌شکند، و هیچ‌چیز نمی‌تواند پُرشان کند تا seedِ پلن‌ها (فاز ۴) و کوئریِ ظرفیت (فاز ۶) بیایند. پُرکردنشان با مقدارِ ساختگی یعنی دروغ در قرارداد. جایش **گام ۵٫۵** است، کنارِ `GET /teams/:id/billing/subscription` |
+| ✅ ۲٫۵ | کدهای خطا **به انتهای** `apiErrorCodes` اضافه شوند (قاعده‌ی خودِ فایل) | حداقل: `PLAN_NOT_FOUND`، `PLAN_INACTIVE`، `SUBSCRIPTION_NOT_FOUND`، `COUPON_INVALID`، `COUPON_EXHAUSTED`، `PAYMENT_NOT_FOUND`، `PAYMENT_FAILED`، `GATEWAY_UNAVAILABLE`، `QUOTA_EXCEEDED` |
+| ✅ ۲٫۶ | بدنه‌ها در `requests.ts`: `checkoutBody` | ★ **`checkoutBody` هیچ فیلدِ ریالی ندارد** (ADR-014: «هیچ مبلغی از کلاینت پذیرفته نمی‌شود») |
+| ✅ ۲٫۷ | schemaِ **query** برای callback (`Authority`/`Status` با حرفِ بزرگ) | اولین schemaی query بعد از `pageQuery` — جایش (requests یا primitives) در PROGRESS ثبت شود |
+| ✅ ۲٫۸ | تست‌ها در `api.test.ts` + **به‌روزرسانیِ کامنتِ سرِ [`index.ts`](packages/shared-types/src/api/index.ts)** که می‌گوید این DTOها عمداً غایب‌اند | ★★ **سه خودآزمون:** `rial` عددِ اعشاری را رد کند · `rial` مقدارِ `bigint` را رد کند · هیچ فیلدِ پولی `.optional()` نباشد (فقط `.nullable()`) |
 
 > ⚠️ **چرا `.optional()` ممنوع است:** SDK پاسخ را **اصلاً اعتبارسنجی نمی‌کند**
 > ([`client.ts:178`](packages/sdk/src/client.ts) یک castِ خالی است). پس فیلدِ جاافتاده

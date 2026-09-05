@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { billingPeriod } from "./billing.ts";
 import { assignableBoardRole, boardAccessMode } from "./roles.ts";
 
 /**
@@ -8,6 +9,11 @@ import { assignableBoardRole, boardAccessMode } from "./roles.ts";
  *
  * ★ اینجا فقط **فرمت** سنجیده می‌شود، نه وجودِ منبع یا دسترسی — آن‌ها اعتبارِ تجاری‌اند و کارِ `apps/api`.
  * تا این نبود، هر بدنه یا در api دستی `typeof` می‌شد یا در sdk دوباره تعریف می‌شد؛ حالا یک تعریف، دو مصرف.
+ *
+ * ⚠️ **فاز ۲ی M4 دامنه‌اش را از «بدنه» به «ورودی» پهن کرد** (گام ۲٫۷): `zarinpalCallbackQuery`
+ * یک **query** است نه بدنه، ولی همین‌جا می‌مانَد تا همه‌ی ورودی‌هایی که `apps/api` اعتبارسنجی
+ * می‌کند یک خانه داشته باشند. (`pageQuery` در `primitives.ts` مانْد چون یک ترکیب‌گرِ **عمومیِ**
+ * چنداندپوینتی است، نه ورودیِ یک مسیرِ مشخص.)
  */
 
 const iranMobile = z
@@ -102,3 +108,38 @@ export type AddBoardMemberBody = z.infer<typeof addBoardMemberBody>;
 
 export const patchBoardMemberRoleBody = z.object({ role: assignableBoardRole });
 export type PatchBoardMemberRoleBody = z.infer<typeof patchBoardMemberRoleBody>;
+
+// ── M4 (billing)، فاز ۲ ─────────────────────────────────────────────────
+
+/**
+ * ورودیِ `POST /teams/:teamId/billing/checkout` — [PLAN §۵٫۲](../../../../PLAN.md).
+ *
+ * ★★ **هیچ فیلدِ ریالی اینجا نیست و نباید باشد.** خطِ آخرِ
+ * [ADR-014](../../../../ARCHITECTURE_DECISIONS.md#adr-014): «مبلغ ارسالی به درگاه همیشه از
+ * سرور محاسبه می‌شود؛ هیچ مبلغی از کلاینت پذیرفته نمی‌شود.» یک تست این را پین می‌کند.
+ *
+ * `couponCode` فقط یک رشته است — کوپن عمداً واردِ قرارداد نشد (M4-D2b).
+ */
+export const checkoutBody = z.object({
+  planCode: z.string().min(1).max(30),
+  period: billingPeriod,
+  seats: z.number().int().min(1),
+  couponCode: z.string().trim().min(1).max(40).optional(),
+});
+export type CheckoutBody = z.infer<typeof checkoutBody>;
+
+/**
+ * queryِ بازگشت از زرین‌پال — `GET /billing/zarinpal/callback?Authority=&Status=`
+ * ([PLAN §۵٫۲](../../../../PLAN.md)). نام‌ها عمداً **PascalCase**اند: قراردادِ سیمِ درگاه است،
+ * نه سلیقه‌ی ما. با تماسِ زنده در گام ۱٫۱ تایید شد که دقیقاً همین دو پارامتر می‌آیند.
+ *
+ * ⚠️ **`Status` عمداً `string`ِ آزاد است، نه `z.enum(["OK","NOK"])`** — و این خودش قاعده ۱ی
+ * ADR-014 را در تایپ رمزگذاری می‌کند: به این مقدار **اصلاً اعتماد نمی‌شود**، پس اعتبارسنجیِ
+ * سخت‌گیرانه‌اش هم بی‌معناست. تصمیم فقط با verifyِ سرور-به-سرور روی `Authority` گرفته می‌شود.
+ * اگر enum بود، یک مقدارِ سومِ آینده باعثِ ۴۰۰ می‌شد و **یک پرداختِ واقعی را گم می‌کرد**.
+ */
+export const zarinpalCallbackQuery = z.object({
+  Authority: z.string().min(1).max(80),
+  Status: z.string(),
+});
+export type ZarinpalCallbackQuery = z.infer<typeof zarinpalCallbackQuery>;

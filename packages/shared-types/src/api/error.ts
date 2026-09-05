@@ -22,6 +22,17 @@ export const apiErrorCodes = [
   "OTP_EXPIRED",
   "OTP_TOO_MANY",
   "TOKEN_REUSED",
+  // ── M4 (billing)، فاز ۲ — به **انتها** اضافه شدند، طبقِ قاعده‌ی بالا ──
+  "PLAN_NOT_FOUND",
+  "PLAN_INACTIVE",
+  "SUBSCRIPTION_NOT_FOUND",
+  "COUPON_INVALID",
+  "COUPON_EXHAUSTED",
+  "INVOICE_NOT_FOUND",
+  "PAYMENT_NOT_FOUND",
+  "PAYMENT_FAILED",
+  "GATEWAY_UNAVAILABLE",
+  "QUOTA_EXCEEDED", // عبور از سقفِ پلن (ADR-053) — نه ۴۰۳ی مبهم، نه ۵۰۰
 ] as const;
 export const apiErrorCode = z.enum(apiErrorCodes);
 export type ApiErrorCode = z.infer<typeof apiErrorCode>;

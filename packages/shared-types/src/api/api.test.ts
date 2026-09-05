@@ -8,9 +8,24 @@ import {
   boardMember,
   boardRoles,
   boardSummary,
+  billingPeriods,
+  checkoutBody,
   createBoardBody,
   createInviteBody,
   folder,
+  invoice,
+  invoiceLineItem,
+  invoiceStatuses,
+  plan,
+  planLimit,
+  planUsage,
+  rial,
+  subscription,
+  subscriptionStatus,
+  subscriptionStatuses,
+  teamSubscriptionStatus,
+  teamSubscriptionStatuses,
+  zarinpalCallbackQuery,
   putAccessBody,
   rtTokenClaims,
   team,
@@ -149,5 +164,116 @@ describe("DTOها/بدنه‌های گام ۶ (sdk مصرف‌کننده)", () =
   it("putAccessBody: accessMode از boardAccessMode؛ link_comment رد", () => {
     expect(putAccessBody.safeParse({ accessMode: "link_edit", regenerate: true }).success).toBe(true);
     expect(putAccessBody.safeParse({ accessMode: "link_comment" }).success).toBe(false);
+  });
+});
+
+describe("قراردادِ billing — فاز ۲ی M4", () => {
+  const PLAN = {
+    code: "pro",
+    name: "حرفه‌ای",
+    description: "برای تیم‌های کوچک",
+    priceMonthlyRial: 1_990_000,
+    priceYearlyRial: 19_900_000,
+    maxMembers: 10,
+    maxBoards: 100,
+    maxStorageBytes: 10_737_418_240,
+    features: ["بوردِ نامحدود", "تاریخچه‌ی نسخه"],
+    isActive: true,
+    sortOrder: 2,
+  };
+  const SUB = {
+    id: ID,
+    teamId: ID,
+    planCode: "pro",
+    status: "active",
+    period: "monthly",
+    seats: 7,
+    currentPeriodStart: DATE,
+    currentPeriodEnd: DATE,
+    cancelAtPeriodEnd: false,
+  };
+  const LINE = { title: "پلنِ حرفه‌ای — ماهانه", qty: 7, unitPriceRial: 1_990_000, totalRial: 13_930_000 };
+  const INVOICE = {
+    id: ID,
+    number: "HB-1405-000123",
+    subtotalRial: 13_930_000,
+    discountRial: 1_393_000,
+    vatRial: 1_253_700,
+    totalRial: 13_790_700,
+    status: "open",
+    issuedAt: DATE,
+    paidAt: null,
+    lineItems: [LINE],
+  };
+
+  it("plan/subscription/invoice: معتبر می‌گذرد", () => {
+    expect(plan.parse(PLAN)).toEqual(PLAN);
+    expect(subscription.parse(SUB)).toEqual(SUB);
+    expect(invoiceLineItem.parse(LINE)).toEqual(LINE);
+    expect(invoice.parse(INVOICE)).toEqual(INVOICE);
+    expect(invoice.safeParse({ ...INVOICE, status: "paid", paidAt: DATE }).success).toBe(true);
+  });
+
+  it("★★ خودآزمون ۱ — `rial` مقدارِ اعشاری را رد می‌کند", () => {
+    expect(rial.safeParse(1_500_000).success).toBe(true);
+    expect(rial.safeParse(1234.5).success).toBe(false);
+    expect(rial.safeParse(-1).success).toBe(false);
+    // و همان قاعده روی هر فیلدِ پولیِ واقعی برقرار است، نه فقط روی primitive
+    expect(plan.safeParse({ ...PLAN, priceMonthlyRial: 1234.5 }).success).toBe(false);
+    expect(invoice.safeParse({ ...INVOICE, totalRial: 0.5 }).success).toBe(false);
+  });
+
+  it("★★ خودآزمون ۲ — `rial` مقدارِ bigint را رد می‌کند (تله‌ی JSON.stringify)", () => {
+    expect(rial.safeParse(1_500_000n).success).toBe(false);
+    expect(plan.safeParse({ ...PLAN, priceYearlyRial: 19_900_000n }).success).toBe(false);
+  });
+
+  it("★★ خودآزمون ۳ — هیچ فیلدِ پولیِ پاسخ `.optional()` نیست (فقط `.nullable()`)", () => {
+    // `.optional()` در پاسخ نامرئی است: sdk پاسخ را اعتبارسنجی نمی‌کند، پس `undefined`
+    // تا مرورگر می‌رود و `formatRial(undefined)` می‌شود «NaN ریال» — بدونِ خطا در هیچ لایه‌ای.
+    const moneyBearing = { plan, subscription, invoice, invoiceLineItem };
+    const offenders: string[] = [];
+    for (const [name, schema] of Object.entries(moneyBearing)) {
+      for (const [key, field] of Object.entries(schema.shape)) {
+        if (!/rial$/i.test(key)) continue;
+        const f = field as { safeParse: (v: unknown) => { success: boolean } };
+        if (f.safeParse(undefined).success) offenders.push(`${name}.${key}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("★ `checkoutBody` هیچ فیلدِ ریالی ندارد (ADR-014: مبلغ از کلاینت پذیرفته نمی‌شود)", () => {
+    expect(Object.keys(checkoutBody.shape).filter((k) => /rial|amount|price/i.test(k))).toEqual([]);
+    const ok = { planCode: "pro", period: "monthly", seats: 7 };
+    expect(checkoutBody.parse(ok)).toEqual(ok);
+    expect(checkoutBody.safeParse({ ...ok, seats: 0 }).success).toBe(false);
+    expect(checkoutBody.safeParse({ ...ok, period: "weekly" }).success).toBe(false);
+  });
+
+  it("★ enumهای وضعیت — پینِ append-only، و تفکیکِ `none` (M4-D2a)", () => {
+    expect(subscriptionStatuses).toEqual(["trialing", "active", "past_due", "canceled", "expired"]);
+    expect(teamSubscriptionStatuses).toEqual(["none", "trialing", "active", "past_due", "canceled", "expired"]);
+    expect(billingPeriods).toEqual(["monthly", "yearly"]);
+    expect(invoiceStatuses).toEqual(["draft", "open", "paid", "void", "refunded"]);
+    // ★ `none` وضعیتِ تیم است، نه وضعیتِ یک اشتراکِ واقعی
+    expect(subscriptionStatus.safeParse("none").success).toBe(false);
+    expect(teamSubscriptionStatus.safeParse("none").success).toBe(true);
+  });
+
+  it("★ `planLimit` مقدارِ `-1` (نامحدود) را می‌پذیرد ولی `-2` را نه", () => {
+    expect(planLimit.safeParse(-1).success).toBe(true);
+    expect(planLimit.safeParse(0).success).toBe(true);
+    expect(planLimit.safeParse(-2).success).toBe(false);
+    expect(plan.safeParse({ ...PLAN, maxBoards: -1 }).success).toBe(true);
+    expect(planUsage.safeParse({ members: -1, boards: 0, storageBytes: 0 }).success).toBe(false);
+  });
+
+  it("★ `zarinpalCallbackQuery`: `Status` آزاد است (ADR-014 قاعده ۱ — به آن اعتماد نمی‌شود)", () => {
+    const q = { Authority: "S00000000000000000000000000000p7r8py", Status: "OK" };
+    expect(zarinpalCallbackQuery.parse(q)).toEqual(q);
+    // ★ یک مقدارِ سومِ آینده نباید ۴۰۰ بدهد و یک پرداختِ واقعی را گم کند
+    expect(zarinpalCallbackQuery.safeParse({ ...q, Status: "SOMETHING_NEW" }).success).toBe(true);
+    expect(zarinpalCallbackQuery.safeParse({ ...q, Authority: "" }).success).toBe(false);
   });
 });

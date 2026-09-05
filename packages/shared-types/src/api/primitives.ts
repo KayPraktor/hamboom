@@ -13,6 +13,24 @@ export const locale = z.enum(["fa", "en"]);
 export type Locale = z.infer<typeof locale>;
 
 /**
+ * مبلغ به **ریالِ صحیح** — [PLAN §۵٫۱](../../../../PLAN.md) (`type Rial = number`)،
+ * [ADR-015](../../../../ARCHITECTURE_DECISIONS.md#adr-015)،
+ * [ADR-054](../../../../ARCHITECTURE_DECISIONS.md#adr-054).
+ *
+ * ★★ **چرا این primitive وجود دارد:** تا `.int()` **یک‌بار** نوشته شود. یک `z.number()`ِ خام
+ * مقدارِ `1234.5` ریال را بی‌صدا می‌پذیرد — همه‌ی تست‌ها سبز می‌مانند، OpenAPI `type: number`
+ * نشان می‌دهد، و floatِ پول تا خودِ دیتابیس می‌رود. نقضِ P5 بدونِ هیچ علامتِ قرمزی.
+ *
+ * ⚠️ **روی سیم `number` است، نه رشته و نه `bigint`.** در DB `BIGINT` است و کوئرسِ
+ * `int8→number` (تنها در `apps/api/src/plugins/db.ts`) روی خروج از محدوده‌ی امن **خطا**
+ * می‌دهد نه گِردکردنِ خاموش — همان تضمینی که رشته قرار بود بدهد. و `z.bigint()` در DTO
+ * تله است: zod قبولش می‌کند و بعد `JSON.stringify` داخلِ serializerِ Fastify می‌ترکد،
+ * یعنی خطا در **زمانِ پاسخ** و به شکلِ ۵۰۰ی بی‌کد.
+ */
+export const rial = z.number().int().nonnegative();
+export type Rial = z.infer<typeof rial>;
+
+/**
  * پرس‌وجوی صفحه‌بندیِ cursor — `?limit=&cursor=` ([PLAN §۵](../../../../PLAN.md)).
  * `limit` از رشته‌ی query کوئرس می‌شود؛ سقفِ ۱۰۰ تا صفحه‌ی غول‌آسا درخواست نشود.
  */
