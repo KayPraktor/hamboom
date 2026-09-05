@@ -123,7 +123,12 @@ export type PatchBoardMemberRoleBody = z.infer<typeof patchBoardMemberRoleBody>;
 export const checkoutBody = z.object({
   planCode: z.string().min(1).max(30),
   period: billingPeriod,
-  seats: z.number().int().min(1),
+  /**
+   * ⚠️ سقف اجباری است: بدونِ آن `unitPrice * seats` می‌توانست از `Number.MAX_SAFE_INTEGER`
+   * بگذرد و یک مبلغِ **گِردشده** به‌عنوان ریال ذخیره شود (نقضِ مستقیمِ P5) — و چون تنها
+   * نگهبانِ عددِ نهایی داخلِ درگاه بود، این **بعد از** commitِ فاکتور رخ می‌داد.
+   */
+  seats: z.number().int().min(1).max(1000),
   couponCode: z.string().trim().min(1).max(40).optional(),
 });
 export type CheckoutBody = z.infer<typeof checkoutBody>;

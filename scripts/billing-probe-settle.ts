@@ -245,6 +245,229 @@ async function main(): Promise<void> {
     }
   }
 
+  // ── ۵: ★★ «هنوز پرداخت نشده» نباید ردیف را از دیدِ sweep پنهان کند (یافته‌ی T5) ──
+  {
+    const { userId, teamId } = await seedTeam(pool);
+    try {
+      const inner = new MockGateway({ checkoutBaseUrl: "http://localhost/pay" });
+      const { paymentId } = await startCheckout(pool, inner, teamId, userId, planCode);
+      // درگاه می‌گوید «پرداخت نشده» (کاربر هنوز روی صفحه‌ی بانک است).
+      const failing = slowGateway(
+        new MockGateway({ checkoutBaseUrl: "http://localhost/pay", failEveryPayment: true }),
+      );
+      const out = await settlePayment({ pool, gateway: failing }, { by: "id", id: paymentId });
+      const { rows } = await pool.query<{ status: string; failure_code: string | null }>(
+        "SELECT status, failure_code FROM payments WHERE id = $1",
+        [paymentId],
+      );
+      const row = rows[0]!;
+      const ok = out.kind === "notPaid" && row.status === "pending";
+      results.push({
+        name: "★★ verdictِ «پرداخت نشد» ردیف را `pending` نگه می‌دارد (sweep بازش می‌بیند)",
+        ok,
+        detail: ok
+          ? `status=${row.status} · failure_code=${String(row.failure_code)} ⇒ ایندکسِ ` +
+            "`payments_pending_idx` هنوز می‌بیندش. اگر `failed` می‌شد، پرداختی که کاربر " +
+            "لحظه‌ای بعد کامل می‌کرد **برای همیشه نامرئی** می‌ماند."
+          : `انتظار: notPaid و status=pending. واقعی: ${out.kind}، status=${row.status}`,
+      });
+    } finally {
+      await cleanup(pool, teamId, userId);
+    }
+  }
+
+  // ── ۶: ★★ ردیفِ `refunded` نباید دوباره فعال شود (یافته‌ی T6) ──────────
+  {
+    const { userId, teamId } = await seedTeam(pool);
+    try {
+      const inner = new MockGateway({ checkoutBaseUrl: "http://localhost/pay" });
+      const gateway = slowGateway(inner);
+      const { paymentId, authority } = await startCheckout(pool, inner, teamId, userId, planCode);
+      await settlePayment({ pool, gateway }, { by: "authority", authority });
+      // پول برگشت داده شد (کارِ M6، ولی وضعیتش امروز هم مجاز است).
+      await pool.query("UPDATE payments SET status = 'refunded' WHERE id = $1", [paymentId]);
+      await pool.query("DELETE FROM subscriptions WHERE activated_by_payment_id = $1", [paymentId]);
+
+      const again = await settlePayment({ pool, gateway }, { by: "id", id: paymentId });
+      const c = await counts(pool, teamId);
+      const ok = again.kind === "alreadySettled" && c.subs === 0;
+      results.push({
+        name: "★★ پرداختِ `refunded` دوباره فعال نمی‌شود",
+        ok,
+        detail: ok
+          ? "نتیجه=alreadySettled و صفر اشتراکِ تازه ⇒ خروجِ زودهنگام روی **هر** وضعیتِ " +
+            "غیر-pending است، نه فقط `paid`"
+          : `انتظار: alreadySettled و ۰ اشتراک. واقعی: ${again.kind}، اشتراک=${c.subs}`,
+      });
+    } finally {
+      await cleanup(pool, teamId, userId);
+    }
+  }
+
+  // ── ۷: ★★ کوپن با شکستِ checkout نمی‌سوزد (یافته‌ی T2) ─────────────────
+  {
+    const { userId, teamId } = await seedTeam(pool);
+    const code = `PRB${String(Date.now()).slice(-9)}`;
+    try {
+      await pool.query(
+        "INSERT INTO coupons (code, percent_off, max_redemptions) VALUES ($1, 20, 5)",
+        [code],
+      );
+      const gateway = new MockGateway({ checkoutBaseUrl: "http://localhost/pay" });
+      // یک checkoutِ کامل با کوپن، که **پرداخت نمی‌شود**.
+      const draft = await withTransaction(pool, async (tx) =>
+        createCheckout(
+          tx,
+          {
+            teamId,
+            userId,
+            planCode,
+            period: "monthly",
+            seats: 1,
+            couponCode: code,
+            vatPercent: 10,
+            gatewayName: gateway.name,
+            gatewayMode: gateway.mode,
+          },
+          `${teamId}:${randomUUID()}`,
+        ),
+      );
+      const burnedEarly = Number(
+        (
+          await pool.query<{ n: string | number }>(
+            "SELECT count(*) n FROM coupon_redemptions WHERE coupon_code = $1",
+            [code],
+          )
+        ).rows[0]!.n,
+      );
+      // حالا همان کوپن باید هنوز برای یک checkoutِ دیگر قابلِ استفاده باشد.
+      let reusable = true;
+      try {
+        await withTransaction(pool, async (tx) =>
+          createCheckout(
+            tx,
+            {
+              teamId,
+              userId,
+              planCode,
+              period: "monthly",
+              seats: 1,
+              couponCode: code,
+              vatPercent: 10,
+              gatewayName: gateway.name,
+              gatewayMode: gateway.mode,
+            },
+            `${teamId}:${randomUUID()}`,
+          ),
+        );
+      } catch {
+        reusable = false;
+      }
+      const ok = burnedEarly === 0 && reusable;
+      results.push({
+        name: "★★ کوپن سرِ checkout **مصرف نمی‌شود** — فقط سرِ فعال‌سازی",
+        ok,
+        detail: ok
+          ? "بعد از checkoutِ پرداخت‌نشده صفر ردیفِ مصرف، و همان کوپن هنوز قابلِ استفاده ⇒ " +
+            "یک اختلالِ درگاه دیگر کوپنِ کاربر را برای همیشه نمی‌سوزاند"
+          : `انتظار: ۰ مصرف و قابلِ استفاده. واقعی: مصرف=${burnedEarly}، قابلِ استفاده=${reusable}`,
+      });
+      void draft;
+    } finally {
+      await pool.query("DELETE FROM coupon_redemptions WHERE coupon_code = $1", [code]);
+      await cleanup(pool, teamId, userId);
+      await pool.query("DELETE FROM coupons WHERE code = $1", [code]);
+    }
+  }
+
+  // ── ۸: ★ همان کلیدِ idempotency ⇒ همان پیش‌نویس، نه ۵۰۰ (یافته‌ی T1) ────
+  {
+    const { userId, teamId } = await seedTeam(pool);
+    try {
+      const gateway = new MockGateway({ checkoutBaseUrl: "http://localhost/pay" });
+      const key = `${teamId}:${randomUUID()}`;
+      const mk = async () =>
+        withTransaction(pool, async (tx) =>
+          createCheckout(
+            tx,
+            {
+              teamId,
+              userId,
+              planCode,
+              period: "monthly",
+              seats: 2,
+              vatPercent: 10,
+              gatewayName: gateway.name,
+              gatewayMode: gateway.mode,
+            },
+            key,
+          ),
+        );
+      const first = await mk();
+      const second = await mk();
+      const invoices = Number(
+        (
+          await pool.query<{ n: string | number }>(
+            "SELECT count(*) n FROM invoices WHERE team_id = $1",
+            [teamId],
+          )
+        ).rows[0]!.n,
+      );
+      const ok =
+        !first.replayed && second.replayed && first.paymentId === second.paymentId && invoices === 1;
+      results.push({
+        name: "★ همان کلیدِ idempotency ⇒ همان پیش‌نویس برمی‌گردد (نه ۵۰۰ی همیشگی)",
+        ok,
+        detail: ok
+          ? `replayed=${second.replayed} · همان paymentId · تعدادِ فاکتور=${invoices} ⇒ ` +
+            "retryِ بعد از خطای درگاه دیگر برای همیشه نمی‌شکند و شماره‌ی فاکتورِ دوم نمی‌سوزد"
+          : `انتظار: دومی replayed با همان id و ۱ فاکتور. واقعی: ${JSON.stringify({ f: first.replayed, s: second.replayed, same: first.paymentId === second.paymentId, invoices })}`,
+      });
+    } finally {
+      await cleanup(pool, teamId, userId);
+    }
+  }
+
+  // ── ۹: ★ تمدیدِ همان پلن دوره را **ادامه** می‌دهد، نه از نو (یافته‌ی T8) ─
+  {
+    const { userId, teamId } = await seedTeam(pool);
+    try {
+      const inner = new MockGateway({ checkoutBaseUrl: "http://localhost/pay" });
+      const gateway = slowGateway(inner);
+      const a = await startCheckout(pool, inner, teamId, userId, planCode);
+      await settlePayment({ pool, gateway }, { by: "authority", authority: a.authority });
+      const firstEnd = (
+        await pool.query<{ current_period_end: Date }>(
+          "SELECT current_period_end FROM subscriptions WHERE team_id = $1",
+          [teamId],
+        )
+      ).rows[0]!.current_period_end;
+
+      // تمدیدِ بلافاصله — یعنی مشتری هنوز ~یک ماهِ پرداخت‌شده دارد.
+      const b = await startCheckout(pool, inner, teamId, userId, planCode);
+      await settlePayment({ pool, gateway }, { by: "authority", authority: b.authority });
+      const secondEnd = (
+        await pool.query<{ current_period_end: Date }>(
+          `SELECT current_period_end FROM subscriptions
+            WHERE team_id = $1 AND status = 'active'`,
+          [teamId],
+        )
+      ).rows[0]!.current_period_end;
+
+      const grewByAboutAMonth = secondEnd.getTime() - firstEnd.getTime() > 27 * 86_400_000;
+      results.push({
+        name: "★ تمدیدِ همان پلن از **پایانِ دوره‌ی فعلی** ادامه می‌دهد، نه از امروز",
+        ok: grewByAboutAMonth,
+        detail: grewByAboutAMonth
+          ? `پایانِ دوره از ${firstEnd.toISOString().slice(0, 10)} به ` +
+            `${secondEnd.toISOString().slice(0, 10)} رفت ⇒ روزهای پرداخت‌شده از بین نرفتند`
+          : `انتظار: افزایشِ ~یک ماه. واقعی: ${firstEnd.toISOString()} → ${secondEnd.toISOString()}`,
+      });
+    } finally {
+      await cleanup(pool, teamId, userId);
+    }
+  }
+
   await pool.query("DELETE FROM plans WHERE code = $1", [planCode]).catch(() => undefined);
   await pool.end();
 

@@ -45,6 +45,10 @@ export const LOG_REDACT_PATHS = [
   "*.card_hash",
   "*.merchantId",
   "*.merchant_id",
+  // ⚠️ خطای یکتاییِ pg شناسه را داخلِ `detail` می‌آورد («Key (gateway, authority)=(…)»)
+  //    و `errors.ts` کلِ `err` را لاگ می‌کند. این دو مسیر را می‌بندد.
+  "*.detail",
+  "*.where",
 ] as const;
 
 export const LOG_REDACT_CENSOR = "[Redacted]";

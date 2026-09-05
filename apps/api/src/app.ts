@@ -4,7 +4,7 @@ import fastifyCookie from "@fastify/cookie";
 import fastifyRateLimit from "@fastify/rate-limit";
 import { createAssetService } from "@hamboom/assets";
 import { createMockSmsProvider, maskPhone } from "@hamboom/auth-core";
-import type { PaymentGateway } from "@hamboom/billing-core";
+import { assertGatewayAllowed, type PaymentGateway } from "@hamboom/billing-core";
 import type { ObjectStore } from "@hamboom/storage";
 import Fastify, { type FastifyInstance } from "fastify";
 import type pg from "pg";
@@ -179,13 +179,19 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   // ── پرداخت و اشتراک (M4 فاز ۵) ──────────────────────────────────────
+  // ★★ گیت روی **درگاهِ حل‌شده** اجرا می‌شود، نه فقط روی شاخه‌ی `??`. نگارشِ اول
+  //    `options.gateway ?? createPaymentGateway(config)` بود و چون گیت داخلِ
+  //    `createPaymentGateway` است، یک درگاهِ **تزریق‌شده** کاملاً از آن رد می‌شد — یعنی
+  //    دقیقاً همان ادعای «هر ورودی از یک گیت رد می‌شود» نقض می‌شد.
+  const resolvedGateway = options.gateway ?? createPaymentGateway(config);
+  assertGatewayAllowed(resolvedGateway, config.APP_ENV);
   // ★★ `createPaymentGateway` خودش `assertGatewayAllowed` را صدا می‌زند، پس اگر
   //    `APP_ENV=production` با `PAYMENT_PROVIDER=mock` بالا بیاید **همین‌جا** می‌شکند —
   //    نه سرِ اولین «پرداختِ رایگانِ موفق» در production (ADR-049).
   registerBillingRoutes(app, {
     pool,
     requireAuth,
-    gateway: options.gateway ?? createPaymentGateway(config),
+    gateway: resolvedGateway,
     vatPercent: config.VAT_PERCENT,
     callbackUrl: config.ZARINPAL_CALLBACK_URL,
     webBaseUrl: config.WEB_BASE_URL,

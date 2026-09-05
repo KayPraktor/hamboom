@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  assertGatewayAmount,
   computeCharge,
   computePeriod,
   formatInvoiceNumber,
@@ -17,11 +18,11 @@ import { withTransaction, type Executor } from "../plugins/db.ts";
 
 /**
  * تسویه‌ی پرداخت — **قلبِ M4** ([ADR-014](../../../../ARCHITECTURE_DECISIONS.md#adr-014)،
- * [ADR-050](../../../../ARCHITECTURE_DECISIONS.md#adr-050)).
+ * [ADR-050](../../../../ARCHITECTURE_DECISIONS.md#adr-050)،
+ * [ADR-055](../../../../ARCHITECTURE_DECISIONS.md#adr-055)).
  *
- * ★★ **این تابع تنها مسیرِ فعال‌سازیِ اشتراک است.** هم `GET /billing/zarinpal/callback` و هم
- * `POST /billing/payments/:id/verify` همین را صدا می‌زنند — نه دو کپی. دو کپی یعنی دو تعریفِ
- * متفاوت از «یک‌بار»، و آن‌وقت callbackِ مرورگر و verifyِ دستیِ همزمان دو اشتراک می‌سازند.
+ * ★★ **تنها مسیرِ فعال‌سازیِ اشتراک.** هم callbackِ مرورگر و هم verifyِ دستی همین را صدا
+ * می‌زنند — دو کپی یعنی دو تعریفِ متفاوت از «یک‌بار».
  */
 
 /** وضعیت‌هایی که «اشتراکِ زنده» شمرده می‌شوند — همان مجموعه‌ی `subscriptions_active_uq`. */
@@ -33,6 +34,23 @@ export type SettleOutcome =
   | { kind: "notPaid"; code: number | null; message: string }
   | { kind: "unknown"; message: string };
 
+/**
+ * پارامترهای خریدی که در `payments.request_payload` منجمد می‌شوند.
+ *
+ * ★★ **چرا این‌جا و نه از `invoices.line_items`:** نگارشِ اول پلن/دوره/صندلی را با
+ * `line_items->0->>'…'` از JSONِ فاکتور بیرون می‌کشید. اگر آن آرایه روزی ترتیبش عوض شود یا
+ * سطرِ دیگری اولش بنشیند، **همه‌ی فیلدها `NULL` می‌شوند** — و بدترینش این است که
+ * `period === "yearly"` روی `NULL` به شاخه‌ی ماهانه می‌افتد: مشتری‌ای که پولِ **یک سال**
+ * داده یک **ماه** می‌گیرد. و این خرابی **بعد از** گرفتنِ پول رخ می‌دهد.
+ */
+interface PurchaseIntent {
+  planCode: string;
+  period: BillingPeriod;
+  seats: number;
+  unitPriceRial: number;
+  couponCode: string | null;
+}
+
 interface PaymentRow {
   id: string;
   team_id: string;
@@ -41,7 +59,7 @@ interface PaymentRow {
   amount_rial: number;
   status: string;
   authority: string | null;
-  ref_id: string | null;
+  request_payload: unknown;
 }
 
 export interface SettleDeps {
@@ -49,45 +67,69 @@ export interface SettleDeps {
   gateway: PaymentGateway;
 }
 
-/** پرداخت را با شناسه یا با `authority` پیدا می‌کند — دو ورودیِ یک مسیر. */
 export type PaymentLocator = { by: "id"; id: string } | { by: "authority"; authority: string };
 
+/** پارامترهای خرید را از ردیفِ پرداخت می‌خواند و **سخت‌گیرانه** اعتبارسنجی می‌کند. */
+function readIntent(raw: unknown): PurchaseIntent {
+  const o = raw as Partial<PurchaseIntent> | null;
+  const period = o?.period;
+  const okPeriod = period === "monthly" || period === "yearly";
+  if (
+    o === null ||
+    o === undefined ||
+    typeof o.planCode !== "string" ||
+    o.planCode.length === 0 ||
+    !okPeriod ||
+    !Number.isSafeInteger(o.seats) ||
+    (o.seats ?? 0) < 1 ||
+    !Number.isSafeInteger(o.unitPriceRial)
+  ) {
+    // ★ بلند می‌شکند و تراکنش rollback می‌شود ⇒ ردیف `pending` می‌مانَد و sweep دوباره سراغش
+    //   می‌آید. سکوت اینجا یعنی اشتراکِ اشتباه به مشتریِ پرداخت‌کرده.
+    throw new HttpError(500, "INTERNAL", "پارامترهای خریدِ این پرداخت خوانا نیست.");
+  }
+  return {
+    planCode: o.planCode,
+    period,
+    seats: o.seats as number,
+    unitPriceRial: o.unitPriceRial as number,
+    couponCode: typeof o.couponCode === "string" ? o.couponCode : null,
+  };
+}
+
 /**
- * ★★ **قاعده‌ی یگانگی: وضعیتِ ردیفِ خودمان زیرِ `FOR UPDATE`، نه کدِ درگاه.**
+ * ★★ **مرجعِ یگانگی وضعیتِ ردیفِ خودمان است زیرِ `FOR UPDATE`، نه کدِ درگاه** (ADR-055).
  *
- * ADR-050 نوشته بود «فقط کدِ ۱۰۰ حق دارد فعال کند». probe نشان داد این یک بندِ **ناقص** است:
- * اگر callback را گم کرده باشیم (کاربر مرورگر را بست) ردیفِ ما `pending` می‌مانَد ولی درگاه
- * در verifyِ بعدی **۱۰۱** می‌دهد — و با آن بندِ تحت‌اللفظی، آشتی‌دهی می‌گفت «قبلاً تسویه شده»
- * و هرگز فعال نمی‌کرد. یعنی دقیقاً همان «پول گرفته شد، سرویس داده نشد» که ADR-014 قاعده ۳
- * برای جلوگیری‌اش نوشته شده.
- *
- * پس قاعده‌ی درست: **{۱۰۰، ۱۰۱} یعنی پول گرفته شده**، و فعال‌سازی وقتی رخ می‌دهد که
- * **ردیفِ ما** از `pending` به `paid` برود — که `SELECT … FOR UPDATE` تضمین می‌کند فقط
- * یک‌بار ممکن است. ⚠️ این یک اصلاحِ ADR-050 است و **تاییدِ مالک می‌خواهد** (ADR-055).
- *
- * ⚠️ تماسِ شبکه‌ای **داخلِ** تراکنش است و قفلِ ردیف را تا پایانِ رفت‌وبرگشت نگه می‌دارد. این
- * عمدی است: ADR-014 می‌خواهد verify و فعال‌سازی اتمیک باشند. قفل فقط بینِ تسویه‌های **همان
- * پرداخت** رقابت می‌سازد — یعنی دقیقاً همان چیزی که باید سریالی شود.
+ * {۱۰۰، ۱۰۱} هر دو یعنی «پول گرفته شده»؛ فعال‌سازی وقتی رخ می‌دهد که ردیفِ ما از `pending`
+ * خارج شود — که قفل تضمین می‌کند فقط یک‌بار ممکن است.
  */
 export async function settlePayment(
   deps: SettleDeps,
   locator: PaymentLocator,
 ): Promise<SettleOutcome> {
   return withTransaction(deps.pool, async (tx) => {
-    const where = locator.by === "id" ? "id = $1" : "authority = $1";
-    const key = locator.by === "id" ? locator.id : locator.authority;
+    // ⚠️ `payments_authority_uq` روی **جفتِ** `(gateway, authority)` است. بدونِ فیلترِ
+    //    gateway، ردیفِ mock و zarinpal با authorityِ یکسان قابلِ اشتباه‌گرفتن‌اند و کوئری
+    //    هم نمی‌تواند از آن ایندکس استفاده کند (seq scan روی مسیرِ عمومیِ callback).
     const { rows } = await tx.query<PaymentRow>(
-      `SELECT id, team_id, initiated_by, invoice_id, amount_rial, status, authority, ref_id
-         FROM payments WHERE ${where} FOR UPDATE`,
-      [key],
+      locator.by === "id"
+        ? `SELECT id, team_id, initiated_by, invoice_id, amount_rial, status, authority, request_payload
+             FROM payments WHERE id = $1 FOR UPDATE`
+        : `SELECT id, team_id, initiated_by, invoice_id, amount_rial, status, authority, request_payload
+             FROM payments WHERE gateway = $2 AND authority = $1 LIMIT 1 FOR UPDATE`,
+      locator.by === "id" ? [locator.id] : [locator.authority, deps.gateway.name],
     );
     const payment = rows[0];
     if (payment === undefined) {
       throw new HttpError(404, "PAYMENT_NOT_FOUND", "پرداخت یافت نشد.");
     }
 
-    // ★ راهِ خروجِ زودهنگام: ردیفِ ما از قبل تسویه شده ⇒ **بدونِ تماس با درگاه** همان نتیجه.
-    if (payment.status === "paid") {
+    // ★★ خروجِ زودهنگام روی **هر** وضعیتِ غیر-`pending`، نه فقط `paid`.
+    //    ⚠️ نگارشِ اول فقط `paid` را می‌گرفت: ردیفِ `refunded` یا `canceled` دوباره verify
+    //    می‌شد، درگاه ۱۰۱ می‌داد، و یک اشتراکِ **دوم** برای پرداختی که پولش برگشته ساخته
+    //    می‌شد — و `subscriptions_active_uq` هم نمی‌گرفتش، چون خودمان قبلش ردیفِ زنده را
+    //    expire می‌کنیم.
+    if (payment.status !== "pending") {
       const sub = await tx.query<{ id: string }>(
         "SELECT id FROM subscriptions WHERE activated_by_payment_id = $1",
         [payment.id],
@@ -109,32 +151,28 @@ export async function settlePayment(
     });
 
     if (verdict.status === "gatewayError") {
-      // «نمی‌دانیم» ⇒ ردیف `pending` می‌مانَد تا sweepِ فاز ۷ دوباره بپرسد. هیچ‌چیز نوشته نمی‌شود.
       return { kind: "unknown", message: verdict.message };
     }
 
     if (verdict.status === "notPaid") {
-      await tx.query(
-        "UPDATE payments SET status = 'failed', failure_code = $2, verified_at = now() WHERE id = $1",
-        [payment.id, verdict.code === null ? null : String(verdict.code)],
-      );
+      // ★★ **«هنوز پرداخت نشده» پایانِ کار نیست.** کدِ `-51`ِ زرین‌پال دقیقاً وقتی می‌آید که
+      //    کاربر هنوز روی صفحه‌ی بانک است. نگارشِ اول ردیف را `failed` می‌کرد و چون ایندکسِ
+      //    sweep روی `status='pending'` است، آن پرداخت **برای همیشه نامرئی** می‌شد — پول
+      //    گرفته می‌شد و هیچ‌کس دیگر سراغش نمی‌رفت. پس وضعیت `pending` می‌مانَد و فقط آخرین
+      //    کدِ شکست ثبت می‌شود؛ کهنه‌بودن را **سنِ ردیف** در sweepِ فاز ۷ تعیین می‌کند.
+      await tx.query("UPDATE payments SET failure_code = $2, verified_at = now() WHERE id = $1", [
+        payment.id,
+        verdict.code === null ? null : String(verdict.code),
+      ]);
       return { kind: "notPaid", code: verdict.code, message: verdict.message };
     }
 
-    // ★★ پول گرفته شده ({۱۰۰، ۱۰۱}) و ردیفِ ما هنوز `pending` است ⇒ همین‌جا فعال می‌کنیم.
     const activated = await activateFromPayment(tx, payment);
     await tx.query(
       `UPDATE payments SET status = 'paid', ref_id = $2, card_pan_masked = $3, card_hash = $4,
-              fee_rial = $5, paid_at = now(), verified_at = now(), invoice_id = $6
+              fee_rial = $5, paid_at = now(), verified_at = now(), failure_code = NULL
          WHERE id = $1`,
-      [
-        payment.id,
-        verdict.refId,
-        verdict.cardPanMasked,
-        verdict.cardHash,
-        verdict.feeRial,
-        activated.invoiceId,
-      ],
+      [payment.id, verdict.refId, verdict.cardPanMasked, verdict.cardHash, verdict.feeRial],
     );
     return {
       kind: "activated",
@@ -145,13 +183,7 @@ export async function settlePayment(
   });
 }
 
-/**
- * فاکتور را `paid` می‌کند و اشتراک را می‌سازد/تمدید می‌کند — **در همان تراکنش**.
- *
- * ⚠️ ترتیب مهم است: اول اشتراکِ زنده‌ی قبلی از مجموعه‌ی `subscriptions_active_uq` بیرون
- * می‌رود، بعد ردیفِ تازه درج می‌شود. اگر برعکس بود، ایندکسِ یکتا با ۲۳۵۰۵ می‌افتاد — **بعد
- * از اینکه پول گرفته شده**.
- */
+/** فاکتور را `paid` می‌کند، کوپن را **حالا** مصرف می‌کند، و اشتراک را می‌سازد/تمدید. */
 async function activateFromPayment(
   tx: Executor,
   payment: PaymentRow,
@@ -160,31 +192,60 @@ async function activateFromPayment(
   if (invoiceId === null) {
     throw new HttpError(500, "INTERNAL", "پرداختِ بدونِ فاکتور قابلِ تسویه نیست.");
   }
-
-  const inv = await tx.query<{ plan_code: string; period: string; seats: number; unit: number }>(
-    `SELECT (line_items->0->>'planCode') AS plan_code, (line_items->0->>'period') AS period,
-            (line_items->0->>'qty')::int AS seats, (line_items->0->>'unitPriceRial')::bigint AS unit
-       FROM invoices WHERE id = $1`,
-    [invoiceId],
-  );
-  const meta = inv.rows[0];
-  if (meta === undefined) {
-    throw new HttpError(500, "INTERNAL", "فاکتورِ این پرداخت یافت نشد.");
-  }
+  const intent = readIntent(payment.request_payload);
 
   await tx.query("UPDATE invoices SET status = 'paid', paid_at = now() WHERE id = $1", [invoiceId]);
 
-  // ★ اشتراکِ زنده‌ی قبلی (اگر بود) بسته می‌شود تا ایندکسِ یکتا آزاد شود.
-  await tx.query(
-    `UPDATE subscriptions SET status = 'expired', updated_at = now()
-      WHERE team_id = $1 AND status = ANY($2::text[])`,
-    [payment.team_id, [...LIVE_SUBSCRIPTION_STATUSES]],
-  );
+  // ★★ **کوپن این‌جا مصرف می‌شود، نه سرِ checkout.** نگارشِ اول ردیفِ مصرف را در همان
+  //    تراکنشِ checkout درج می‌کرد که **چه پول بیاید چه نیاید** commit می‌شد؛ پس یک اختلالِ
+  //    درگاه کوپن را برای همیشه می‌سوزاند و کاربر دیگر نمی‌توانست همان خرید را کامل کند.
+  if (intent.couponCode !== null) {
+    await tx.query(
+      `INSERT INTO coupon_redemptions (coupon_code, team_id, invoice_id) VALUES ($1, $2, $3)
+       ON CONFLICT (coupon_code, team_id) DO NOTHING`,
+      [intent.couponCode, payment.team_id, invoiceId],
+    );
+    await tx.query("UPDATE coupons SET redeemed_count = redeemed_count + 1 WHERE code = $1", [
+      intent.couponCode,
+    ]);
+  }
 
-  // لنگرِ دوره = **اکنون**، که همان لحظه‌ی تسویه است. اگر آشتی‌دهی دیر برسد، دوره از همین
-  // لحظه شروع می‌شود — نه از لحظه‌ی درخواست؛ مشتری زمان از دست نمی‌دهد.
-  const anchor = new Date();
-  const period = computePeriod(anchor, meta.period as BillingPeriod);
+  const subscriptionId = await upsertSubscription(tx, payment.team_id, payment.id, intent);
+  return { subscriptionId, invoiceId };
+}
+
+/**
+ * اشتراک را می‌سازد — و اگر تمدیدِ **همان پلن** باشد، از پایانِ دوره‌ی فعلی ادامه می‌دهد.
+ *
+ * ⚠️ نگارشِ اول همیشه از `now()` شروع می‌کرد و ردیفِ قبلی را expire می‌کرد: مشتری‌ای که
+ * روزِ ۲۰ از یک دوره‌ی ۳۰روزه تمدید می‌کرد، **۱۰ روزِ پرداخت‌شده را از دست می‌داد**.
+ */
+async function upsertSubscription(
+  tx: Executor,
+  teamId: string,
+  paymentId: string,
+  intent: PurchaseIntent,
+): Promise<string> {
+  const existing = await tx.query<{ id: string; plan_code: string; current_period_end: Date }>(
+    `SELECT id, plan_code, current_period_end FROM subscriptions
+      WHERE team_id = $1 AND status = ANY($2::text[]) FOR UPDATE`,
+    [teamId, [...LIVE_SUBSCRIPTION_STATUSES]],
+  );
+  const live = existing.rows[0];
+  const now = new Date();
+
+  // تمدیدِ همان پلن ⇒ لنگر = دیرترِ «اکنون» و «پایانِ دوره‌ی فعلی».
+  const samePlan = live !== undefined && live.plan_code === intent.planCode;
+  const anchor =
+    samePlan && live.current_period_end.getTime() > now.getTime() ? live.current_period_end : now;
+  const period = computePeriod(anchor, intent.period);
+
+  if (live !== undefined) {
+    await tx.query("UPDATE subscriptions SET status = 'expired', updated_at = now() WHERE id = $1", [
+      live.id,
+    ]);
+  }
+
   const subscriptionId = randomUUID();
   await tx.query(
     `INSERT INTO subscriptions (id, team_id, plan_code, status, period, seats,
@@ -193,18 +254,17 @@ async function activateFromPayment(
      VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9)`,
     [
       subscriptionId,
-      payment.team_id,
-      meta.plan_code,
-      meta.period,
-      meta.seats,
+      teamId,
+      intent.planCode,
+      intent.period,
+      intent.seats,
       period.start,
       period.end,
-      payment.id,
-      meta.unit,
+      paymentId,
+      intent.unitPriceRial,
     ],
   );
-
-  return { subscriptionId, invoiceId };
+  return subscriptionId;
 }
 
 // ── ساختِ فاکتور و پرداخت (checkout) ─────────────────────────────────────
@@ -217,12 +277,6 @@ export interface CheckoutInput {
   seats: number;
   couponCode?: string;
   vatPercent: number;
-  /**
-   * نام و حالتِ درگاه — از همان `PaymentGateway`ی که قرار است صدا زده شود.
-   *
-   * ⚠️ اینجا **جای‌نگهدار نگذار.** نگارشِ اول `'pending'` می‌گذاشت و `payments_gateway_ck`ِ
-   * migration ۰۰۰۴ همان لحظه ردش کرد — دقیقاً کاری که آن `CHECK` برایش نوشته شد.
-   */
   gatewayName: string;
   gatewayMode: string;
 }
@@ -232,34 +286,54 @@ export interface CheckoutDraft {
   invoiceId: string;
   amountRial: number;
   invoiceNumber: string;
+  /** ★ `true` یعنی این کلیدِ idempotency از قبل وجود داشت و همان پیش‌نویس برگشت. */
+  replayed: boolean;
 }
 
 /**
- * فاکتور + ردیفِ `pending`ِ پرداخت را **در یک تراکنش** می‌سازد و برمی‌گرداند.
+ * فاکتور + ردیفِ `pending`ِ پرداخت را **در یک تراکنش** می‌سازد.
  *
- * ★★ مبلغ کاملاً سمتِ سرور از جدولِ `plans` محاسبه می‌شود (ADR-014، آخرین خط). بدنه‌ی
- * درخواست اصلاً فیلدِ ریالی ندارد و `checkoutBody` این را در قرارداد قفل کرده.
+ * ★★ مبلغ کاملاً سمتِ سرور محاسبه می‌شود (ADR-014). بدنه‌ی درخواست فیلدِ ریالی ندارد.
  */
 export async function createCheckout(
   tx: Executor,
   input: CheckoutInput,
   idempotencyKey: string,
 ): Promise<CheckoutDraft> {
-  const planRows = await tx.query<PlanRow>(
-    "SELECT * FROM plans WHERE code = $1",
-    [input.planCode],
+  // ★★ **retryِ مشروع نباید برای همیشه ۵۰۰ بدهد.** `payments_idem_uq` یکتاست و نگارشِ اول
+  //    فقط INSERT می‌زد: اگر تماسِ اول با درگاه می‌شکست (۵۰۲، که کش هم نمی‌شود)، کلاینت با
+  //    همان کلید دوباره می‌آمد، ۲۳۵۰۵ می‌خورد و **همیشه** ۵۰۰ می‌گرفت.
+  const prior = await tx.query<{
+    id: string;
+    invoice_id: string | null;
+    amount_rial: number;
+    number: string | null;
+  }>(
+    `SELECT p.id, p.invoice_id, p.amount_rial, i.number
+       FROM payments p LEFT JOIN invoices i ON i.id = p.invoice_id
+      WHERE p.idempotency_key = $1`,
+    [idempotencyKey],
   );
-  const planRow = planRows.rows[0];
-  if (planRow === undefined) {
-    throw new HttpError(404, "PLAN_NOT_FOUND", "پلن یافت نشد.");
+  const existing = prior.rows[0];
+  if (existing !== undefined) {
+    return {
+      paymentId: existing.id,
+      invoiceId: existing.invoice_id ?? "",
+      amountRial: existing.amount_rial,
+      invoiceNumber: existing.number ?? "",
+      replayed: true,
+    };
   }
+
+  const planRows = await tx.query<PlanRow>("SELECT * FROM plans WHERE code = $1", [input.planCode]);
+  const planRow = planRows.rows[0];
+  if (planRow === undefined) throw new HttpError(404, "PLAN_NOT_FOUND", "پلن یافت نشد.");
   const plan = toPlan(planRow);
   if (!plan.isActive) {
-    // ★ «فقط قابلیتِ واقعی» — پلنی که قیمتش تایید نشده قابلِ خرید نیست (فاز ۴، seed).
     throw new HttpError(409, "PLAN_INACTIVE", "این پلن در حالِ حاضر قابلِ خرید نیست.");
   }
 
-  const coupon = await resolveCoupon(tx, input.teamId, input.couponCode);
+  const coupon = await resolveCoupon(tx, input.teamId, input.couponCode, input.planCode);
   const charge = computeCharge({
     plan,
     period: input.period,
@@ -267,6 +341,19 @@ export async function createCheckout(
     coupon,
     vatPercent: input.vatPercent,
   });
+
+  // ★ نگهبانِ مبلغ **قبل از** نوشتنِ هر ردیفی. نگارشِ اول این را فقط داخلِ درگاه داشت،
+  //   یعنی بعد از commit — و آن‌وقت یک فاکتورِ یتیم و یک شماره‌ی سوخته می‌ماند.
+  // ⚠️ مبلغِ صفر (پلنِ رایگان یا کوپنِ ۱۰۰٪) اصلاً به درگاه نمی‌رود؛ پیش از این یک ۵۰۰ی
+  //    خاموش می‌داد چون `payments_amount_ck` کفِ ۱۰۰۰ ریال دارد.
+  if (charge.totalRial === 0) {
+    throw new HttpError(
+      409,
+      "PLAN_INACTIVE",
+      "مبلغِ این خرید صفر است و به درگاه نمی‌رود. برای پلنِ رایگان نیازی به پرداخت نیست.",
+    );
+  }
+  assertGatewayAmount(charge.totalRial);
 
   const issuedAt = new Date();
   const seqRows = await tx.query<{ last_seq: number }>(
@@ -277,13 +364,6 @@ export async function createCheckout(
     [jalaliYearOf(issuedAt)],
   );
   const invoiceNumber = formatInvoiceNumber(issuedAt, seqRows.rows[0]!.last_seq);
-
-  // ★ `planCode`/`period` داخلِ سطرِ فاکتور می‌روند تا تسویه بتواند بدونِ ستونِ اضافه بسازدشان.
-  const lineItems = charge.lineItems.map((item) => ({
-    ...item,
-    planCode: plan.code,
-    period: input.period,
-  }));
 
   const invoiceId = randomUUID();
   await tx.query(
@@ -298,29 +378,27 @@ export async function createCheckout(
       charge.discountRial,
       charge.vatRial,
       charge.totalRial,
-      JSON.stringify(lineItems),
+      JSON.stringify(charge.lineItems),
       input.couponCode ?? null,
       charge.vatPercent,
       issuedAt,
     ],
   );
 
-  if (input.couponCode !== undefined) {
-    // ⚠️ ایندکسِ یکتای `(coupon_code, team_id)` مسابقه را می‌بندد — نه چکِ خواندن-سپس-نوشتن.
-    await tx.query(
-      "INSERT INTO coupon_redemptions (coupon_code, team_id, invoice_id) VALUES ($1, $2, $3)",
-      [input.couponCode, input.teamId, invoiceId],
-    );
-    await tx.query("UPDATE coupons SET redeemed_count = redeemed_count + 1 WHERE code = $1", [
-      input.couponCode,
-    ]);
-  }
+  // ★ پارامترهای خرید به‌صورتِ یک **شیءِ صریح** منجمد می‌شوند — نه ایندکسِ یک آرایه‌ی JSON.
+  const intent: PurchaseIntent = {
+    planCode: plan.code,
+    period: input.period,
+    seats: input.seats,
+    unitPriceRial: charge.lineItems[0]!.unitPriceRial,
+    couponCode: input.couponCode ?? null,
+  };
 
   const paymentId = randomUUID();
   await tx.query(
     `INSERT INTO payments (id, team_id, invoice_id, initiated_by, gateway, gateway_mode,
-                           amount_rial, status, idempotency_key)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)`,
+                           amount_rial, status, idempotency_key, request_payload)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9::jsonb)`,
     [
       paymentId,
       input.teamId,
@@ -330,17 +408,42 @@ export async function createCheckout(
       input.gatewayMode,
       charge.totalRial,
       idempotencyKey,
+      JSON.stringify(intent),
     ],
   );
 
-  return { paymentId, invoiceId, amountRial: charge.totalRial, invoiceNumber };
+  return { paymentId, invoiceId, amountRial: charge.totalRial, invoiceNumber, replayed: false };
 }
 
-/** کوپن را اعتبارسنجی می‌کند و به اثرِ ریاضی تبدیل — یا `null` اگر کوپنی نبود. */
+/**
+ * فاکتور و پرداختِ یک checkoutِ شکست‌خورده را **باطل** می‌کند.
+ *
+ * ⚠️ بدونِ این، هر تلاشِ ناموفق یک شماره‌ی فاکتورِ سوخته و یک فاکتورِ `open`ِ شبح باقی
+ * می‌گذاشت — هم در فهرستِ فاکتورهای کاربر دیده می‌شد، هم دنباله‌ی شماره‌گذاری را سوراخ
+ * می‌کرد (که برای فاکتورِ رسمی مسئله‌ساز است).
+ */
+export async function voidFailedCheckout(
+  db: Executor,
+  paymentId: string,
+  failureCode: string,
+): Promise<void> {
+  await db.query(
+    `UPDATE invoices SET status = 'void'
+      WHERE id = (SELECT invoice_id FROM payments WHERE id = $1) AND status = 'open'`,
+    [paymentId],
+  );
+  await db.query(
+    "UPDATE payments SET status = 'failed', failure_code = $2 WHERE id = $1 AND status = 'pending'",
+    [paymentId, failureCode],
+  );
+}
+
+/** کوپن را اعتبارسنجی می‌کند — **بدونِ مصرف‌کردن**. مصرف سرِ فعال‌سازی است. */
 async function resolveCoupon(
   tx: Executor,
   teamId: string,
   code: string | undefined,
+  planCode: string,
 ): Promise<CouponEffect | null> {
   if (code === undefined) return null;
 
@@ -362,6 +465,11 @@ async function resolveCoupon(
   }
   if (c.valid_until !== null && c.valid_until.getTime() < now) {
     throw new HttpError(409, "COUPON_INVALID", "این کدِ تخفیف منقضی شده.");
+  }
+  // ★ `plan_codes` تا امروز خوانده می‌شد و **هرگز اعمال نمی‌شد** — یعنی کوپنِ ساخته‌شده برای
+  //   پلنِ ارزان، با همان درصد روی گران‌ترین پلن هم می‌نشست. زیانِ مستقیمِ درآمدی.
+  if (c.plan_codes.length > 0 && !c.plan_codes.includes(planCode)) {
+    throw new HttpError(409, "COUPON_INVALID", "این کدِ تخفیف برای این پلن نیست.");
   }
   if (c.max_redemptions !== null && c.redeemed_count >= c.max_redemptions) {
     throw new HttpError(409, "COUPON_EXHAUSTED", "ظرفیتِ این کدِ تخفیف تمام شده.");

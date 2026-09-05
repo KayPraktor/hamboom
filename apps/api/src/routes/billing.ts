@@ -22,6 +22,7 @@ import {
   createCheckout,
   LIVE_SUBSCRIPTION_STATUSES,
   settlePayment,
+  voidFailedCheckout,
 } from "../services/billing.ts";
 import { requireTeamRole } from "../services/teams.ts";
 
@@ -96,10 +97,9 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
         orderId: draft.invoiceNumber,
       });
     } catch (cause) {
-      await deps.pool.query(
-        "UPDATE payments SET status = 'failed', failure_code = 'GATEWAY' WHERE id = $1",
-        [draft.paymentId],
-      );
+      // ★ فاکتور هم **باطل** می‌شود، نه فقط پرداخت — وگرنه یک شماره‌ی فاکتورِ سوخته و یک
+      //   فاکتورِ `open`ِ شبح در فهرستِ کاربر می‌مانَد و دنباله‌ی رسمی سوراخ می‌شود.
+      await voidFailedCheckout(deps.pool, draft.paymentId, "GATEWAY");
       throw new HttpError(
         502,
         "GATEWAY_UNAVAILABLE",
@@ -233,6 +233,8 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   if (deps.appEnv !== "production") {
     app.get("/billing/mock/pay/:authority", async (req, reply) => {
       const { authority } = req.params as { authority: string };
+      // ⚠️ `:authority` متنِ دلخواهِ کاربر است ⇒ باید escape شود، وگرنه XSSِ بازتابی روی
+      //    سرورِ dev که کوکیِ نشستِ واقعی دارد.
       return reply.type("text/html; charset=utf-8").send(mockPayPage(authority, deps.callbackUrl));
     });
   }
@@ -250,9 +252,15 @@ function idempotencyKeyFor(teamId: string, header: string | string[] | undefined
 }
 
 /** صفحه‌ی HTMLِ کمینه‌ی درگاهِ ساختگی — RTL، بدونِ asset خارجی (P2). */
+const escapeHtml = (s: string): string =>
+  s.replace(/[&<>"']/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
+  );
+
 function mockPayPage(authority: string, callbackUrl: string): string {
   const ok = `${callbackUrl}?Authority=${encodeURIComponent(authority)}&Status=OK`;
   const nok = `${callbackUrl}?Authority=${encodeURIComponent(authority)}&Status=NOK`;
+  const shown = escapeHtml(authority);
   return `<!doctype html><html dir="rtl" lang="fa"><meta charset="utf-8">
 <title>درگاهِ ساختگیِ هم‌بوم</title>
 <style>body{font-family:system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f6f7f9}
@@ -261,7 +269,7 @@ a{display:block;margin-block-start:.75rem;padding:.6rem;border-radius:8px;text-d
 .ok{background:#0a7d33;color:#fff}.no{background:#eee;color:#333}</style>
 <div class="card"><h1>درگاهِ ساختگی</h1>
 <p>این صفحه جای درگاهِ واقعی است تا توسعه به اینترنت نیاز نداشته باشد.</p>
-<p><small>${authority}</small></p>
+<p><small>${shown}</small></p>
 <a class="ok" href="${ok}">پرداختِ موفق</a>
 <a class="no" href="${nok}">انصراف</a></div></html>`;
 }
