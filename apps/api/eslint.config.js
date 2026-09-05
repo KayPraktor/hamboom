@@ -3,7 +3,10 @@ import { apiBoundaries, processEnvDiscipline } from "@hamboom/eslint-config/boun
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
-  { ignores: ["dist/**", ".data/**", "migrations/**"] },
+  // ⚠️ `probe/` اسکریپتِ شواهدِ فاز ۱ی M4 است (مثلِ `probe/`ِ storage در گام ۳٫۰): بیرونِ
+  //    verify، خروجی‌اش با `console.log` گزارش می‌دهد، و بعد از بستنِ فاز ۱ پاک می‌شود.
+  //    اینجا زندگی می‌کند و نه در `scripts/`، چون `fastify` از ریشه‌ی مونوریپو resolve نمی‌شود.
+  { ignores: ["dist/**", ".data/**", "migrations/**", "probe/**"] },
   ...base,
   // کدِ سرور است، پس globalهای Node را دارد. از `eslint-config` می‌آید نه از
   // `globals`ِ مستقیم — زیر pnpm خودِ اپ نمی‌تواند resolveش کند.

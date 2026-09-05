@@ -44,7 +44,11 @@
     "rt:shutdown": "node --env-file-if-exists=.env scripts/rt-shutdown.ts",
     "rt:reconnect": "node --env-file-if-exists=.env scripts/rt-reconnect.ts",
     "rt:bench": "node --expose-gc --env-file-if-exists=.env scripts/rt-bench.ts",
-    "rt:dev": "node scripts/rt-dev-server.ts"
+    "rt:dev": "node scripts/rt-dev-server.ts",
+    "billing:probe-db": "node --env-file-if-exists=.env scripts/billing-probe-db.ts",
+    "billing:probe-idem": "node apps/api/probe/idempotency-callback.ts",
+    "billing:probe-math": "node scripts/billing-probe-math.ts",
+    "billing:probe-gateway": "node scripts/billing-probe-gateway.ts"
   },
   "devDependencies": {
     "@hamboom/auth-core": "workspace:*",
