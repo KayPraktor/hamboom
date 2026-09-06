@@ -88,9 +88,22 @@
 | POST | `/boards/{boardId}/assets/{fileId}/commit` | 🔒 bearer | commit: تاییدِ بایتِ واقعی (sha/نوع/اندازه) + دی‌دوپ (editor+) |
 | GET | `/assets/{fileId}` | 🔒 bearer | ۳۰۲ به presigned GET (viewer+) |
 
+## billing
+
+| متد | مسیر | احراز | توضیح |
+|---|---|---|---|
+| GET | `/billing/plans` | عمومی | فهرستِ پلن‌های **فعال** (عمومی — صفحه‌ی قیمت) |
+| POST | `/teams/{teamId}/billing/checkout` | 🔒 bearer | شروعِ خرید (owner) — مبلغ کاملاً سمتِ سرور محاسبه می‌شود |
+| GET | `/billing/zarinpal/callback` | عمومی | بازگشت از درگاه → verifyِ سرور-به-سرور → ریدایرکت به وب (عمومی) |
+| POST | `/billing/payments/{paymentId}/verify` | 🔒 bearer | verifyِ دستی — بازیابیِ پرداختِ گم‌شده (owner) |
+| GET | `/teams/{teamId}/billing/subscription` | 🔒 bearer | اشتراکِ فعلی (admin؛ `null` یعنی تیمِ رایگان) |
+| GET | `/teams/{teamId}/billing/invoices` | 🔒 bearer | فاکتورها (admin) |
+| POST | `/teams/{teamId}/billing/cancel` | 🔒 bearer | لغو در پایانِ دوره (owner) |
+| GET | `/billing/mock/pay/{authority}` | عمومی | صفحه‌ی ساختگیِ پرداخت — **فقط توسعه** (در production ثبت نمی‌شود) |
+
 ## Schemas (`components`)
 
 شکلِ کاملِ هر schema در [`docs/openapi.json`](openapi.json) است (تولیدشده از zod با `z.toJSONSchema`):
 
-`ApiError` · `User` · `UserPublic` · `Team` · `TeamMember` · `Board` · `BoardSummary` · `BoardMember` · `Folder` · `RtTokenClaims` · `AssetPresignRequest` · `AssetPresignResponse` · `Paginated` · `OtpRequestBody` · `OtpVerifyBody` · `CreateBoardBody` · `PatchBoardBody` · `CreateTeamBody` · `PatchTeamBody` · `PatchMemberRoleBody` · `CreateInviteBody` · `CreateFolderBody` · `PatchFolderBody` · `PatchMeBody` · `PutAccessBody` · `ResolveLinkBody` · `AddBoardMemberBody` · `PatchBoardMemberRoleBody`
+`ApiError` · `User` · `UserPublic` · `Team` · `TeamMember` · `Board` · `BoardSummary` · `BoardMember` · `Folder` · `RtTokenClaims` · `AssetPresignRequest` · `AssetPresignResponse` · `Paginated` · `OtpRequestBody` · `OtpVerifyBody` · `CreateBoardBody` · `PatchBoardBody` · `CreateTeamBody` · `PatchTeamBody` · `PatchMemberRoleBody` · `CreateInviteBody` · `CreateFolderBody` · `PatchFolderBody` · `PatchMeBody` · `PutAccessBody` · `ResolveLinkBody` · `AddBoardMemberBody` · `PatchBoardMemberRoleBody` · `Plan` · `Subscription` · `Invoice` · `CheckoutBody`
 

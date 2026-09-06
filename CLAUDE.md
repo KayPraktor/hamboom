@@ -9,8 +9,9 @@
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۵۷ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | **TODOی فعالِ M4** — ۱۱ فاز؛ **فاز ۰–۹ تمام**، قدمِ بعد فاز ۱۰ (تحویل) |
-| ★ [docs/m4-handoff.md](docs/m4-handoff.md) | **نقطه‌ی ورودِ M4** — مدلِ billing، ارثیه‌ها، و درس‌های روشیِ M3 |
+| ★ [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | **TODOی فعالِ M4** — ۱۱ فاز؛ **M4 تمام و تحویل شد** — فاز ۰ تا ۱۰ |
+| ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
+| [docs/m4-handoff.md](docs/m4-handoff.md) | بایگانی — نقطه‌ی ورودِ M4 (مدلِ billing و درس‌های M3) |
 | [TODO-M3-backend-api.md](TODO-M3-backend-api.md) · [PROGRESS-M3-backend-api.md](PROGRESS-M3-backend-api.md) · [docs/m3-handoff.md](docs/m3-handoff.md) | بایگانیِ M3 (`backend-api`، تمام‌شده) — مرجعِ تاریخی |
 | [TODO.md](TODO.md) · [PROGRESS.md](PROGRESS.md) | بایگانیِ M2 (`realtime-sync`، تمام‌شده) — مرجعِ تاریخی |
 | [TODO-M1-canvas-core.md](TODO-M1-canvas-core.md) · [PROGRESS-M1-canvas-core.md](PROGRESS-M1-canvas-core.md) | بایگانیِ M1 (تمام‌شده) — مرجعِ تاریخی |
@@ -239,9 +240,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M4 (`billing`) در جریان — فاز ۰ تا ۹ تمام** (۱۴۰۵/۰۶/۱۵). TODO در
+- **★★ M4 (`billing`) تمام و تحویل شد** (۱۴۰۵/۰۶/۱۵) — فاز ۰ تا ۱۰. TODO در
   [`TODO-M4-billing.md`](TODO-M4-billing.md)، دفترِ کار در [`PROGRESS-M4-billing.md`](PROGRESS-M4-billing.md).
-  **قدمِ بعد: فاز ۱۰ (تحویل).**
+  **قدمِ بعد: M5 (زیرساخت/استقرار) — از [`docs/m5-handoff.md`](docs/m5-handoff.md).**
   - **دامنه:** فاز ۰–۱۰ — probe → قرارداد → `packages/billing-core` → migration → مسیرهای
     billingِ api → ظرفیت → **آشتی‌دهی** → sdk → `apps/web` → تحویل. ⛔ **بیرون:** استردادِ کامل
     (`refund` = GraphQL+OAuth، در dev اجراناپذیر) و `reverse` (whitelistِ IP) → **M6** ·

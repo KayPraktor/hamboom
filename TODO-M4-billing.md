@@ -1,7 +1,7 @@
 # TODO-M4-billing.md — ماژول M4: `billing` (پرداخت و اشتراک)
 
-> **وضعیت (۱۴۰۵/۰۶/۱۵): فاز ۰–۹ ✅ (گام ۲٫۴ هم در فاز ۵ بسته شد).**
-> قدمِ بعد: **فاز ۱۰ (تحویل)**. [ADR-055](ARCHITECTURE_DECISIONS.md#adr-055) تایید شد (۱۴۰۵/۰۶/۱۴). نُه تصمیمِ مرزی تایید و به
+> **★★ وضعیت (۱۴۰۵/۰۶/۱۵): M4 تمام و تحویل شد — فاز ۰–۱۰ ✅.**
+> قدمِ بعد: **M5 (زیرساخت/استقرار)** — از [`docs/m5-handoff.md`](docs/m5-handoff.md). [ADR-055](ARCHITECTURE_DECISIONS.md#adr-055) تایید شد (۱۴۰۵/۰۶/۱۴). نُه تصمیمِ مرزی تایید و به
 > ADR-049…ADR-054 تبدیل شدند؛ دروازه‌ی probeها با یک پرداختِ واقعیِ سندباکس باز شد.
 >
 > **نقطه‌ی ورود:** [`docs/m4-handoff.md`](docs/m4-handoff.md) — سندِ تحویلِ M3 به M4.
@@ -479,15 +479,15 @@ ADR-053 آن را «کشِ نمایش» خوانده بود، ولی کشی که
 
 ---
 
-### فاز ۱۰ — تحویل
+### ✅ فاز ۱۰ — تحویل — **تمام شد (۱۴۰۵/۰۶/۱۵)**
 
 | # | گام | معیار پذیرش |
 |---|---|---|
-| ۱۰٫۱ | `README` برای `billing-core` + بخشِ billing در READMEی `apps/api` و `sdk` | مثلِ پنج READMEی فاز ۱۱٫۲ی M3 |
-| ۱۰٫۲ | بازتولیدِ `docs/api.md` + `docs/openapi.json` با `node scripts/gen-openapi.ts` | ⚠️ این اسکریپت **در verify نیست** ⇒ فراموشی‌اش سندِ کهنه می‌سازد بی‌آنکه چیزی قرمز شود |
-| ۱۰٫۳ | `docs/m5-handoff.md` | همان ساختارِ `m4-handoff.md`: پورت‌ها، ارثیه‌ها، سقف‌ها، درس‌ها |
-| ۱۰٫۴ | به‌روزرسانیِ `CLAUDE.md` (وضعیت + دستورهای `billing:*`) و `PROGRESS-M4` | — |
-| ۱۰٫۵ | ★ **گیتِ نهایی**: `pnpm verify` سبز + هر ۷ سنجه‌ی realtime سبز + سنجه‌های billing سبز | ⚠️ هفت سنجه‌ی realtime **نباید** بشکنند — M4 به آن‌ها دست نمی‌زند، ولی migrationِ ۴ به schemaی مشترک دست می‌زند |
+| ✅ ۱۰٫۱ | [`billing-core/README`](packages/billing-core/README.md) + بخشِ billing در [`api`](apps/api/README.md) و [`sdk`](packages/sdk/README.md) | قراردادِ اندازه‌گیری‌شده‌ی زرین‌پال، نردبانِ ADR-056، و «پنج چیزی که ندانستنش پول می‌سوزاند» |
+| ✅ ۱۰٫۲ | بازتولیدِ `docs/api.md` + `docs/openapi.json` | ⚠️ و **واقعاً کهنه بود**: ۶۶۴ خط تغییر — کلِ سطحِ billing از فاز ۵ در سند نبود و هیچ گیتی قرمز نشده بود |
+| ✅ ۱۰٫۳ | [`docs/m5-handoff.md`](docs/m5-handoff.md) | چهار قاعده‌ی نشکستنی، آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، متدِ اثبات‌نشده، و configِ production |
+| ✅ ۱۰٫۴ | به‌روزرسانیِ `CLAUDE.md` + `PROGRESS-M4` | — |
+| ✅ ۱۰٫۵ | ★ **گیتِ نهایی** | `pnpm verify` سبز · **هر ۷ سنجه‌ی realtime سبز** · `sdk:contract` ۱۶ · `billing:probe-reconcile` ۹ · `billing:settle` ۸ · `billing:quota` ۶ · `db:fk-test` ۱۰ |
 
 ---
 

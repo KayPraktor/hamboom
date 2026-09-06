@@ -42,12 +42,38 @@ Object Storage. ⚠️ نسخه‌ی قبلی `redirect:"manual"` بود که د
 مصرف‌کننده‌ی مرورگری از این `Blob` یک `data:URI` یا `objectURL` می‌سازد (`apps/web` `data:` می‌سازد
 چون excalidraw `blob:` را در `addFiles` رندر نمی‌کند).
 
+## ★ پرداخت و اشتراک (M4 فاز ۸)
+
+```ts
+const { plans } = await api.billing.plans();                    // عمومی — بدونِ Bearer
+const { redirectUrl } = await api.billing.checkout(
+  teamId,
+  { planCode: "pro", period: "monthly", seats: 3 },             // ★ هیچ فیلدِ ریالی
+  { idempotencyKey },                                            // ★★ پایین
+);
+window.location.assign(redirectUrl);                            // ناوبریِ کاملِ مرورگر، نه روتر
+
+const { subscription } = await api.billing.subscription(teamId); // ⚠️ `null` = تیمِ رایگان، نه خطا
+const { invoices } = await api.billing.invoices(teamId);
+await api.billing.cancel(teamId);                                // لغو در **پایانِ دوره**
+await api.billing.verifyPayment(paymentId);                      // بازیابیِ «پول دادم، چیزی فعال نشد»
+```
+
+★★ **`idempotencyKey` این‌جا تولید نمی‌شود — عمداً.** یک کلیدِ تازه به‌ازای هر فراخوانی
+**دقیقاً** همان حالتِ بدونِ کلید است، فقط با ظاهرِ ایمن. کلید باید بینِ **تلاش‌ها** ثابت
+بمانَد، و صاحبش **ژستِ کاربر** است نه لایه‌ی شبکه. اگر ندهی، بدترین حالت یک ردیفِ اضافیِ
+`pending` است — نه یک شارژِ دوباره.
+
+⚠️ **`/billing/zarinpal/callback` عمداً در sdk نیست.** یک مسیرِ **مرورگری** است: درگاه کاربر
+را با ریدایرکت آن‌جا می‌فرستد و تسویه سرور-به-سرور همان‌جا انجام می‌شود. صدا زدنش از sdk یعنی
+دو مسیرِ متفاوت برای یک کار.
+
 ## دستورات
 
 ```bash
 pnpm --filter @hamboom/sdk test        # unit با fetchِ دروغین (داخلِ pnpm verify)
 pnpm --filter @hamboom/sdk typecheck
-pnpm sdk:contract                       # ★ در برابرِ buildApp()ِ واقعی + DB (بیرونِ verify)
+pnpm sdk:contract                       # ★ ۱۶ چک در برابرِ buildApp()ِ واقعی + DB (بیرونِ verify)
 ```
 
 ## آنچه اینجا انجام نمی‌شود
