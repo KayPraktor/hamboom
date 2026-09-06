@@ -9,7 +9,7 @@
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۵۷ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | **TODOی فعالِ M4** — ۱۱ فاز؛ **فاز ۰–۷ تمام**، قدمِ بعد فاز ۸ (`packages/sdk`) |
+| ★ [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | **TODOی فعالِ M4** — ۱۱ فاز؛ **فاز ۰–۸ تمام**، قدمِ بعد فاز ۹ (`apps/web` — اثبات در مرورگر) |
 | ★ [docs/m4-handoff.md](docs/m4-handoff.md) | **نقطه‌ی ورودِ M4** — مدلِ billing، ارثیه‌ها، و درس‌های روشیِ M3 |
 | [TODO-M3-backend-api.md](TODO-M3-backend-api.md) · [PROGRESS-M3-backend-api.md](PROGRESS-M3-backend-api.md) · [docs/m3-handoff.md](docs/m3-handoff.md) | بایگانیِ M3 (`backend-api`، تمام‌شده) — مرجعِ تاریخی |
 | [TODO.md](TODO.md) · [PROGRESS.md](PROGRESS.md) | بایگانیِ M2 (`realtime-sync`، تمام‌شده) — مرجعِ تاریخی |
@@ -234,22 +234,22 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M4 (`billing`) در جریان — فاز ۰ تا ۷ تمام** (۱۴۰۵/۰۶/۱۵). TODO در
+- **★★ M4 (`billing`) در جریان — فاز ۰ تا ۸ تمام** (۱۴۰۵/۰۶/۱۵). TODO در
   [`TODO-M4-billing.md`](TODO-M4-billing.md)، دفترِ کار در [`PROGRESS-M4-billing.md`](PROGRESS-M4-billing.md).
-  **قدمِ بعد: فاز ۸ (`packages/sdk`).**
+  **قدمِ بعد: فاز ۹ (`apps/web`) — ★★ که طبق قاعده باید **در مرورگر** اثبات شود.**
   - **دامنه:** فاز ۰–۱۰ — probe → قرارداد → `packages/billing-core` → migration → مسیرهای
     billingِ api → ظرفیت → **آشتی‌دهی** → sdk → `apps/web` → تحویل. ⛔ **بیرون:** استردادِ کامل
     (`refund` = GraphQL+OAuth، در dev اجراناپذیر) و `reverse` (whitelistِ IP) → **M6** ·
     فاکتورِ PDF (Chromium) و `apps/worker` → بعد از M4 · فاز ۱۰ی M3 دست‌نخورده.
-  - **نُه تصمیمِ مرزی → هفت ADR، و دو ADRِ تازه‌ی فاز ۷ (⏳ **منتظرِ تاییدِ مالک**):** [ADR-049](ARCHITECTURE_DECISIONS.md#adr-049) (`billing-core`،
+  - **نُه تصمیمِ مرزی → هفت ADR، و دو ADRِ فاز ۷ (تاییدِ مالک ۱۴۰۵/۰۶/۱۵):** [ADR-049](ARCHITECTURE_DECISIONS.md#adr-049) (`billing-core`،
     پوششِ ۹۰٪، پیش‌فرضِ dev = `mock`) · [ADR-050](ARCHITECTURE_DECISIONS.md#adr-050) (idempotency =
     قفلِ ردیفِ `payments`) · [ADR-051](ARCHITECTURE_DECISIONS.md#adr-051) (آشتی‌دهی بدونِ `apps/worker`) ·
     [ADR-052](ARCHITECTURE_DECISIONS.md#adr-052) (یک قاعده‌ی گِردکردن، VAT منجمد) ·
     [ADR-053](ARCHITECTURE_DECISIONS.md#adr-053) (ظرفیت با `count(*)`ِ واقعی) ·
     [ADR-054](ARCHITECTURE_DECISIONS.md#adr-054) (ریالِ عددِ صحیح) ·
     [ADR-055](ARCHITECTURE_DECISIONS.md#adr-055) (**اصلاحِ ADR-050**: مرجعِ یگانگی وضعیتِ ردیفِ ماست، نه کدِ درگاه) ·
-    ⏳ [ADR-056](ARCHITECTURE_DECISIONS.md#adr-056) (نردبانِ تصمیمِ آشتی‌دهی — **هیچ ردیفی پیش از دستِ‌کم یک
-    پرسش باطل نمی‌شود**) · ⏳ [ADR-057](ARCHITECTURE_DECISIONS.md#adr-057) (سقفِ زمانیِ اتصالِ Postgres —
+    [ADR-056](ARCHITECTURE_DECISIONS.md#adr-056) (نردبانِ تصمیمِ آشتی‌دهی — **هیچ ردیفی پیش از دستِ‌کم یک
+    پرسش باطل نمی‌شود**) · [ADR-057](ARCHITECTURE_DECISIONS.md#adr-057) (سقفِ زمانیِ اتصالِ Postgres —
     به **کلِ** `apps/api` دست می‌زند، نه فقط billing).
 
   ### ★★ قراردادِ زرین‌پال — با تماسِ **زنده** اثبات شد (فاز ۱)
@@ -276,8 +276,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   `packages/billing-core` (پورتِ `PaymentGateway` + `MockGateway`/`ZarinpalGateway` +
   `computeCharge`/`computePeriod`؛ **پوششِ ۹۰٪**) · migrationهای `0004` (نگهبان‌های billing،
   `coupon_redemptions`، `invoice_sequences`، seedِ پلن) و `0005` (پلنِ `personal`) ·
-  `apps/api`: `services/{billing,quota}.ts` + `routes/billing.ts` (۷ مسیر + صفحه‌ی mockِ dev) +
-  `plugins/payment.ts` · فیلدهای مالیِ `Team` در `shared-types`.
+  `apps/api`: `services/{billing,quota,reconcile}.ts` + `routes/billing.ts` (۷ مسیر + صفحه‌ی mockِ dev) +
+  `plugins/{payment,reconcile}.ts` · فیلدهای مالیِ `Team` در `shared-types` ·
+  **`sdk.billing`** (شش متد) با پشتیبانیِ `Idempotency-Key` — که تا فاز ۸ در sdk **اصلاً وجود نداشت**.
 
   ### ⚠️ سه درسِ گران که **پیش‌فرض** شدند
 

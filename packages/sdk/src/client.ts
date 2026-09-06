@@ -9,9 +9,11 @@ import type {
   BoardSummary,
   CreateBoardBody,
   CreateFolderBody,
+  CheckoutBody,
   CreateInviteBody,
   CreateTeamBody,
   Folder,
+  Invoice,
   OtpRequestBody,
   OtpVerifyBody,
   PatchBoardBody,
@@ -20,8 +22,10 @@ import type {
   PatchMemberRoleBody,
   PatchMeBody,
   PatchTeamBody,
+  Plan,
   PutAccessBody,
   ResolveLinkBody,
+  Subscription,
   Team,
   TeamMember,
   TeamRole,
@@ -95,6 +99,16 @@ interface Opts {
   /** درخواستِ عمومی — نه Bearer، نه retryِ ۴۰۱. */
   noAuth?: boolean;
   redirect?: RequestInit["redirect"];
+  /**
+   * ★★ `Idempotency-Key` — **تا M4 فاز ۸ اصلاً وجود نداشت**، و بدونش هیچ POSTی از این
+   * کلاینت قابلِ idempotent کردن نبود؛ یعنی مسیرِ پرداخت **دقیقاً** چیزی را که سرور
+   * ساخته بود نمی‌توانست استفاده کند.
+   *
+   * ⚠️ **کلید باید بینِ تلاش‌ها ثابت بمانَد، وگرنه بی‌اثر است.** ساختنِ یک UUIDِ تازه در
+   * هر فراخوانی دقیقاً همان حالتِ «بدونِ کلید» است. پس این‌جا **تولید نمی‌شود** — یک
+   * کلیدِ خودکار به‌ازای هر call فقط توهمِ ایمنی می‌داد. صاحبِ کلید، ژستِ کاربر است.
+   */
+  idempotencyKey?: string;
 }
 
 export function createClient(options: ClientOptions) {
@@ -116,6 +130,7 @@ export function createClient(options: ClientOptions) {
     const headers: Record<string, string> = {};
     if (opts.body !== undefined) headers["content-type"] = "application/json";
     if (accessToken !== null && opts.noAuth !== true) headers.authorization = `Bearer ${accessToken}`;
+    if (opts.idempotencyKey !== undefined) headers["idempotency-key"] = opts.idempotencyKey;
     return fetchImpl(buildUrl(path, opts.query), {
       method,
       headers,
@@ -280,6 +295,55 @@ export function createClient(options: ClientOptions) {
         request("PATCH", `/boards/${id}/members/${userId}`, { body }),
       removeMember: (id: string, userId: string): Promise<void> =>
         request("DELETE", `/boards/${id}/members/${userId}`),
+    },
+
+    /**
+     * پرداخت و اشتراک — M4 فاز ۸.
+     *
+     * ⚠️ **`/billing/zarinpal/callback` عمداً این‌جا نیست.** آن یک مسیرِ **مرورگری** است:
+     * درگاه کاربر را با ریدایرکت به آن می‌فرستد و خودش با ریدایرکتِ دوم به اپِ وب پاسخ
+     * می‌دهد. صدا زدنش از sdk یعنی تسویه از کلاینتی که هیچ‌وقت آن ریدایرکت را ندیده —
+     * و آن‌وقت دو مسیرِ متفاوت برای یک کار داریم.
+     */
+    billing: {
+      /** ★ فهرستِ پلن‌ها **عمومی** است (صفحه‌ی قیمت). تنها precedentش `auth.*` است. */
+      plans: (): Promise<{ plans: Plan[] }> =>
+        request("GET", "/billing/plans", { noAuth: true }),
+
+      /**
+       * شروعِ خرید → `redirectUrl`ی که مرورگر **باید** به آن برود.
+       *
+       * ★★ `idempotencyKey` را **همان ژستِ کاربر** باید بسازد و در هر retry همان را
+       * بفرستد؛ اگر هر بار تازه ساخته شود، دو کلیکِ پیاپی دو فاکتور و دو شماره‌ی فاکتور
+       * می‌سازند. مبلغ عمداً در بدنه نیست — کاملاً سمتِ سرور حساب می‌شود (ADR-014).
+       */
+      checkout: (
+        teamId: string,
+        body: CheckoutBody,
+        opts?: { idempotencyKey?: string },
+      ): Promise<{ paymentId: string; redirectUrl: string }> =>
+        request("POST", `/teams/${teamId}/billing/checkout`, {
+          body,
+          idempotencyKey: opts?.idempotencyKey,
+        }),
+
+      /**
+       * ★ verifyِ دستیِ یک پرداخت — بازیابیِ همان «پول دادم ولی چیزی فعال نشد».
+       * همان مسیرِ تسویه‌ی callback را می‌زند، نه یک کپیِ دوم (ADR-055).
+       */
+      verifyPayment: (paymentId: string): Promise<{ settled: boolean; subscriptionId: string }> =>
+        request("POST", `/billing/payments/${paymentId}/verify`),
+
+      /** ⚠️ `null` یعنی **تیمِ رایگان**، نه خطا — هر تیمِ تازه دقیقاً همین است. */
+      subscription: (teamId: string): Promise<{ subscription: Subscription | null }> =>
+        request("GET", `/teams/${teamId}/billing/subscription`),
+
+      invoices: (teamId: string): Promise<{ invoices: Invoice[] }> =>
+        request("GET", `/teams/${teamId}/billing/invoices`),
+
+      /** لغو **در پایانِ دوره**، نه بی‌درنگ: مشتری تا آخرِ چیزی که پولش را داده سرویس می‌گیرد. */
+      cancel: (teamId: string): Promise<{ subscription: Subscription }> =>
+        request("POST", `/teams/${teamId}/billing/cancel`),
     },
 
     links: {

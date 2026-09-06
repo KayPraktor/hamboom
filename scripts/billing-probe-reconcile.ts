@@ -174,6 +174,17 @@ async function agePayment(pool: pg.Pool, paymentId: string, minutes: number): Pr
   );
 }
 
+/**
+ * ★★ تصمیمِ **همین** پرداخت در گزارش.
+ *
+ * ⚠️ نگارشِ اول چک‌ها روی شمارنده‌های سراسریِ گزارش می‌نشستند (`report.skipped === 1`) و
+ * اولین باری که دیتابیس ردیف‌های billingِ **دیگری** داشت (از `pnpm sdk:contract`) قرمز
+ * شدند — بی‌آنکه چیزی در محصول خراب باشد. یک چک باید **ادعای خودش** را بسنجد، نه وضعیتِ
+ * کلِ دیتابیس؛ در production همیشه ردیف‌های دیگری هست.
+ */
+const decisionFor = (report: { decisions: { paymentId: string; action: string; reason: string }[] }, paymentId: string) =>
+  report.decisions.find((d) => d.paymentId === paymentId);
+
 const statusOf = async (pool: pg.Pool, paymentId: string): Promise<string> =>
   (await pool.query<{ status: string }>("SELECT status FROM payments WHERE id = $1", [paymentId]))
     .rows[0]!.status;
@@ -224,7 +235,12 @@ async function main(): Promise<void> {
         )
       ).rows[0]!.status;
 
-      const ok = report.activated === 1 && status === "paid" && subs === 1 && invoice === "paid";
+      const ok =
+        decisionFor(report, payment.paymentId)?.action === "verify" &&
+        report.activated >= 1 &&
+        status === "paid" &&
+        subs === 1 &&
+        invoice === "paid";
       record(
         name,
         ok,
@@ -277,13 +293,14 @@ async function main(): Promise<void> {
 
       const report = await runReconcile({ pool, gateway }, policy());
       const status = await statusOf(pool, payment.paymentId);
-      const ok = report.skipped === 1 && report.activated === 0 && status === "pending";
+      const mine = decisionFor(report, payment.paymentId);
+      const ok = mine?.action === "skip" && mine.reason === "tooYoung" && status === "pending";
       record(
         name,
         ok,
         ok
-          ? "skipped=۱ · activated=۰ · هنوز pending"
-          : `انتظار: skipped=1/activated=0/pending. واقعی: ${JSON.stringify({ skipped: report.skipped, activated: report.activated, status })}`,
+          ? "تصمیمِ همین ردیف skip/tooYoung بود و هنوز pending است"
+          : `انتظار: skip/tooYoung/pending. واقعی: ${JSON.stringify({ mine, status })}`,
       );
     } catch (error) {
       failed(name, error);
@@ -360,13 +377,14 @@ await pool.end();
 
       const report = await runReconcile({ pool, gateway }, policy());
       const status = await statusOf(pool, payment.paymentId);
-      const ok = report.orphans === 1 && report.expired === 0 && status === "pending";
+      const mine = decisionFor(report, payment.paymentId);
+      const ok = mine?.action === "orphan" && report.expired === 0 && status === "pending";
       record(
         name,
         ok,
         ok
-          ? "orphans=۱ · expired=۰ · هنوز pending ⇒ پولِ احتمالاً گرفته‌شده نامرئی نمی‌شود"
-          : `انتظار: orphans=1/expired=0/pending. واقعی: ${JSON.stringify({ orphans: report.orphans, expired: report.expired, status })}`,
+          ? "تصمیم orphan بود · هیچ‌چیز باطل نشد · هنوز pending ⇒ پولِ احتمالاً گرفته‌شده نامرئی نمی‌شود"
+          : `انتظار: orphan/expired=0/pending. واقعی: ${JSON.stringify({ mine, expired: report.expired, status })}`,
       );
     } catch (error) {
       failed(name, error);
@@ -404,12 +422,22 @@ await pool.end();
       await agePayment(pool, b.paymentId, 60);
       const ambiguous = await runReconcile({ pool, gateway }, policy({ adoptOrphans: true }));
 
+      // ★ ادعا روی **ردیفِ خودمان**: authority نشست و تسویه شد؛ و دو یتیمِ هم‌مبلغ
+      //   هنوز authority ندارند (یعنی واقعاً رد شدند، نه اینکه اتفاقی pending مانده باشند).
+      const authorityOf = async (id: string): Promise<string | null> =>
+        (
+          await pool.query<{ authority: string | null }>(
+            "SELECT authority FROM payments WHERE id = $1",
+            [id],
+          )
+        ).rows[0]!.authority;
       const ok =
-        adopted.adopted === 1 &&
-        adopted.activated === 1 &&
+        adopted.adopted >= 1 &&
+        (await authorityOf(orphan.paymentId)) !== null &&
         status === "paid" &&
         subs === 1 &&
-        ambiguous.adopted === 0 &&
+        (await authorityOf(a.paymentId)) === null &&
+        (await authorityOf(b.paymentId)) === null &&
         (await statusOf(pool, a.paymentId)) === "pending" &&
         (await statusOf(pool, b.paymentId)) === "pending";
       record(
@@ -417,7 +445,7 @@ await pool.end();
         ok,
         ok
           ? "یک یتیم + یک نامزد ⇒ فرزندخوانده و فعال شد · دو یتیمِ هم‌مبلغ ⇒ هیچ‌کدام (ابهام رد شد)"
-          : `واقعی: ${JSON.stringify({ adopted: adopted.adopted, activated: adopted.activated, status, subs, ambiguousAdopted: ambiguous.adopted })}`,
+          : `واقعی: ${JSON.stringify({ adopted: adopted.adopted, status, subs, ambiguousAdopted: ambiguous.adopted })}`,
       );
     } catch (error) {
       failed(name, error);
@@ -455,11 +483,10 @@ await pool.end();
       ).rows[0]!.status;
 
       const ok =
-        first.expired === 0 &&
-        first.stillPending === 1 &&
+        decisionFor(first, payment.paymentId)?.action === "verify" &&
         afterFirst === "pending" &&
         code !== null &&
-        second.expired === 1 &&
+        decisionFor(second, payment.paymentId)?.action === "expire" &&
         afterSecond === "canceled" &&
         invoice === "void";
       record(
@@ -467,7 +494,7 @@ await pool.end();
         ok,
         ok
           ? `اجرای اول: پرسید و کدِ «${code}» را ثبت کرد (هنوز pending) · اجرای دوم: canceled + فاکتورِ void`
-          : `واقعی: ${JSON.stringify({ firstExpired: first.expired, afterFirst, code, secondExpired: second.expired, afterSecond, invoice })}`,
+          : `واقعی: ${JSON.stringify({ first: decisionFor(first, payment.paymentId), afterFirst, code, second: decisionFor(second, payment.paymentId), afterSecond, invoice })}`,
       );
     } catch (error) {
       failed(name, error);

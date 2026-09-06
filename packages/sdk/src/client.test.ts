@@ -121,3 +121,70 @@ describe("createClient", () => {
     await expect(blob.text()).resolves.toBe("PNGBYTES");
   });
 });
+
+describe("billing — M4 فاز ۸", () => {
+  it("★★ `Idempotency-Key` واقعاً روی درخواست می‌رود (تا این فاز اصلاً وجود نداشت)", async () => {
+    let seen: RequestInit | undefined;
+    const client = createClient({
+      baseUrl: "",
+      fetch: (_u, i) => {
+        seen = i;
+        return Promise.resolve(json(200, { paymentId: "p1", redirectUrl: "http://gw/pay" }));
+      },
+    });
+    client.setAccessToken("tok");
+    await client.billing.checkout(
+      "t1",
+      { planCode: "pro", period: "monthly", seats: 1 },
+      { idempotencyKey: "gesture-1" },
+    );
+    expect((seen?.headers as Record<string, string>)["idempotency-key"]).toBe("gesture-1");
+  });
+
+  it("بدونِ کلید، هدر اصلاً فرستاده نمی‌شود (نه رشته‌ی خالی)", async () => {
+    let seen: RequestInit | undefined;
+    const client = createClient({
+      baseUrl: "",
+      fetch: (_u, i) => {
+        seen = i;
+        return Promise.resolve(json(200, { paymentId: "p1", redirectUrl: "u" }));
+      },
+    });
+    client.setAccessToken("tok");
+    await client.billing.checkout("t1", { planCode: "pro", period: "monthly", seats: 1 });
+    expect((seen?.headers as Record<string, string>)["idempotency-key"]).toBeUndefined();
+  });
+
+  it("★ `plans()` عمومی است — بدونِ Bearer، حتی وقتی توکن داریم", async () => {
+    let seen: RequestInit | undefined;
+    const client = createClient({
+      baseUrl: "",
+      fetch: (_u, i) => {
+        seen = i;
+        return Promise.resolve(json(200, { plans: [] }));
+      },
+    });
+    client.setAccessToken("tok");
+    await client.billing.plans();
+    expect((seen?.headers as Record<string, string>).authorization).toBeUndefined();
+  });
+
+  it("⚠️ اشتراکِ `null` خطا نیست — تیمِ رایگان دقیقاً همین است", async () => {
+    const client = createClient({
+      baseUrl: "",
+      fetch: () => Promise.resolve(json(200, { subscription: null })),
+    });
+    await expect(client.billing.subscription("t1")).resolves.toEqual({ subscription: null });
+  });
+
+  it("QUOTA_EXCEEDED به SdkError با همان code می‌رسد (نه یک ۵۰۰ی بی‌شکل)", async () => {
+    const client = createClient({
+      baseUrl: "",
+      fetch: () => Promise.resolve(json(409, err("QUOTA_EXCEEDED"))),
+    });
+    await expect(client.billing.checkout("t1", { planCode: "pro", period: "monthly", seats: 1 })).rejects.toMatchObject({
+      status: 409,
+      code: "QUOTA_EXCEEDED",
+    });
+  });
+});

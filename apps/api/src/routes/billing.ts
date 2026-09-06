@@ -108,10 +108,27 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
       );
     }
 
-    await deps.pool.query("UPDATE payments SET authority = $2 WHERE id = $1", [
-      draft.paymentId,
-      created.authority,
-    ]);
+    // ★★ **این UPDATE هم می‌تواند بیفتد، و نگارشِ اول هیچ گاردی نداشت.**
+    //    `payments_authority_uq` روی `(gateway, authority)` است؛ اگر درگاه authorityِ تکراری
+    //    بدهد، اینجا ۲۳۵۰۵ می‌خورد و کاربر یک ۵۰۰ی خام می‌گیرد **و** یک ردیفِ `pending`ِ
+    //    بدونِ authority جا می‌مانَد که تا ابد به‌عنوانِ «یتیم» در آشتی‌دهی گزارش می‌شود.
+    //    ⚠️ در فاز ۸ این واقعاً رخ داد: authorityِ `MockGateway` بینِ پروسه‌ها یکتا نبود.
+    // ★ باطل‌کردن این‌جا **امن** است چون `redirectUrl` هرگز به کاربر نرسیده — پس نمی‌تواند
+    //   پولی بابتِ این authority بدهد.
+    try {
+      await deps.pool.query("UPDATE payments SET authority = $2 WHERE id = $1", [
+        draft.paymentId,
+        created.authority,
+      ]);
+    } catch (cause) {
+      await voidFailedCheckout(deps.pool, draft.paymentId, "AUTHORITY");
+      throw new HttpError(
+        502,
+        "GATEWAY_UNAVAILABLE",
+        "شناسه‌ی پرداختِ درگاه ذخیره نشد. کمی بعد دوباره تلاش کن.",
+        { cause: String((cause as Error).message) },
+      );
+    }
 
     return { paymentId: draft.paymentId, redirectUrl: created.redirectUrl };
   });

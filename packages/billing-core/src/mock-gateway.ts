@@ -55,9 +55,27 @@ export class MockGateway implements PaymentGateway {
   constructor(config: MockGatewayConfig) {
     this.#checkoutBaseUrl = config.checkoutBaseUrl.replace(/\/+$/, "");
     this.#failEveryPayment = config.failEveryPayment ?? false;
-    this.#authorityFactory =
-      config.authorityFactory ??
-      (() => `MOCK${String(++this.#counter).padStart(32, "0")}`); // ۳۶ کاراکتر، مثلِ واقعی
+    this.#authorityFactory = config.authorityFactory ?? (() => this.#nextAuthority());
+  }
+
+  /**
+   * ★★ **شمارنده به‌تنهایی کافی نیست — و این را یک شکستنِ عمدی در فاز ۸ ثابت کرد.**
+   *
+   * نگارشِ اول `MOCK` + شمارنده‌ی صفرپرشده بود، یعنی هر پروسه‌ی تازه دوباره از
+   * `MOCK…0001` شروع می‌کرد. ولی ردیف‌های dev در دیتابیس **می‌مانند**؛ پس دومین
+   * `pnpm dev` (یا دومین اجرای هر اسکریپت) روی `payments_authority_uq` می‌خورْد و
+   * checkout با ۵۰۰ می‌افتاد — نقضِ مستقیمِ P3 («`docker compose up && pnpm dev` باید کافی
+   * باشد»)، آن هم روی اولین کاری که یک توسعه‌دهنده امتحان می‌کند.
+   *
+   * حالا شمارنده فقط خوانایی می‌دهد و یکتایی از بخشِ تصادفی می‌آید. طول همچنان ۳۶
+   * کاراکتر است، مثلِ authorityِ واقعی. ⚠️ `Math.random` عمدی است: `billing-core` هیچ
+   * وابستگیِ Node ندارد (بدونِ `node:crypto`) و این یک شناسه‌ی **ساختگیِ توسعه** است،
+   * نه چیزی که امنیت به آن تکیه کند.
+   */
+  #nextAuthority(): string {
+    const counter = String(++this.#counter).padStart(3, "0").slice(-3);
+    const chunk = (): string => Math.random().toString(36).slice(2).padEnd(11, "0").slice(0, 11);
+    return `MOCK${counter}${chunk()}${chunk()}${chunk()}`.slice(0, 36);
   }
 
   // ★ `async` عمدی: `assertGatewayAmount` می‌تواند پرتاب کند، و متدی که `Promise` اعلام
