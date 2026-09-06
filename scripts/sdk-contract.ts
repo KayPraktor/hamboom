@@ -72,7 +72,7 @@ async function main(): Promise<void> {
   const config = { ...loadApiConfig(), OTP_DEV_FIXED_CODE: "424242" };
   // ★ درگاه **صریح** تزریق می‌شود، نه از `PAYMENT_PROVIDER`ِ محیط: این اسکریپت نباید بسته به
   //   `.env`ِ کسی به سندباکسِ واقعی وصل شود (P2/P3).
-  const gateway = new MockGateway({ checkoutBaseUrl: "http://local/api/v1/billing/mock/pay" });
+  const gateway = new MockGateway({ checkoutBaseUrl: "http://local/billing/mock/pay" });
   const app = await buildApp({ config, gateway });
   await app.ready();
   const sdk = createClient({ baseUrl: "", fetch: injectFetch(app) });
@@ -148,8 +148,21 @@ async function main(): Promise<void> {
     if (publicPlans.plans.length === 0) throw new Error("هیچ پلنی برنگشت (migrate نشده؟)");
     for (const p of publicPlans.plans) plan.parse(p);
     const codes = publicPlans.plans.map((p) => p.code);
-    for (const hidden of ["pro", "team", "personal"]) {
-      if (codes.includes(hidden)) throw new Error(`${hidden} نباید عمومی باشد (قیمت تایید نشده)`);
+    // ⚠️ از فاز ۹ (migration `0006`) قیمتِ `pro`/`team` تایید شد و فعال شدند، پس **باید**
+    //    دیده شوند. تنها پلنی که هرگز عمومی نمی‌شود `personal` است — و دلیلش قیمت نیست،
+    //    فروختنی‌نبودن است (به فضای شخصی تخصیص داده می‌شود).
+    if (codes.includes("personal")) {
+      throw new Error("personal نباید عمومی باشد — تخصیصی است، نه خریدنی");
+    }
+    for (const sellable of ["pro", "team"]) {
+      if (!codes.includes(sellable)) throw new Error(`${sellable} فعال است ولی در فهرست نیست`);
+    }
+    // ★ پلنِ فعالِ **پولی** باید قیمتِ ناصفر داشته باشد، وگرنه checkout با ۴۰۹ می‌افتد و
+    //   کاربر فقط یک خطای گنگ می‌بیند (نگهبانِ `plans_paid_price_ck` هم همین است).
+    for (const p of publicPlans.plans) {
+      if (p.code !== "free" && p.priceMonthlyRial <= 0) {
+        throw new Error(`پلنِ فعالِ «${p.code}» قیمتِ صفر دارد`);
+      }
     }
     // ★ سقفِ نامحدود روی سیم `-1` است، نه `null` و نه `Infinity` (که JSON اصلاً ندارد).
     //   ⚠️ `Plan` سقف‌ها را **تخت** دارد (`maxBoards`)، برخلافِ `Team` که `limits` تودرتوست.
@@ -160,7 +173,7 @@ async function main(): Promise<void> {
   });
 
   // پلنِ آزمایشیِ **پولی** — `free` صفر است و اصلاً به درگاه نمی‌رود.
-  const probePlan = "sdk_contract";
+  const probePlan = "probe_sdk";
   await app.db.query(
     `INSERT INTO plans (code, name, description, price_monthly_rial, price_yearly_rial,
                         max_members, max_boards, max_storage_bytes, features, is_active, sort_order)
@@ -259,7 +272,7 @@ async function main(): Promise<void> {
     const dupApp = await buildApp({
       config,
       gateway: new MockGateway({
-        checkoutBaseUrl: "http://local/api/v1/billing/mock/pay",
+        checkoutBaseUrl: "http://local/billing/mock/pay",
         authorityFactory: () => stuck, // ← همیشه همان یکی
       }),
     });

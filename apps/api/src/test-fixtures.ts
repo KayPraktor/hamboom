@@ -41,7 +41,7 @@ export const TEST_CONFIG: ApiConfig = {
   ZARINPAL_MODE: "sandbox",
   ZARINPAL_MERCHANT_ID: undefined,
   ZARINPAL_CURRENCY: "IRR",
-  ZARINPAL_CALLBACK_URL: "http://localhost:3002/api/v1/billing/zarinpal/callback",
+  ZARINPAL_CALLBACK_URL: "http://localhost:3002/billing/zarinpal/callback",
   VAT_PERCENT: 0,
   WEB_BASE_URL: "http://localhost:5173",
   // ── آشتی‌دهی (M4 فاز ۷) — در تست **خاموش**: یک تایمر در تستِ واحد فقط نویز و نشتِ

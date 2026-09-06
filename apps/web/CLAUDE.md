@@ -146,6 +146,39 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 - ⚠️ **screenshot در این محیط time-out می‌کند** (بومِ excalidraw روی GPU composite)؛ اثباتِ رابط با اندازه‌گیریِ
   `getBoundingClientRect` + کلیکِ واقعی + `read_network_requests` انجام شد، نه صرفاً چشمی.
 
+## ★ پرداخت و اشتراک (M4 فاز ۹)
+
+`src/billing/`: [`PricingPage`](src/billing/PricingPage.tsx) (**عمومی**) ·
+[`TeamBillingPage`](src/billing/TeamBillingPage.tsx) (اشتراک + سنجه‌ی مصرف + خرید + فاکتور) ·
+[`PaymentResultPage`](src/billing/PaymentResultPage.tsx) · [`billing-queries`](src/billing/billing-queries.ts).
+
+- ⚠️⚠️ **هیچ مسیرِ SPA زیرِ `/billing` نیست.** آن پیشوند کاملاً مالِ api است و در
+  [`vite.config.ts`](vite.config.ts) پروکسی می‌شود؛ یک صفحه‌ی SPA با آن نام اصلاً به مرورگر
+  نمی‌رسد. پس: `/pricing` و **`/payment/result`** (مقصدِ ریدایرکتِ callback هم در api به همین
+  عوض شد).
+- ★★ **صفحه‌ی بازگشت از درگاه `RequireAuth` ندارد** — بازگشت یک **بارگذاریِ سردِ صفحه** است و
+  توکنِ دسترسی فقط در حافظه بوده؛ با گارد، کاربر پیش از بازسازیِ نشست به `/login` می‌پرد و فکر
+  می‌کند پولش گم شده. و **تسویه آن‌جا انجام نمی‌شود** — سرور در callback قبلاً کرده؛ اگر آن‌جا
+  بود، کاربری که تبَش را بست هرگز سرویسش را نمی‌گرفت.
+- ★★ **کلیدِ `Idempotency-Key` این‌جا ساخته می‌شود، یک‌بار به‌ازای هر ژستِ کاربر** — نه در sdk
+  (کلیدِ تازه در هر call = بی‌کلید) و نه در سرور. دو کلیکِ پیاپی ⇒ **همان** فاکتور.
+- **تومان در صفحه، ریال در فاکتور** (تصمیمِ مالک): `formatToman` برای قیمت و پیش‌نمایشِ خرید،
+  `formatRial` برای جدولِ فاکتور. تبدیل فقط در لایه‌ی نمایش (P5).
+- ⚠️ **سنتینلِ `-1` نوار نمی‌گیرد**: «۲ از نامحدود»، نه یک نوارِ پُر یا منفی.
+- ★ خروج از اپ با `window.location.assign(redirectUrl)` است، نه روترِ SPA — مقصد بیرونی است.
+
+⚠️ **`VITE_API_TARGET` باید در `apps/web/.env.local` باشد، نه `.env`ِ ریشه.** vite فقط `.env`ِ
+خودِ اپ را می‌خواند؛ وگرنه پروکسی بی‌صدا سراغِ پیش‌فرضِ ۳۰۰۲ می‌رود و همه‌ی درخواست‌ها ۵۰۰ می‌شوند
+در حالی که api سالم بالا است.
+
+## ⚠️ فریمِ مختصاتِ کلیک ≠ ویوپورتِ صفحه (فاز ۹)
+
+در Browser paneِ این محیط، مختصاتِ کلیک در یک فریمِ **مقیاس‌شده** است (اندازه‌گیری‌شده:
+۸۰۰×۷۶۱ در برابرِ ویوپورتِ ۹۶۱×۹۱۴) و کلیکِ `ref`-based هم تبدیل نمی‌کند. نتیجه: کلیک بی‌صدا
+جای دیگری می‌نشیند و **دقیقاً شبیهِ باگِ رابط** به‌نظر می‌رسد. تبدیل:
+`x * frameW / innerWidth` (عرضِ فریم را خروجیِ خودِ screenshot می‌گوید). با تبدیل، کلیکِ
+**واقعی** کار می‌کند — `.click()`ِ برنامه‌ای فقط برای تشخیص است، نه اثبات.
+
 ## ★★ درسِ اندازه‌گیریِ بوم در مرورگر (فاز ۸٫۴)
 
 اثباتِ رفتارِ بوم دو تله دارد که هر دو وقتم را گرفتند:
@@ -177,10 +210,10 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 ## ★ اجرای محلیِ کاملِ زنجیره
 
 ```bash
-pnpm db:up                                   # postgres 5433 + redis 7379 + minio 9600 (پورت‌ها در .envِ محلی)
-APP_ENV=local node --env-file-if-exists=.env apps/api/src/server.ts            # api روی 3002 (SMS mock → کد در لاگ)
+pnpm db:up                                   # postgres 5544 + redis 7379 + minio 9600 (پورت‌ها در .envِ محلی)
+APP_ENV=local node --env-file-if-exists=.env apps/api/src/server.ts            # api روی 3410 (SMS mock → کد در لاگ)
 RT_PORT=3001 APP_ENV=local node --env-file-if-exists=.env apps/realtime/src/main.ts  # realtime روی 3001 (برای بورد، ۸٫۴)
-pnpm --filter @hamboom/web dev               # web روی 15380، پروکسی به 3002، WS به 3001
+pnpm --filter @hamboom/web dev               # web روی 15380، پروکسی به VITE_API_TARGET، WS به 3001
 ```
 
 - **بورد (۸٫۴) به هر سه نیاز دارد:** api (rt-token) + realtime (WS، `VITE_RT_URL` پیش‌فرض `ws://127.0.0.1:3001`) + web.

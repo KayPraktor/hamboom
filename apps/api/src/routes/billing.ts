@@ -46,7 +46,27 @@ export interface BillingRouteDeps {
   callbackRateLimit: { max: number; timeWindow: number };
 }
 
+/** مسیرِ **ثبت‌شده‌ی** بازگشت از درگاه — تنها تعریفش، و گاردِ بوت با همین می‌سنجد. */
+export const ZARINPAL_CALLBACK_PATH = "/billing/zarinpal/callback";
+
 export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDeps): void {
+  // ★★ **گاردِ بوت: آدرسی که به درگاه می‌دهیم باید واقعاً مسیرِ ماست.**
+  //
+  // پیش‌فرضِ `ZARINPAL_CALLBACK_URL` یک پیشوندِ `/api/v1` داشت که **هیچ‌جای این اپ ثبت
+  // نمی‌شود**. یعنی درگاه کاربر را بعد از پرداختِ واقعی به یک ۴۰۴ می‌فرستاد و تسویه فقط
+  // با آشتی‌دهی نجات پیدا می‌کرد — یک نقصِ خاموش که هیچ تستی نمی‌گرفتش، چون تست‌ها هرگز
+  // این رشته را با جدولِ مسیرها مقایسه نمی‌کردند. با اجرای واقعی در فاز ۹ پیدا شد.
+  //
+  // ⚠️ بلند می‌شکند و در **بوت**، نه سرِ اولین پرداختِ مشتری.
+  const callbackPath = new URL(deps.callbackUrl).pathname.replace(/\/+$/, "");
+  if (callbackPath !== ZARINPAL_CALLBACK_PATH) {
+    throw new Error(
+      `ZARINPAL_CALLBACK_URL به «${callbackPath}» اشاره می‌کند ولی مسیرِ ثبت‌شده ` +
+        `«${ZARINPAL_CALLBACK_PATH}» است. درگاه کاربر را به ۴۰۴ می‌فرستد و تسویه فقط با ` +
+        "آشتی‌دهی نجات پیدا می‌کند.",
+    );
+  }
+
   // ── فهرستِ پلن‌ها (عمومی — صفحه‌ی قیمت) ──────────────────────────────
   app.get("/billing/plans", async () => {
     // ⚠️ فقط پلنِ **فعال**. پلنی که قیمتش تایید نشده (فاز ۴ seed) اصلاً دیده نمی‌شود.
@@ -138,13 +158,15 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   // ⚠️ اینجا **نه** هدرِ auth هست و **نه** کوکیِ refresh (که روی `path=/auth` است). پس
   //    میان‌افزارِ `Idempotency-Key` هم اجرا نمی‌شود (اثباتِ گام ۱٫۳). تنها حفاظ،
   //    `SELECT … FOR UPDATE` داخلِ `settlePayment` است.
+  // ⚠️ مقصدِ ریدایرکت **`/payment/result`** است، نه `/billing/result`: در dev کلِ پیشوندِ
+  //    `/billing` به api پروکسی می‌شود، پس یک مسیرِ SPA با آن نام اصلاً به مرورگر نمی‌رسد.
   app.get(
-    "/billing/zarinpal/callback",
+    ZARINPAL_CALLBACK_PATH,
     { config: { rateLimit: deps.callbackRateLimit } },
     async (req, reply) => {
       const query = zarinpalCallbackQuery.safeParse(req.query);
       if (!query.success) {
-        return reply.redirect(`${deps.webBaseUrl}/billing/result?status=invalid`);
+        return reply.redirect(`${deps.webBaseUrl}/payment/result?status=invalid`);
       }
 
       // ★ به `Status` **اعتماد نمی‌شود** (ADR-014 قاعده ۱). حتی روی `NOK` هم verifyِ
@@ -161,7 +183,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
 
       const status =
         outcome.kind === "activated" || outcome.kind === "alreadySettled" ? "ok" : "failed";
-      return reply.redirect(`${deps.webBaseUrl}/billing/result?status=${status}`);
+      return reply.redirect(`${deps.webBaseUrl}/payment/result?status=${status}`);
     },
   );
 

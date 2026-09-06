@@ -220,7 +220,14 @@ export const paymentEnvSchema = z.object({
    * روی هر تراکنش (P5). این‌طوری کسی نمی‌تواند با یک متغیرِ محیطی عوضش کند.
    */
   ZARINPAL_CURRENCY: z.literal("IRR").default("IRR"),
-  ZARINPAL_CALLBACK_URL: z.url().default("http://localhost:3002/api/v1/billing/zarinpal/callback"),
+  /**
+   * ⚠️ **مسیر باید دقیقاً همان مسیرِ ثبت‌شده باشد: `/billing/zarinpal/callback`** — بدونِ
+   * `/api/v1`. پیش‌فرضِ اولیه پیشوند داشت و هیچ‌جای api چنین پیشوندی ثبت نمی‌کند؛ یعنی
+   * درگاه کاربر را بعد از **پرداختِ واقعی** به یک ۴۰۴ می‌فرستاد و تسویه فقط با
+   * آشتی‌دهی (فاز ۷) نجات پیدا می‌کرد. `registerBillingRoutes` حالا در **بوت** می‌شکند
+   * اگر این مسیر با route نخوانَد.
+   */
+  ZARINPAL_CALLBACK_URL: z.url().default("http://localhost:3002/billing/zarinpal/callback"),
   /**
    * ⚠️ **پیش‌فرض صفر، و این یک تصمیمِ حقوقی است نه فنی** (M4-D6): تا وقتی روشن نشده که
    * هم‌بوم در نظامِ مالیاتی ثبت شده و حق دارد VAT بگیرد، عددِ امن صفر است. نرخِ هر فاکتور

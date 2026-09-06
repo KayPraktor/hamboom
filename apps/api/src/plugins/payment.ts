@@ -16,8 +16,16 @@ import type { ApiConfig } from "../config.ts";
  * `ObjectStore` و `BoardAuthority` دارند، و همان چیزی که تست را بدونِ شبکه ممکن می‌کند.
  */
 
-/** مسیرِ صفحه‌ی ساختگیِ پرداخت که خودِ api سرو می‌کند (فقط توسعه). */
-export const MOCK_CHECKOUT_PATH = "/api/v1/billing/mock/pay";
+/**
+ * مسیرِ صفحه‌ی ساختگیِ پرداخت که خودِ api سرو می‌کند (فقط توسعه).
+ *
+ * ⚠️ **بدونِ پیشوندِ `/api/v1`.** نگارشِ اول این را `"/api/v1/billing/mock/pay"` نوشته بود،
+ * ولی هیچ‌جای این اپ چنین پیشوندی ثبت نمی‌شود — تنها مسیرِ `/api/v1`ی موجود،
+ * `/api/v1/docs`ِ **تحت‌اللفظی** است. یعنی دکمه‌ی پرداختِ dev به یک ۴۰۴ می‌رفت و کلِ
+ * جریانِ P3 («`docker compose up && pnpm dev` باید کافی باشد») مرده بود. با اجرای واقعی
+ * در مرورگر (فاز ۹) پیدا شد، نه با هیچ تستی.
+ */
+export const MOCK_CHECKOUT_PATH = "/billing/mock/pay";
 
 export function createPaymentGateway(config: ApiConfig): PaymentGateway {
   const gateway =

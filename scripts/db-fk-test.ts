@@ -414,14 +414,19 @@ async function checkInvoiceSequence(c: pg.Client): Promise<CheckResult> {
  * ⚠️ این چک در فاز ۴ نوشته شد و مجموعه‌ی غیرفعال‌ها را دقیقاً `pro,team` می‌خواست. فاز ۶
  * با migrationِ `0005` پلنِ `personal` را اضافه کرد که آن هم `is_active = false` است —
  * **نه به‌خاطرِ قیمت، بلکه چون اصلاً فروختنی نیست** (به فضای شخصی تخصیص داده می‌شود، خریده
- * نمی‌شود). پس چک از فاز ۶ کهنه بود و اولین اجرای بعدش (فاز ۷) قرمزش کرد.
+ * نمی‌شود). پس چک از فاز ۶ کهنه بود و اولین اجرای بعدش (فاز ۷) قرمزش کرد. سپس فاز ۹
+ * قیمتِ `pro`/`team` را نشاند و فعالشان کرد (migration `0006`)، پس تنها غیرفعالِ باقی‌مانده
+ * `personal` است — و **دلیلش هرگز قیمت نبوده**.
  *
  * ★ مجموعه **صریح** نگه داشته می‌شود، نه «هرچه غیرفعال بود»: افزودنِ یک پلنِ غیرفعالِ تازه
  * باید همین‌جا دیده شود، نه اینکه بی‌صدا رد شود.
  */
 async function checkPlanSeed(c: pg.Client): Promise<CheckResult> {
+  // ⚠️ پلن‌های **فیکسچر** کنار گذاشته می‌شوند. دیتابیسِ dev همیشه ردیف‌های سنجه‌ها را دارد
+  //    (`probe_paid`، `probe_recon`، `probe_sdk`) و این گیت درباره‌ی **seedِ محصول** است، نه
+  //    جمعیتِ جدول. قرارداد: هر پلنِ آزمایشی با `probe_` شروع می‌شود.
   const { rows } = await c.query<{ code: string; is_active: boolean; max_boards: number }>(
-    "SELECT code, is_active, max_boards FROM plans ORDER BY sort_order",
+    "SELECT code, is_active, max_boards FROM plans WHERE code NOT LIKE 'probe\_%' ORDER BY sort_order",
   );
   const free = rows.find((r) => r.code === "free");
   const inactive = rows
@@ -429,13 +434,13 @@ async function checkPlanSeed(c: pg.Client): Promise<CheckResult> {
     .map((r) => r.code)
     .sort()
     .join(",");
-  const ok = free?.is_active === true && inactive === "personal,pro,team";
+  const ok = free?.is_active === true && inactive === "personal";
   return {
-    name: "billing — `free` فعال؛ `pro`/`team` تا تاییدِ قیمت و `personal` چون فروختنی نیست، **غیرفعال**",
+    name: "billing — `free`/`pro`/`team` فعال‌اند؛ فقط `personal` غیرفعال است (فروختنی نیست)",
     ok,
     detail: ok
       ? `free فعال (سقفِ بورد ${String(free?.max_boards)})، و ${inactive} غیرفعال ⇒ چیزی که قیمتش تایید نشده قابلِ خرید نیست`
-      : `انتظار: free فعال و personal/pro/team غیرفعال. واقعی: ${JSON.stringify(rows)}`,
+      : `انتظار: فقط personal غیرفعال. واقعی: ${JSON.stringify(rows)}`,
   };
 }
 

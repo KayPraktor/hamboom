@@ -16,6 +16,11 @@ import { defineConfig, loadEnv } from "vite";
  */
 const API_PREFIXES = [
   "/auth",
+  // ⚠️ **`/billing` کاملاً مالِ api است** (plans، callbackِ درگاه، verify، صفحه‌ی mock).
+  //    پس هیچ مسیرِ SPA نباید با آن شروع شود، وگرنه پروکسیِ dev صفحه را می‌بلعد و کاربر
+  //    یک ۴۰۴ی JSON می‌بیند. به همین دلیل صفحه‌ی قیمت `/pricing` است و صفحه‌ی بازگشت از
+  //    درگاه `/payment/result` — نه `/billing/…`.
+  "/billing",
   "/me",
   "/teams",
   "/folders",

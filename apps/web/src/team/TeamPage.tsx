@@ -51,6 +51,17 @@ export function TeamPage() {
           </Link>
           <h1>{team.data.name}</h1>
         </div>
+        {/* ★ گیتِ واقعی سرور است؛ این فقط پنهان‌کردنِ لینکی است که به کار نمی‌آید. */}
+        {(team.data.myRole === "owner" || team.data.myRole === "admin") && (
+          <Link
+            to="/team/$teamId/billing"
+            params={{ teamId }}
+            search={{ plan: undefined, period: undefined }}
+            className="btn btn--ghost btn--sm"
+          >
+            پرداخت و اشتراک
+          </Link>
+        )}
       </div>
 
       {canManage && <InviteForm teamId={teamId} />}

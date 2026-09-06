@@ -2,6 +2,9 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 
 import { LoginPage } from "./auth/LoginPage.tsx";
 import { RequireAuth } from "./auth/RequireAuth.tsx";
+import { PaymentResultPage } from "./billing/PaymentResultPage.tsx";
+import { PricingPage } from "./billing/PricingPage.tsx";
+import { TeamBillingPage } from "./billing/TeamBillingPage.tsx";
 import { BoardPage } from "./board/BoardPage.tsx";
 import { DashboardPage } from "./dashboard/DashboardPage.tsx";
 import { IndexRedirect } from "./routes/IndexRedirect.tsx";
@@ -54,6 +57,51 @@ const teamRoute = createRoute({
   ),
 });
 
+/**
+ * ★ مسیرهای پرداخت (M4 فاز ۹).
+ *
+ * ⚠️ **هیچ‌کدام با `/billing` شروع نمی‌شوند** — آن پیشوند در dev کاملاً به api پروکسی
+ * می‌شود ([`vite.config.ts`](../vite.config.ts))، پس یک صفحه‌ی SPA با آن نام اصلاً به
+ * مرورگر نمی‌رسد و کاربر یک ۴۰۴ی JSON می‌بیند. صفحه‌ی قیمت `/pricing` و بازگشت از درگاه
+ * `/payment/result` است.
+ */
+const pricingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/pricing",
+  component: PricingPage, // ★ عمومی — بدونِ RequireAuth
+});
+
+const teamBillingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/team/$teamId/billing",
+  // ★ پیش‌انتخابِ آمده از صفحه‌ی قیمت — هر دو اختیاری‌اند و هر مقدارِ ناشناخته **دور
+  //   ریخته** می‌شود، نه اینکه به کامپوننت برسد.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { plan?: string; period?: "monthly" | "yearly" } => ({
+    plan: typeof search.plan === "string" ? search.plan : undefined,
+    period:
+      search.period === "yearly" ? "yearly" : search.period === "monthly" ? "monthly" : undefined,
+  }),
+  component: () => (
+    <RequireAuth>
+      <TeamBillingPage />
+    </RequireAuth>
+  ),
+});
+
+const paymentResultRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/payment/result",
+  validateSearch: (search: Record<string, unknown>) => ({
+    status: search.status === "ok" || search.status === "failed" ? search.status : "invalid",
+  }),
+  // ★★ **عمداً بدونِ `RequireAuth`**: بازگشت از درگاه یک بارگذاریِ سردِ صفحه است و توکنِ
+  //    دسترسی فقط در حافظه بوده. با گارد، کاربر پیش از بازسازیِ نشست به `/login` می‌پرد و
+  //    فکر می‌کند پولش گم شده. تسویه هم این‌جا انجام نمی‌شود — سرور قبلاً کرده.
+  component: PaymentResultPage,
+});
+
 const inviteRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/invite/$token",
@@ -77,6 +125,9 @@ const routeTree = rootRoute.addChildren([
   teamRoute,
   inviteRoute,
   boardRoute,
+  pricingRoute,
+  teamBillingRoute,
+  paymentResultRoute,
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });

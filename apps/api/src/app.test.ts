@@ -141,3 +141,27 @@ describe("asset endpoints — گاردها", () => {
     await app.close();
   });
 });
+
+describe("گاردِ بوتِ آدرسِ بازگشت از درگاه (M4 فاز ۹)", () => {
+  const db = () => fakeDb(() => Promise.resolve({ rows: [] }));
+
+  it("★★ آدرسی که به مسیرِ ثبت‌شده نمی‌خورد ⇒ اپ **بالا نمی‌آید**", async () => {
+    // ⚠️ همان پیش‌فرضِ غلطِ واقعی: پیشوندِ `/api/v1` هیچ‌جا ثبت نمی‌شود، پس درگاه کاربر را
+    //    بعد از پرداخت به ۴۰۴ می‌فرستاد و تسویه فقط با آشتی‌دهی نجات پیدا می‌کرد.
+    await expect(
+      buildApp({
+        config: {
+          ...TEST_CONFIG,
+          ZARINPAL_CALLBACK_URL: "http://localhost:3002/api/v1/billing/zarinpal/callback",
+        },
+        db: db(),
+      }),
+    ).rejects.toThrow(/ZARINPAL_CALLBACK_URL/);
+  });
+
+  it("آدرسِ درست بالا می‌آید و مسیرِ callback ثبت شده است", async () => {
+    const app = await buildApp({ config: TEST_CONFIG, db: db() });
+    expect(app.registeredRoutes).toContain("GET /billing/zarinpal/callback");
+    await app.close();
+  });
+});

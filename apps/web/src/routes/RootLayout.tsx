@@ -14,6 +14,10 @@ export function RootLayout() {
         <Link to="/" className="app-header__brand">
           هم‌بوم
         </Link>
+        {/* ★ صفحه‌ی قیمت **عمومی** است، پس لینکش به نشست وابسته نیست. */}
+        <Link to="/pricing" className="app-header__link">
+          پلن‌ها
+        </Link>
         {status === "authenticated" && user !== null && (
           <div className="app-header__user">
             <span>{user.displayName}</span>

@@ -1104,3 +1104,251 @@ body {
   inset-inline-start: auto;
   inset-inline-end: var(--hb-overlay-gap, 16px);
 }
+
+/* ══ پرداخت و اشتراک (M4 فاز ۹) ═══════════════════════════════════════════
+   ⚠️ ADR-016: فقط logical properties. هیچ left/right — گیتِ Stylelintِ داخلِ
+   verify این را اعمال می‌کند و در فاز ۳٫۷ی M3 یک راه‌حلِ اشتباه را همین گرفت. */
+
+.pricing {
+  max-inline-size: 68rem;
+  margin-inline: auto;
+  padding-block: 1.5rem 3rem;
+}
+
+.pricing__head {
+  text-align: center;
+  margin-block-end: 2rem;
+}
+
+.pricing__lede {
+  color: var(--hb-muted);
+  max-inline-size: 40rem;
+  margin-inline: auto;
+}
+
+.pricing__toggle {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-block-start: 1rem;
+}
+
+.pricing__badge {
+  background: var(--hb-surface);
+  color: var(--hb-fg);
+  border-radius: 999px;
+  padding-inline: 0.4rem;
+  font-size: 0.75rem;
+  margin-inline-start: 0.35rem;
+}
+
+.pricing__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.plan-card {
+  block-size: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: var(--hb-bg);
+  border: 1px solid var(--hb-border);
+  border-radius: var(--hb-radius);
+  padding: 1.25rem;
+}
+
+.plan-card--paid {
+  border-color: var(--hb-accent);
+}
+
+.plan-card h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.plan-card__price {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.plan-card__amount {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.plan-card__per,
+.plan-card__desc,
+.plan-card__note {
+  color: var(--hb-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.plan-card__limits,
+.plan-card__features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.plan-card__features {
+  color: var(--hb-muted);
+  border-block-start: 1px solid var(--hb-border);
+  padding-block-start: 0.6rem;
+}
+
+.plan-card .btn {
+  margin-block-start: auto;
+}
+
+/* ── صفحه‌ی پرداختِ تیم ─────────────────────────────────────────────── */
+
+.billing-page {
+  max-inline-size: 56rem;
+  margin-inline: auto;
+  padding-block-end: 3rem;
+}
+
+.billing-section {
+  border: 1px solid var(--hb-border);
+  border-radius: var(--hb-radius);
+  padding: 1.25rem;
+  margin-block-start: 1rem;
+}
+
+.billing-section h2 {
+  margin-block: 0 0.75rem;
+  font-size: 1rem;
+}
+
+.billing-current {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: start;
+}
+
+.billing-current p {
+  margin: 0;
+}
+
+.billing-current__period {
+  color: var(--hb-muted);
+  font-size: 0.9rem;
+}
+
+.billing-current__canceling {
+  color: var(--hb-danger);
+}
+
+.billing-note {
+  color: var(--hb-muted);
+  font-size: 0.85rem;
+}
+
+.usage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.usage-row__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+
+.usage-row__value {
+  color: var(--hb-muted);
+}
+
+.usage-row__value--full {
+  color: var(--hb-danger);
+  font-weight: 600;
+}
+
+.usage-bar {
+  margin-block-start: 0.35rem;
+  block-size: 6px;
+  border-radius: 999px;
+  background: var(--hb-surface);
+  overflow: hidden;
+}
+
+.usage-bar__fill {
+  block-size: 100%;
+  background: var(--hb-accent);
+}
+
+.buy-form {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.buy-total {
+  margin-block: 0.9rem;
+}
+
+.invoice-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.invoice-table th,
+.invoice-table td {
+  text-align: start;
+  padding: 0.5rem 0.25rem;
+  border-block-end: 1px solid var(--hb-border);
+}
+
+.invoice-table th {
+  color: var(--hb-muted);
+  font-weight: 500;
+}
+
+.invoice-table__number {
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  text-align: start;
+}
+
+/* ── بازگشت از درگاه ────────────────────────────────────────────────── */
+
+.payment-result {
+  max-inline-size: 32rem;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.payment-result__actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-block-start: 1rem;
+}
+
+.app-header__link {
+  color: var(--hb-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  margin-inline-start: 1rem;
+}
+
+.app-header__link:hover {
+  color: var(--hb-fg);
+}
