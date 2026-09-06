@@ -8,8 +8,8 @@
 | فایل | چه چیزی دارد |
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
-| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۵۴ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | **TODOی فعالِ M4** — ۱۱ فاز با معیار پذیرش؛ فاز ۰ بسته (نُه تصمیم تاییدشده → ADR-049…۰۵۴) |
+| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۵۵ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
+| ★ [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | **TODOی فعالِ M4** — ۱۱ فاز؛ **فاز ۰–۶ تمام**، قدمِ بعد فاز ۷ (آشتی‌دهی) |
 | ★ [docs/m4-handoff.md](docs/m4-handoff.md) | **نقطه‌ی ورودِ M4** — مدلِ billing، ارثیه‌ها، و درس‌های روشیِ M3 |
 | [TODO-M3-backend-api.md](TODO-M3-backend-api.md) · [PROGRESS-M3-backend-api.md](PROGRESS-M3-backend-api.md) · [docs/m3-handoff.md](docs/m3-handoff.md) | بایگانیِ M3 (`backend-api`، تمام‌شده) — مرجعِ تاریخی |
 | [TODO.md](TODO.md) · [PROGRESS.md](PROGRESS.md) | بایگانیِ M2 (`realtime-sync`، تمام‌شده) — مرجعِ تاریخی |
@@ -73,6 +73,15 @@ pnpm rt:bench         # گام ۶٫۳: بوردِ ۵۰۰۰ عنصری + ۵۰ ک�
 
 pnpm rt:dev           # سرورِ realtimeِ حافظه‌ای — بدونِ داکر، برای دمو و E2Eِ گام‌های ۵٫۲/۵٫۳
 node scripts/rt-dev-server.ts <port> --pg   # همان نود، این‌بار با Postgres + Redisِ واقعی (گام ۶٫۱)
+
+# ★ سنجه‌ها و probeهای M4 (بیرون از pnpm verify — دیتابیسِ زنده لازم دارند)
+pnpm billing:probe-db        # فاز ۱: سه حالتِ parser (B-2/B-3) + رفتارِ واقعیِ FOR UPDATE
+pnpm billing:probe-idem      # فاز ۱: اثباتِ اینکه idempotency روی شکلِ callback اجرا نمی‌شود (B-1)
+pnpm billing:probe-math      # فاز ۱: ریاضیِ ریال + مرزِ سالِ جلالی (بدونِ دیتابیس)
+pnpm billing:probe-gateway -- --request   # ★ تماسِ زنده با سندباکسِ زرین‌پال (اینترنت لازم)
+pnpm billing:probe-gateway -- --verify    #   بعد از پرداختِ دستی در مرورگر
+pnpm billing:settle          # ★★ فاز ۵: ۸ چک — دو تسویه‌ی هم‌زمان ⇒ یک اشتراک، کوپن، تمدید
+pnpm billing:quota           # ★★ فاز ۶: ۶ چک — سقف، همزمانی، سنتینلِ -1، فضای شخصی، staff
 
 # ★ E2Eِ مرورگر (بیرون از pnpm verify — مرورگر لازم دارند)
 pnpm --filter @hamboom/canvas-sync test:e2e          # ۲۸ تست، بدونِ داکر
@@ -216,28 +225,77 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M4 (`billing`) آغاز شد** (۱۴۰۵/۰۶/۱۴) — TODO در [`TODO-M4-billing.md`](TODO-M4-billing.md)،
-  دفترِ کار در [`PROGRESS-M4-billing.md`](PROGRESS-M4-billing.md). **فاز ۰ بسته شد:** هر نُه تصمیمِ
-  مرزی تایید و به شش ADR تبدیل شد ([ADR-049](ARCHITECTURE_DECISIONS.md#adr-049)…[ADR-054](ARCHITECTURE_DECISIONS.md#adr-054)).
-  - **دامنه:** فاز ۰–۱۰ — probe → قرارداد → `packages/billing-core` → migration `0004` → مسیرهای
-    billingِ api → اعمالِ ظرفیت → آشتی‌دهی → sdk → `apps/web` → تحویل. ⛔ **بیرون:** استردادِ کامل
-    (`refund` = GraphQL+OAuth، در dev اجراناپذیر) و `reverse` (whitelistِ IP می‌خواهد) → **M6** ·
+- **★★ M4 (`billing`) در جریان — فاز ۰ تا ۶ تمام** (۱۴۰۵/۰۶/۱۵). TODO در
+  [`TODO-M4-billing.md`](TODO-M4-billing.md)، دفترِ کار در [`PROGRESS-M4-billing.md`](PROGRESS-M4-billing.md).
+  **قدمِ بعد: فاز ۷ (آشتی‌دهی).**
+  - **دامنه:** فاز ۰–۱۰ — probe → قرارداد → `packages/billing-core` → migration → مسیرهای
+    billingِ api → ظرفیت → **آشتی‌دهی** → sdk → `apps/web` → تحویل. ⛔ **بیرون:** استردادِ کامل
+    (`refund` = GraphQL+OAuth، در dev اجراناپذیر) و `reverse` (whitelistِ IP) → **M6** ·
     فاکتورِ PDF (Chromium) و `apps/worker` → بعد از M4 · فاز ۱۰ی M3 دست‌نخورده.
-  - ★★ **برنامه‌ریزی با probeِ زنده شروع شد، نه با خواندنِ سند** — و شش چیز را عوض کرد:
-    میزبانِ درست **`payment.zarinpal.com`** است (نه `api.zarinpal.com`) · **verifyِ دوم همیشه کدِ
-    ۱۰۱ می‌دهد نه ۱۰۰** (چکِ `code === 100` مشتریِ پرداخت‌کرده را «ناموفق» ثبت می‌کند) · واحد
-    **ریال** است ولی باید صریح فرستاده شود · **ادعای سندباکسِ ADR-014 تایید شد** (فقط تعویضِ
-    میزبان + یک UUIDِ دلخواه) · شکلِ `errors` بینِ موفق و ناموفق **تغییرِ نوع** می‌دهد و خطاهای
-    عادی **non-2xx** برمی‌گردند · `refund` اصلاً در REST نیست.
-  - ★★ **پنج بمبِ ساعتی در کدِ خودمان** (B-1…B-5 در TODO). مهم‌ترین: **`idempotency.ts` روی
-    callbackِ زرین‌پال اصلاً اجرا نمی‌شود** — روی هر درخواستِ غیر-POST یا بدونِ `Authorization`
-    بی‌صدا `return` می‌کند، و callback دقیقاً هر دو است. حفاظ **به‌نظر می‌رسد** هست ولی نیست
-    ([ADR-050](ARCHITECTURE_DECISIONS.md#adr-050) جایگزینش کرد). بقیه: `SUM()` روی `bigint` **رشته**
-    برمی‌گرداند (فقط OID 20 ثبت شده) · کوئرسِ `int8` فقط داخلِ `createDbPool` است · **هیچ `CHECK`
-    روی هیچ ستونِ وضعیتِ billing نیست** · `usage_counters.members_count` **همیشه صفر** است.
-  - **قدمِ بعد: فاز ۱ (probeها)** — دروازه‌ی کلِ ماژول. ⚠️ چهار چیز هنوز نامعلوم‌اند: بازتولیدِ
-    گذارِ ۱۰۰→۱۰۱ در سندباکس · بازه‌ی مجازِ verify قبل از بازگشتِ خودکارِ پول (**عدد ندارد**) ·
-    `metadata.auto_verify` · بیشینه‌ی `ref_id`.
+  - **نُه تصمیمِ مرزی → هفت ADR:** [ADR-049](ARCHITECTURE_DECISIONS.md#adr-049) (`billing-core`،
+    پوششِ ۹۰٪، پیش‌فرضِ dev = `mock`) · [ADR-050](ARCHITECTURE_DECISIONS.md#adr-050) (idempotency =
+    قفلِ ردیفِ `payments`) · [ADR-051](ARCHITECTURE_DECISIONS.md#adr-051) (آشتی‌دهی بدونِ `apps/worker`) ·
+    [ADR-052](ARCHITECTURE_DECISIONS.md#adr-052) (یک قاعده‌ی گِردکردن، VAT منجمد) ·
+    [ADR-053](ARCHITECTURE_DECISIONS.md#adr-053) (ظرفیت با `count(*)`ِ واقعی) ·
+    [ADR-054](ARCHITECTURE_DECISIONS.md#adr-054) (ریالِ عددِ صحیح) ·
+    [ADR-055](ARCHITECTURE_DECISIONS.md#adr-055) (**اصلاحِ ADR-050**: مرجعِ یگانگی وضعیتِ ردیفِ ماست، نه کدِ درگاه).
+
+  ### ★★ قراردادِ زرین‌پال — با تماسِ **زنده** اثبات شد (فاز ۱)
+
+  میزبان **`payment.zarinpal.com`** (نه `api.zarinpal.com`) · `pg/v4/payment/{request,verify}.json` ·
+  ریدایرکت `pg/StartPay/{authority}` · callback فقط `?Authority=&Status=`.
+  **★★ verifyِ اول `100`، هر verifyِ بعدیِ همان تراکنش `101`** — و ۱۰۱ شکلِ **موفق** دارد
+  (HTTP ۲۰۰، `errors: []`). واحد **ریال** ولی `IRT` هم مجاز ⇒ همیشه صریح `"currency":"IRR"`.
+  کف **۱۰۰۰ ریال**. خطای کسب‌وکار **non-2xx** است و `errors` **شیء** می‌شود ⇒ **هرگز روی
+  `res.ok` شاخه نزن**. سندباکس فقط تعویضِ میزبان + هر UUIDِ دلخواه (ادعای ADR-014 تایید شد).
+  ⚠️ authorityِ پرداخت‌نشده **منقضی می‌شود** (~۲۰ دقیقه دیده شد).
+
+  ### ★★ پنج بمبِ ساعتیِ کدِ خودمان — همه اثبات‌شده، همه بسته
+
+  **B-1** `idempotency.ts` روی callback **اصلاً اجرا نمی‌شود** (غیر-POST **و** بدونِ auth؛ هر
+  گارد به‌تنهایی کافی است) ⇒ ADR-050 · **B-2** `sum()` روی `bigint` نوعِ `numeric` (OID 1700)
+  می‌دهد که کوئرس نمی‌شود ⇒ **رشته**، در حالی که ستون و `count` درست‌اند (پس کدِ اطراف سالم
+  به‌نظر می‌رسد) · **B-3** کوئرسِ `int8` فقط داخلِ `createDbPool` ⇒ هر اسکریپتِ خام همه‌چیز را
+  رشته می‌خواند · **B-4** هیچ `CHECK` روی وضعیت‌های billing ⇒ migration `0004` · **B-5**
+  `usage_counters` هرگز به‌روز نمی‌شد ⇒ حالا **همه‌جا شمارشِ زنده** و آن جدول بلااستفاده است.
+
+  ### آنچه ساخته شد
+
+  `packages/billing-core` (پورتِ `PaymentGateway` + `MockGateway`/`ZarinpalGateway` +
+  `computeCharge`/`computePeriod`؛ **پوششِ ۹۰٪**) · migrationهای `0004` (نگهبان‌های billing،
+  `coupon_redemptions`، `invoice_sequences`، seedِ پلن) و `0005` (پلنِ `personal`) ·
+  `apps/api`: `services/{billing,quota}.ts` + `routes/billing.ts` (۷ مسیر + صفحه‌ی mockِ dev) +
+  `plugins/payment.ts` · فیلدهای مالیِ `Team` در `shared-types`.
+
+  ### ⚠️ سه درسِ گران که **پیش‌فرض** شدند
+
+  ۱. ★★ **یک چکِ همزمانی هم‌زمان نیست، مگر ثابت شود.** **سه بار** در این ماژول یک سنجه سبز
+     بود و با برداشتنِ عمدیِ چیزی که می‌سنجید **باز هم سبز مانْد** — چون دو تراکنش هرگز
+     هم‌پوشانی نمی‌کردند. رفع: یک تاخیرِ واقعی داخلِ ناحیه‌ی بحرانی (`pg_sleep` یا درگاهِ کُند).
+  ۲. ★★ **«همه‌ی گیت‌ها سبزند» برای کدِ پول شرطِ لازم است، نه کافی.** فاز ۵ با verifyِ سبز و
+     ۳۵ تستِ سبز تیک خورد و کامیت شد؛ یک بازبینیِ خصمانه **۱۷ نقصِ واقعی** پیدا کرد
+     (چند تا پول‌سوز). از آن به بعد هر فازِ پول‌محور یک بازبینیِ خصمانه‌ی **جدا** می‌گیرد.
+  ۳. **سنجه باید گزارش بدهد، نه crash کند** — وگرنه شکستِ خودش از شکستِ چیزی که می‌سنجد
+     قابلِ تفکیک نیست.
+
+  ### ارثیه‌های ثبت‌شده برای فاز ۷
+
+  پنجره‌ی سقوطِ authority (بینِ mint و ذخیره ⇒ `unVerified.json`) · `statement_timeout` برای
+  اتصالِ استخر که در تراکنش نگه داشته می‌شود · انقضای `cancel_at_period_end` (هیچ‌چیز
+  اشتراکِ لغوشده را در پایانِ دوره منقضی نمی‌کند).
+
+  ### ⚠️ سه ابهامِ بازِ بیرونی (از کد درنمی‌آیند)
+
+  بازه‌ی مجازِ verify قبل از بازگشتِ خودکارِ پول (**زرین‌پال عددش را نگفته**) · رفتارِ
+  `metadata.auto_verify` (تنظیمِ پنل) · بیشینه‌ی `ref_id`. **هر سه ورودیِ بازه‌ی sweepِ فاز ۷‌اند**
+  و وقتی حسابِ واقعی گرفته شد باید از پشتیبانی پرسیده شوند.
+
+  ### ⚠️ دو تصمیمِ باز که مالک باید بدهد
+
+  **قیمتِ `pro`/`team`** — هر دو با `is_active = false` نشسته‌اند و **قابلِ خرید نیستند** تا
+  عددِ واقعی بیاید (موکول به **فاز ۹**، هنگامِ ساختِ صفحه‌ی قیمت) · **`VAT_PERCENT`** پیش‌فرض
+  **صفر** است و تا روشن‌شدنِ وضعیتِ ثبتِ مالیاتی همان می‌مانَد (ADR-052/M4-D6).
+
 - **★★ M3 (`backend-api`) تمام و تحویل شد** (۱۴۰۵/۰۶/۱۴) — تاریخچه‌ی فازها پایین. TODO در
   [`TODO-M3-backend-api.md`](TODO-M3-backend-api.md) نوشته و **تصمیم‌های مرزی بسته شد**:
   - **دامنه:** فازهای ۰–۹ + ۱۱ (config+قرارداد → `storage` → `auth-core` → `apps/api` →
