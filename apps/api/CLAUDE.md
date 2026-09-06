@@ -60,7 +60,7 @@ pnpm --filter @hamboom/api typecheck
 pnpm --filter @hamboom/api lint
 pnpm --filter @hamboom/api test
 # migration (گام ۵٫۱ به بعد): اول infra بعد api، یک رانر
-pnpm db:up && pnpm db:migrate    # پورتِ DB روی این ماشین ۵۴۳۳ (CLAUDE.md ریشه)
+pnpm db:up && pnpm db:migrate    # پورتِ DB روی این ماشین ۵۵۴۴ (CLAUDE.md ریشه)
 ```
 
 ⚠️ **`test` فعلاً `--passWithNoTests` دارد** (گام ۵٫۰ هنوز تستِ خودش را ندارد؛ گیتِ واقعیِ این گام،

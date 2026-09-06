@@ -50,7 +50,9 @@
     "billing:probe-math": "node scripts/billing-probe-math.ts",
     "billing:probe-gateway": "node scripts/billing-probe-gateway.ts",
     "billing:settle": "node --env-file-if-exists=.env scripts/billing-probe-settle.ts",
-    "billing:quota": "node --env-file-if-exists=.env scripts/billing-probe-quota.ts"
+    "billing:quota": "node --env-file-if-exists=.env scripts/billing-probe-quota.ts",
+    "billing:reconcile": "node --env-file-if-exists=.env scripts/billing-reconcile.ts",
+    "billing:probe-reconcile": "node --env-file-if-exists=.env scripts/billing-probe-reconcile.ts"
   },
   "devDependencies": {
     "@hamboom/auth-core": "workspace:*",

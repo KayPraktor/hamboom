@@ -242,3 +242,64 @@ describe("MockGateway — پیش‌فرضِ توسعه (M4-D5)", () => {
       .toBe("FIXED".padEnd(36, "0"));
   });
 });
+
+describe("ZarinpalGateway.listUnverified — بازیابیِ پنجره‌ی سقوط (M4 فاز ۷)", () => {
+  it("فهرستِ عادی خوانده می‌شود و به شکلِ پورت درمی‌آید", async () => {
+    const gw = zarinpal((url) => {
+      expect(String(url)).toContain("/pg/v4/payment/unVerified.json");
+      return Promise.resolve(
+        reply(200, {
+          data: {
+            code: 100,
+            authorities: [
+              { authority: "A00000000000000000000000000000000001", amount: 1_990_000 },
+              { authority: "A00000000000000000000000000000000002", amount: 500_000 },
+            ],
+          },
+          errors: [],
+        }),
+      );
+    });
+    await expect(gw.listUnverified()).resolves.toEqual([
+      { authority: "A00000000000000000000000000000000001", amountRial: 1_990_000 },
+      { authority: "A00000000000000000000000000000000002", amountRial: 500_000 },
+    ]);
+  });
+
+  it("★ مبلغِ رشته‌ای هم پذیرفته می‌شود (مثلِ ref_id، شکلش تضمین‌شده نیست)", async () => {
+    const gw = zarinpal(() =>
+      Promise.resolve(reply(200, { data: { authorities: [{ authority: "A1", amount: "500000" }] } })),
+    );
+    await expect(gw.listUnverified()).resolves.toEqual([{ authority: "A1", amountRial: 500_000 }]);
+  });
+
+  it("★★ ردیفِ بدشکل **رها** می‌شود، نه گِرد یا حدس", async () => {
+    const gw = zarinpal(() =>
+      Promise.resolve(
+        reply(200, {
+          data: {
+            authorities: [
+              { authority: "", amount: 500_000 }, // بدونِ authority
+              { authority: "A2", amount: "خیلی" }, // مبلغِ ناخوانا
+              { authority: "A3", amount: 0 }, // مبلغِ صفر
+              { authority: "A4", amount: 1.5 }, // غیرصحیح
+              null,
+              { authority: "A5", amount: 500_000 }, // تنها ردیفِ سالم
+            ],
+          },
+        }),
+      ),
+    );
+    await expect(gw.listUnverified()).resolves.toEqual([{ authority: "A5", amountRial: 500_000 }]);
+  });
+
+  it("★ قطعیِ شبکه ⇒ فهرستِ خالی، نه استثنا — آشتی‌دهی نباید بیفتد", async () => {
+    const gw = zarinpal(() => Promise.reject(new Error("ECONNRESET")));
+    await expect(gw.listUnverified()).resolves.toEqual([]);
+  });
+
+  it("پاسخِ بدونِ آرایه ⇒ فهرستِ خالی", async () => {
+    const gw = zarinpal(() => Promise.resolve(reply(401, { errors: { code: -9, message: "x" } })));
+    await expect(gw.listUnverified()).resolves.toEqual([]);
+  });
+});

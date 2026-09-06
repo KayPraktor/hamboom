@@ -16,6 +16,7 @@ import { registerIdempotency } from "./idempotency.ts";
 import { loggerOptions } from "./logger.ts";
 import { createDbPool } from "./plugins/db.ts";
 import { createPaymentGateway } from "./plugins/payment.ts";
+import { registerReconcileJob } from "./plugins/reconcile.ts";
 import { createAssetObjectStore, createSnapshotObjectStore } from "./plugins/s3.ts";
 import { registerAssetRoutes } from "./routes/assets.ts";
 import { registerBillingRoutes } from "./routes/billing.ts";
@@ -201,6 +202,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       timeWindow: config.RATE_LIMIT_WINDOW_SECONDS * 1000,
     },
   });
+
+  // ── آشتی‌دهیِ بازه‌ای (M4 فاز ۷) — **پیش‌فرض خاموش** ─────────────────
+  // ★ بعد از routeها ثبت می‌شود چون همان درگاهِ حل‌شده را می‌گیرد؛ یک درگاهِ دوم یعنی
+  //   احتمالِ اینکه sweep با درگاهی حرف بزند که پرداخت را نساخته است.
+  registerReconcileJob(app, { pool, gateway: resolvedGateway, config });
 
   return app;
 }

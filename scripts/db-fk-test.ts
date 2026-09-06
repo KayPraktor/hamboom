@@ -408,7 +408,17 @@ async function checkInvoiceSequence(c: pg.Client): Promise<CheckResult> {
   }
 }
 
-/** ۷. seedِ پلن‌ها: `free` فعال، دو تای دیگر عمداً غیرفعال. */
+/**
+ * ۷. seedِ پلن‌ها: `free` فعال، بقیه عمداً غیرفعال — **ولی به دو دلیلِ متفاوت**.
+ *
+ * ⚠️ این چک در فاز ۴ نوشته شد و مجموعه‌ی غیرفعال‌ها را دقیقاً `pro,team` می‌خواست. فاز ۶
+ * با migrationِ `0005` پلنِ `personal` را اضافه کرد که آن هم `is_active = false` است —
+ * **نه به‌خاطرِ قیمت، بلکه چون اصلاً فروختنی نیست** (به فضای شخصی تخصیص داده می‌شود، خریده
+ * نمی‌شود). پس چک از فاز ۶ کهنه بود و اولین اجرای بعدش (فاز ۷) قرمزش کرد.
+ *
+ * ★ مجموعه **صریح** نگه داشته می‌شود، نه «هرچه غیرفعال بود»: افزودنِ یک پلنِ غیرفعالِ تازه
+ * باید همین‌جا دیده شود، نه اینکه بی‌صدا رد شود.
+ */
 async function checkPlanSeed(c: pg.Client): Promise<CheckResult> {
   const { rows } = await c.query<{ code: string; is_active: boolean; max_boards: number }>(
     "SELECT code, is_active, max_boards FROM plans ORDER BY sort_order",
@@ -419,13 +429,13 @@ async function checkPlanSeed(c: pg.Client): Promise<CheckResult> {
     .map((r) => r.code)
     .sort()
     .join(",");
-  const ok = free?.is_active === true && inactive === "pro,team";
+  const ok = free?.is_active === true && inactive === "personal,pro,team";
   return {
-    name: "billing — `free` فعال است؛ `pro`/`team` تا تاییدِ قیمت **غیرفعال**",
+    name: "billing — `free` فعال؛ `pro`/`team` تا تاییدِ قیمت و `personal` چون فروختنی نیست، **غیرفعال**",
     ok,
     detail: ok
       ? `free فعال (سقفِ بورد ${String(free?.max_boards)})، و ${inactive} غیرفعال ⇒ چیزی که قیمتش تایید نشده قابلِ خرید نیست`
-      : `انتظار: free فعال و pro/team غیرفعال. واقعی: ${JSON.stringify(rows)}`,
+      : `انتظار: free فعال و personal/pro/team غیرفعال. واقعی: ${JSON.stringify(rows)}`,
   };
 }
 

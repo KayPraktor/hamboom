@@ -63,6 +63,20 @@ export interface VerifyPaymentInput {
   amountRial: number;
 }
 
+/**
+ * یک پرداختِ «پول گرفته‌شده ولی هنوز verify‌نشده» در سمتِ **درگاه**.
+ *
+ * ★ زرین‌پال این فهرست را با `unVerified.json` می‌دهد و **تنها راهِ بازیابیِ پنجره‌ی سقوطِ
+ * authority** است (ردیفِ `pending` که `authority`ش هرگز ذخیره نشد). ⚠️ شناسه‌ی سفارشِ ما
+ * در آن **نیست** — فقط authority و مبلغ — پس تطبیقش قاعده‌ی سختِ
+ * [`matchOrphans`](./reconcile.ts) را لازم دارد.
+ */
+export interface UnverifiedPayment {
+  authority: string;
+  /** ریالِ صحیح، همان واحدِ `CreatePaymentInput.amountRial`. */
+  amountRial: number;
+}
+
 export interface PaymentGateway {
   /** در ستونِ `payments.gateway` می‌نشیند: `zarinpal` | `mock`. */
   readonly name: string;
@@ -77,6 +91,14 @@ export interface PaymentGateway {
 
   createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult>;
   verifyPayment(input: VerifyPaymentInput): Promise<VerifyOutcome>;
+
+  /**
+   * فهرستِ پرداخت‌هایی که درگاه گرفته ولی ما هرگز verify نکرده‌ایم.
+   *
+   * ★ **اختیاری است چون خاصیتِ هر درگاهی نیست.** آشتی‌دهی بدونش هم کار می‌کند؛ فقط
+   * ردیف‌های یتیم (بدونِ authority) را نمی‌تواند بازیابی کند و آن‌ها را **گزارش** می‌دهد.
+   */
+  listUnverified?(): Promise<UnverifiedPayment[]>;
 
   /**
    * ⚠️ **عمداً اختیاری و در M4 پیاده نمی‌شود** (ADR-049). استردادِ زرین‌پال اصلاً در REST

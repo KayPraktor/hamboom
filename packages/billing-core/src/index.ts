@@ -10,6 +10,7 @@ export type {
   CreatePaymentInput,
   CreatePaymentResult,
   PaymentGateway,
+  UnverifiedPayment,
   VerifyOutcome,
   VerifyPaymentInput,
 } from "./gateway.ts";
@@ -31,6 +32,15 @@ export {
   unitPriceRial,
 } from "./money.ts";
 export type { Charge, ChargeInput, CouponEffect } from "./money.ts";
+
+export { matchOrphans, planSweep, supportsUnverifiedList } from "./reconcile.ts";
+export type {
+  AdoptionDecision,
+  PendingPaymentSnapshot,
+  SweepAction,
+  SweepDecision,
+  SweepPolicy,
+} from "./reconcile.ts";
 
 export {
   addUtcMonths,

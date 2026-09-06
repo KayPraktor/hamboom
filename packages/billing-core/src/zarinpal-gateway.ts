@@ -2,6 +2,7 @@ import type {
   CreatePaymentInput,
   CreatePaymentResult,
   PaymentGateway,
+  UnverifiedPayment,
   VerifyOutcome,
   VerifyPaymentInput,
 } from "./gateway.ts";
@@ -144,6 +145,45 @@ export class ZarinpalGateway implements PaymentGateway {
       authority,
       redirectUrl: `${this.#config.baseUrl}/pg/StartPay/${authority}`,
     };
+  }
+
+  /**
+   * `unVerified.json` — پرداخت‌هایی که درگاه گرفته و ما هرگز verify نکرده‌ایم (M4 فاز ۷).
+   *
+   * ⚠️⚠️ **این تنها متدِ این آداپتور است که با تماسِ زنده اثبات نشده.** بقیه در گام ۱٫۱ با
+   * یک پرداختِ واقعیِ سندباکس اندازه‌گیری شدند؛ این یکی به یک تراکنشِ **پرداخت‌شده‌ی
+   * verify‌نشده** روی حسابِ واقعی نیاز دارد که هنوز نداریم. پس شکلِ پاسخ **تدافعی** خوانده
+   * می‌شود و هر انحرافی به فهرستِ خالی ترجمه می‌شود، نه به استثنا: بدترین حالتِ این متد
+   * باید «نتوانستم کمک کنم» باشد، نه «سرویسِ آشتی‌دهی افتاد».
+   *
+   * ★ و مصرف‌کننده‌اش ([`matchOrphans`](./reconcile.ts)) هر ابهامی را رد می‌کند، پس یک
+   * فهرستِ ناقص هیچ‌وقت به تطبیقِ اشتباه ترجمه نمی‌شود.
+   */
+  async listUnverified(): Promise<UnverifiedPayment[]> {
+    let reply: RawReply;
+    try {
+      reply = await this.#call("unVerified.json", { merchant_id: this.#config.merchantId });
+    } catch {
+      return [];
+    }
+
+    const data = reply.body.data as Record<string, unknown> | undefined;
+    const raw = data?.authorities;
+    if (!Array.isArray(raw)) return [];
+
+    const out: UnverifiedPayment[] = [];
+    for (const item of raw) {
+      if (item === null || typeof item !== "object") continue;
+      const row = item as Record<string, unknown>;
+      const authority = row.authority;
+      // ⚠️ `amount` مثلِ `ref_id` می‌تواند عدد یا رشته بیاید؛ هر دو پذیرفته و به عددِ صحیح
+      //    تبدیل می‌شود. مقدارِ غیرصحیح **رها** می‌شود، نه گِرد — این ورودیِ تطبیقِ پول است.
+      const amount = typeof row.amount === "string" ? Number(row.amount) : row.amount;
+      if (typeof authority !== "string" || authority.length === 0) continue;
+      if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount <= 0) continue;
+      out.push({ authority, amountRial: amount });
+    }
+    return out;
   }
 
   async verifyPayment(input: VerifyPaymentInput): Promise<VerifyOutcome> {

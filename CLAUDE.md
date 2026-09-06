@@ -8,8 +8,8 @@
 | فایل | چه چیزی دارد |
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
-| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۵۵ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | **TODOی فعالِ M4** — ۱۱ فاز؛ **فاز ۰–۶ تمام**، قدمِ بعد فاز ۷ (آشتی‌دهی) |
+| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۵۷ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
+| ★ [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | **TODOی فعالِ M4** — ۱۱ فاز؛ **فاز ۰–۷ تمام**، قدمِ بعد فاز ۸ (`packages/sdk`) |
 | ★ [docs/m4-handoff.md](docs/m4-handoff.md) | **نقطه‌ی ورودِ M4** — مدلِ billing، ارثیه‌ها، و درس‌های روشیِ M3 |
 | [TODO-M3-backend-api.md](TODO-M3-backend-api.md) · [PROGRESS-M3-backend-api.md](PROGRESS-M3-backend-api.md) · [docs/m3-handoff.md](docs/m3-handoff.md) | بایگانیِ M3 (`backend-api`، تمام‌شده) — مرجعِ تاریخی |
 | [TODO.md](TODO.md) · [PROGRESS.md](PROGRESS.md) | بایگانیِ M2 (`realtime-sync`، تمام‌شده) — مرجعِ تاریخی |
@@ -82,6 +82,9 @@ pnpm billing:probe-gateway -- --request   # ★ تماسِ زنده با سند�
 pnpm billing:probe-gateway -- --verify    #   بعد از پرداختِ دستی در مرورگر
 pnpm billing:settle          # ★★ فاز ۵: ۸ چک — دو تسویه‌ی هم‌زمان ⇒ یک اشتراک، کوپن، تمدید
 pnpm billing:quota           # ★★ فاز ۶: ۶ چک — سقف، همزمانی، سنتینلِ -1، فضای شخصی، staff
+pnpm billing:probe-reconcile # ★★ فاز ۷: ۹ چک — callbackِ گم‌شده، یتیم، فرزندخواندگی، دو sweepِ هم‌زمان
+pnpm billing:reconcile       # ★ ابزارِ اپراتور (نه سنجه): همان کدِ پلاگین، دستی
+#   -- --dry-run | --adopt | --stale-minutes=N | --expire-hours=N
 
 # ★ E2Eِ مرورگر (بیرون از pnpm verify — مرورگر لازم دارند)
 pnpm --filter @hamboom/canvas-sync test:e2e          # ۲۸ تست، بدونِ داکر
@@ -164,9 +167,15 @@ threshold گذاشت؛ گذاشتنشان بیرونِ گیت یعنی تکرا�
 ★ گیت **ضعیف نمی‌شود** — همان فایل‌ها، همان ادعاها، فقط workerِ کمتر؛ و با خطای
 عمدی دوباره آزموده شد (exit 1).
 
-> **پورت دیتابیس روی این ماشین ۵۴۳۳ است، نه ۵۴۳۲** — یک PostgreSQL 18 بومی
-> (سرویس ویندوز) ۵۴۳۲ را گرفته. در `.env` محلی تنظیم شده؛ `.env.example` و compose
-> روی پیش‌فرض PLAN (۵۴۳۲) ماندند تا روی ماشین تمیز همان PLAN کار کند.
+> **پورت دیتابیس روی این ماشین حالا ۵۵۴۴ است** (M4 فاز ۷؛ **۵۴۳۳ بود** از M2، چون یک
+> PostgreSQL 18 بومیِ ویندوز ۵۴۳۲ را گرفته). ⚠️ **همان تله‌ی MinIO/Redis، این‌بار روی DB:**
+> رنجِ excludedِ ویندوز بعد از ری‌استارت جابه‌جا شد و ۵۴۳۳ داخلِ **۵۴۳۳–۵۵۳۲** افتاد، پس
+> `docker` نمی‌توانست bind کند («socket... forbidden»). در `.env` محلی تنظیم شده؛
+> `.env.example` و compose روی پیش‌فرض PLAN (۵۴۳۲) ماندند تا روی ماشین تمیز همان PLAN کار کند.
+>
+> ⚠️⚠️ **و رنجِ ۳۰۰۱–۳۴۰۰ هم گرفته شده** (اندازه‌گیریِ همان روز) — یعنی `RT_PORT=3001` و
+> `PORT=3002` **دفعه‌ی بعد که سرور بالا بیاید همین مشکل را خواهند داشت**. اگر شد، `netsh
+> interface ipv4 show excludedportrange protocol=tcp` را ببین و پورتِ بیرونِ رنج بگذار.
 
 > **MinIO روی این ماشین حالا ۹۶۰۰/۹۶۰۱ است، نه ۹۰۰۰/۹۰۰۱** (M3 گام ۵٫۴؛ ۹۸۰۰/۹۸۰۱ **بود** تا M3 گام ۱۱٫۲
 > که با ری‌استارتِ ماشین رنجِ excluded جابه‌جا شد و ۹۸۰۰ داخلِ ۹۷۳۶–۹۸۳۵ افتاد → به ۹۶۰۰ منتقل شد). پورت‌های
@@ -225,20 +234,23 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M4 (`billing`) در جریان — فاز ۰ تا ۶ تمام** (۱۴۰۵/۰۶/۱۵). TODO در
+- **★★ M4 (`billing`) در جریان — فاز ۰ تا ۷ تمام** (۱۴۰۵/۰۶/۱۵). TODO در
   [`TODO-M4-billing.md`](TODO-M4-billing.md)، دفترِ کار در [`PROGRESS-M4-billing.md`](PROGRESS-M4-billing.md).
-  **قدمِ بعد: فاز ۷ (آشتی‌دهی).**
+  **قدمِ بعد: فاز ۸ (`packages/sdk`).**
   - **دامنه:** فاز ۰–۱۰ — probe → قرارداد → `packages/billing-core` → migration → مسیرهای
     billingِ api → ظرفیت → **آشتی‌دهی** → sdk → `apps/web` → تحویل. ⛔ **بیرون:** استردادِ کامل
     (`refund` = GraphQL+OAuth، در dev اجراناپذیر) و `reverse` (whitelistِ IP) → **M6** ·
     فاکتورِ PDF (Chromium) و `apps/worker` → بعد از M4 · فاز ۱۰ی M3 دست‌نخورده.
-  - **نُه تصمیمِ مرزی → هفت ADR:** [ADR-049](ARCHITECTURE_DECISIONS.md#adr-049) (`billing-core`،
+  - **نُه تصمیمِ مرزی → هفت ADR، و دو ADRِ تازه‌ی فاز ۷ (⏳ **منتظرِ تاییدِ مالک**):** [ADR-049](ARCHITECTURE_DECISIONS.md#adr-049) (`billing-core`،
     پوششِ ۹۰٪، پیش‌فرضِ dev = `mock`) · [ADR-050](ARCHITECTURE_DECISIONS.md#adr-050) (idempotency =
     قفلِ ردیفِ `payments`) · [ADR-051](ARCHITECTURE_DECISIONS.md#adr-051) (آشتی‌دهی بدونِ `apps/worker`) ·
     [ADR-052](ARCHITECTURE_DECISIONS.md#adr-052) (یک قاعده‌ی گِردکردن، VAT منجمد) ·
     [ADR-053](ARCHITECTURE_DECISIONS.md#adr-053) (ظرفیت با `count(*)`ِ واقعی) ·
     [ADR-054](ARCHITECTURE_DECISIONS.md#adr-054) (ریالِ عددِ صحیح) ·
-    [ADR-055](ARCHITECTURE_DECISIONS.md#adr-055) (**اصلاحِ ADR-050**: مرجعِ یگانگی وضعیتِ ردیفِ ماست، نه کدِ درگاه).
+    [ADR-055](ARCHITECTURE_DECISIONS.md#adr-055) (**اصلاحِ ADR-050**: مرجعِ یگانگی وضعیتِ ردیفِ ماست، نه کدِ درگاه) ·
+    ⏳ [ADR-056](ARCHITECTURE_DECISIONS.md#adr-056) (نردبانِ تصمیمِ آشتی‌دهی — **هیچ ردیفی پیش از دستِ‌کم یک
+    پرسش باطل نمی‌شود**) · ⏳ [ADR-057](ARCHITECTURE_DECISIONS.md#adr-057) (سقفِ زمانیِ اتصالِ Postgres —
+    به **کلِ** `apps/api` دست می‌زند، نه فقط billing).
 
   ### ★★ قراردادِ زرین‌پال — با تماسِ **زنده** اثبات شد (فاز ۱)
 
@@ -278,11 +290,22 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   ۳. **سنجه باید گزارش بدهد، نه crash کند** — وگرنه شکستِ خودش از شکستِ چیزی که می‌سنجد
      قابلِ تفکیک نیست.
 
-  ### ارثیه‌های ثبت‌شده برای فاز ۷
+  ### ✅ سه ارثیه‌ی فاز ۵٫۹ — در فاز ۷ بسته شدند
 
-  پنجره‌ی سقوطِ authority (بینِ mint و ذخیره ⇒ `unVerified.json`) · `statement_timeout` برای
-  اتصالِ استخر که در تراکنش نگه داشته می‌شود · انقضای `cancel_at_period_end` (هیچ‌چیز
-  اشتراکِ لغوشده را در پایانِ دوره منقضی نمی‌کند).
+  **پنجره‌ی سقوطِ authority:** `listUnverified` به پورت اضافه شد و `matchOrphans` فقط تطبیقِ
+  **بی‌ابهام** را می‌پذیرد (پیش‌فرض خاموش؛ متدِ زرین‌پالش با تماسِ زنده اثبات نشده) ·
+  **اتصالِ استخر در تراکنش:** [ADR-057](ARCHITECTURE_DECISIONS.md#adr-057) — و ⚠️ ثبتِ اولیه
+  **اشتباه** بود: نگهبان `statement_timeout` نیست (نشستِ بی‌کارِ منتظرِ درگاه را نمی‌بیند)،
+  `idle_in_transaction_session_timeout` است · **انقضای `cancel_at_period_end`:** همان sweep
+  اشتراکِ تمام‌شده را می‌بندد — لغوشده `canceled`، تمدیدنشده `expired`.
+
+  ### ★★ آشتی‌دهی (فاز ۷) — چه چیزی **هرگز** نمی‌کند
+
+  ردیفی که هرگز از درگاه پرسیده نشده **باطل نمی‌شود**، هرچقدر هم کهنه باشد (ایندکسِ sweep روی
+  `status='pending'` است؛ یک `failed`ِ زودهنگام پرداخت را **برای همیشه** نامرئی می‌کند) ·
+  ردیفِ بدونِ authority **یتیم** است نه شکست‌خورده · فرزندخواندگی هر **ابهامی** را رد می‌کند ·
+  sweep فقط ردیف‌های **درگاهِ خودش** را می‌بیند · و فعال‌سازی بازنویسی نمی‌شود (همان
+  `settlePayment`). `BILLING_RECONCILE_ENABLED` پیش‌فرض **خاموش** — چندنودی‌شدنش کارِ M5 است.
 
   ### ⚠️ سه ابهامِ بازِ بیرونی (از کد درنمی‌آیند)
 

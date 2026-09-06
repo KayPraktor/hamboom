@@ -44,6 +44,14 @@ export const TEST_CONFIG: ApiConfig = {
   ZARINPAL_CALLBACK_URL: "http://localhost:3002/api/v1/billing/zarinpal/callback",
   VAT_PERCENT: 0,
   WEB_BASE_URL: "http://localhost:5173",
+  // ── آشتی‌دهی (M4 فاز ۷) — در تست **خاموش**: یک تایمر در تستِ واحد فقط نویز و نشتِ
+  //    handle است. رفتارِ روشنش جای دیگری اثبات می‌شود (سنجه‌ی زنده‌ی فاز ۷).
+  BILLING_RECONCILE_ENABLED: false,
+  BILLING_RECONCILE_INTERVAL_SECONDS: 300,
+  BILLING_PENDING_STALE_MINUTES: 20,
+  BILLING_PENDING_EXPIRE_HOURS: 72,
+  BILLING_RECONCILE_BATCH: 50,
+  BILLING_ADOPT_ORPHANS: false,
 };
 
 /** استخرِ دروغینِ db — فقط `query`/`end`. تست بدونِ Postgres. */

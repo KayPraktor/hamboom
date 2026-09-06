@@ -41,7 +41,28 @@ export interface DbPoolConfig {
   connectionString: string;
   ssl: boolean;
   poolMax: number;
+  /** سقفِ اجرای یک دستور. صفر یعنی بی‌سقف (پیش‌فرضِ خودِ Postgres). */
+  statementTimeoutMs?: number;
+  /** ★ سقفِ **بی‌کاریِ داخلِ تراکنش** — نگهبانِ واقعیِ M4 (پایین). */
+  idleInTransactionTimeoutMs?: number;
 }
+
+/**
+ * سقف‌های زمانیِ اتصال — ارثیه‌ی ثبت‌شده‌ی M4 فاز ۵٫۹، این‌جا بسته می‌شود.
+ *
+ * ★★ **مسئله‌ی مشخص:** `settlePayment` عمداً تماسِ شبکه‌ایِ درگاه را **داخلِ** تراکنش نگه
+ * می‌دارد (ADR-055) تا verify و فعال‌سازی اتمیک بمانند. یعنی یک اتصالِ استخر برای تمامِ
+ * رفت‌وبرگشتِ درگاه اشغال است — و آن اتصال در آن لحظه **دستوری اجرا نمی‌کند**، پس
+ * `statement_timeout` اصلاً نمی‌بیندش. نگهبانش `idle_in_transaction_session_timeout` است:
+ * اگر درگاه هرگز جواب ندهد و حتی `AbortSignal` هم به هر دلیلی نگیرد، Postgres خودش نشست را
+ * می‌بندد، تراکنش rollback می‌شود، ردیف `pending` می‌مانَد و **آشتی‌دهی دوباره سراغش می‌رود**.
+ * بدونِ آن، `DATABASE_POOL_MAX` اتصالِ آویزان کافی است تا کلِ api از کار بیفتد.
+ *
+ * ⚠️ عدد باید از سقفِ خودِ درگاه (۱۵ ثانیه، `zarinpal-gateway.ts`) **بزرگ‌تر** باشد، وگرنه
+ * یک پرداختِ کُندِ سالم را وسطِ کار می‌کُشد.
+ */
+const DEFAULT_STATEMENT_TIMEOUT_MS = 15_000;
+const DEFAULT_IDLE_IN_TRANSACTION_TIMEOUT_MS = 30_000;
 
 /** استخرِ `pg` می‌سازد و کوئرسِ P5 را تضمین می‌کند. */
 export function createDbPool(config: DbPoolConfig): pg.Pool {
@@ -50,6 +71,9 @@ export function createDbPool(config: DbPoolConfig): pg.Pool {
     connectionString: config.connectionString,
     ssl: config.ssl ? { rejectUnauthorized: false } : undefined,
     max: config.poolMax,
+    statement_timeout: config.statementTimeoutMs ?? DEFAULT_STATEMENT_TIMEOUT_MS,
+    idle_in_transaction_session_timeout:
+      config.idleInTransactionTimeoutMs ?? DEFAULT_IDLE_IN_TRANSACTION_TIMEOUT_MS,
   });
 }
 

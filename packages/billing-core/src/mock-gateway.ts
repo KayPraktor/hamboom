@@ -2,6 +2,7 @@ import type {
   CreatePaymentInput,
   CreatePaymentResult,
   PaymentGateway,
+  UnverifiedPayment,
   VerifyOutcome,
   VerifyPaymentInput,
 } from "./gateway.ts";
@@ -70,6 +71,22 @@ export class MockGateway implements PaymentGateway {
     this.#records.set(authority, { amountRial: input.amountRial, verifiedAt: null });
 
     return { authority, redirectUrl: `${this.#checkoutBaseUrl}/${authority}` };
+  }
+
+  /**
+   * فهرستِ authorityهایی که ساخته شده‌اند و هنوز verify نشده‌اند (M4 فاز ۷).
+   *
+   * ⚠️ **معادلِ دقیقِ زرین‌پال نیست و نباید وانمود کند هست:** آن‌جا فهرست فقط تراکنش‌های
+   * **پرداخت‌شده**ی verify‌نشده است، این‌جا هر پرداختِ ساخته‌شده‌ی verify‌نشده — چون درگاهِ
+   * ساختگی اصلاً مفهومِ «کاربر پول داد» ندارد (هر verify موفق است). برای اثباتِ مسیرِ
+   * **فرزندخواندگیِ** ردیفِ یتیم کافی است و همان چیزی است که سنجه‌ی فاز ۷ می‌سنجد.
+   */
+  async listUnverified(): Promise<UnverifiedPayment[]> {
+    const out: UnverifiedPayment[] = [];
+    for (const [authority, record] of this.#records) {
+      if (record.verifiedAt === null) out.push({ authority, amountRial: record.amountRial });
+    }
+    return out;
   }
 
   async verifyPayment(input: VerifyPaymentInput): Promise<VerifyOutcome> {
