@@ -61,6 +61,10 @@ jobs:
           {
             echo "| ایمیج | حجم |"
             echo "|---|---|"
-            docker images --format '| `{{.Repository}}:{{.Tag}}` | {{.Size}} |' \
-              hamboom/api:ci hamboom/realtime:ci hamboom/web:ci
+            # ⚠️ `docker images` **حداکثر یک** آرگومان می‌گیرد. نگارشِ اول هر سه را با هم
+            #    می‌داد و اولین اجرای واقعیِ CI همین‌جا قرمز شد — با اینکه هر سه build
+            #    شده بودند و گاردِ بوت هم پاس شده بود.
+            for tag in api realtime web; do
+              docker images --format '| `{{.Repository}}:{{.Tag}}` | {{.Size}} |' "hamboom/$tag:ci"
+            done
           } >> "$GITHUB_STEP_SUMMARY"

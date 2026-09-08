@@ -56,7 +56,8 @@
     "infra:probe-lock": "node --env-file-if-exists=.env scripts/infra-probe-lock.ts",
     "infra:check-proxy": "node scripts/infra-check-proxy.ts --self-test && node scripts/infra-check-proxy.ts",
     "deps:check": "node scripts/check-workspace-deps.ts --self-test && node scripts/check-workspace-deps.ts",
-    "openapi:check": "node scripts/gen-openapi.ts --check"
+    "openapi:check": "node scripts/gen-openapi.ts --check",
+    "ci:wait": "node --env-file-if-exists=.env scripts/ci-wait-services.mjs"
   },
   "dependencies": {
     "@hamboom/config": "workspace:*",

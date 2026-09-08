@@ -62,7 +62,12 @@ async function waitFor(name, probe) {
 const need = (key) => {
   const value = process.env[key];
   if (!value) {
-    console.error(`✖ ${key} تعریف نشده — در CI با \`cp .env.example .env\` ساخته می‌شود.`);
+    // ⚠️ پیامِ اولیه می‌گفت «در CI با `cp .env.example .env` ساخته می‌شود» — و **گمراه
+    //    کننده بود**: اولین اجرای واقعیِ CI همین‌جا قرمز شد در حالی که فایل ساخته **شده
+    //    بود**؛ چیزی که نبود، `--env-file` روی خودِ دستور بود.
+    console.error(
+      `✖ ${key} تعریف نشده. وجودِ فایلِ .env کافی نیست — باید بارگذاری شود: \`pnpm ci:wait\``,
+    );
     process.exit(1);
   }
   return value;

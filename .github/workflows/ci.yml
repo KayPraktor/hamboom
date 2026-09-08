@@ -77,8 +77,11 @@ jobs:
         run: cp .env.example .env
       - name: بالاآوردنِ postgres + redis + minio
         run: pnpm db:up
+      # ⚠️ `pnpm ci:wait` و نه `node scripts/…` — اسکریپت باید `.env` را **بارگذاری**
+      #    کند، نه فقط اینکه فایلش وجود داشته باشد. اولین اجرای واقعیِ CI دقیقاً همین‌جا
+      #    قرمز شد: فایل ساخته شده بود ولی هیچ‌کس نخوانده بودش.
       - name: انتظار برای آمادگیِ سرویس‌ها
-        run: node scripts/ci-wait-services.mjs
+        run: pnpm ci:wait
 
       - name: migration
         run: pnpm db:migrate
