@@ -53,14 +53,18 @@
     "billing:quota": "node --env-file-if-exists=.env scripts/billing-probe-quota.ts",
     "billing:reconcile": "node --env-file-if-exists=.env scripts/billing-reconcile.ts",
     "billing:probe-reconcile": "node --env-file-if-exists=.env scripts/billing-probe-reconcile.ts",
-    "infra:probe-lock": "node --env-file-if-exists=.env scripts/infra-probe-lock.ts"
+    "infra:probe-lock": "node --env-file-if-exists=.env scripts/infra-probe-lock.ts",
+    "infra:check-proxy": "node scripts/infra-check-proxy.ts --self-test && node scripts/infra-check-proxy.ts"
+  },
+  "dependencies": {
+    "@hamboom/config": "workspace:*",
+    "pg": "^8.13.1"
   },
   "devDependencies": {
     "@hamboom/auth-core": "workspace:*",
     "@hamboom/billing-core": "workspace:*",
     "@hamboom/board-access-db": "workspace:*",
     "@hamboom/canvas-sync": "workspace:*",
-    "@hamboom/config": "workspace:*",
     "@hamboom/eslint-config": "workspace:*",
     "@hamboom/realtime": "workspace:*",
     "@hamboom/storage": "workspace:*",
@@ -72,7 +76,6 @@
     "eslint": "^9.17.0",
     "ioredis": "^6.0.0",
     "lib0": "0.2.117",
-    "pg": "^8.13.1",
     "prettier": "^3.4.0",
     "stylelint": "^17.14.1",
     "turbo": "^2.3.0",

@@ -173,3 +173,116 @@ DNS)، دو چیزی که باید probe شوند نه فرض (**CDN جلوی We
 ### قدم بعد
 
 **فاز ۲ — ایمیج‌های production.** شروع نشده (به‌خواستِ مالک، پیش از کامپکت).
+
+---
+
+## ۱۴۰۵/۰۶/۱۸ — فاز ۲: ایمیج‌های production ✅
+
+**چه شد:** هر سه ایمیج ساخته شدند، کلِ استک با `APP_ENV=production` روی یک شبکه‌ی تمیز
+بالا آمد، و جریانِ واقعیِ کاربر از پشتِ reverse proxy اثبات شد. **پنج نقص پیدا شد که
+هیچ‌کدام در dev دیده نمی‌شدند** — سه‌تا رفع شد، یکی به فاز ۴ رفت، و یکی تصمیمِ مالک می‌خواهد.
+
+| گام | چه شد |
+|---|---|
+| ۲٫۱ | [`api.Dockerfile`](infra/docker/api.Dockerfile) و [`realtime.Dockerfile`](infra/docker/realtime.Dockerfile) سخت شدند: HEALTHCHECK، اسکریپت‌های اپراتور، نصبِ ریشه |
+| ۲٫۲ | [`web.Dockerfile`](infra/docker/web.Dockerfile) — buildِ Vite → nginx (**۱۴۲MB**) |
+| ۲٫۳ | [`nginx/`](infra/nginx/) + گیتِ [`infra-check-proxy`](scripts/infra-check-proxy.ts) — **داخلِ `pnpm verify`** |
+| ۲٫۴ | [`docker-compose.prod.yml`](infra/docker/docker-compose.prod.yml) + [`infra/README`](infra/README.md) |
+| ۲٫۵ | آشتی‌دهی به‌عنوانِ کانتینرِ یک‌بارمصرفِ **همان ایمیجِ api** ✅ |
+
+### ★★ گیتِ پروکسی — همان لحظه‌ی ساخته‌شدن، دو دریفتِ واقعی گرفت
+
+فهرستِ پیشوندهای api از `vite.config.ts` به [`apps/web/src/api-prefixes.ts`](apps/web/src/api-prefixes.ts)
+منتقل شد و **سه** مصرف‌کننده پیدا کرد: پروکسیِ dev، فایلِ **تولیدشده‌ی** nginx، و گیتی که
+هر دو را با مسیرهای **واقعیِ ثبت‌شده‌ی** `buildApp()` می‌سنجد.
+
+اولین اجرا قرمز شد و دو نقصِ از-M3-مانده را نشان داد:
+
+- **`/public` اصلاً در فهرست نبود** — یعنی `POST /public/boards/resolve` (که
+  `sdk.links.resolve` صدایش می‌زند) در dev به SPA می‌رفت و `index.html` می‌گرفت.
+- **`/links` در فهرست بود ولی هیچ مسیری ندارد** — نامِ فضای‌نامِ sdk بود، نه پیشوندِ URL.
+- (+ `/api/v1/docs` هم پوشیده نبود.)
+
+★ **خودآزمون دو لایه دارد:** `--self-test` هر دو مقایسه را با ورودیِ ساختگیِ خراب قرمز
+می‌کند، **و** خودِ گیت با یک بلوکِ اضافیِ nginx داخلِ `pnpm verify` قرمز شد (`exit 1`).
+گیت‌ها ۸ → **۱۰**.
+
+### ★★ نقصی که فقط ایمیجِ production نشانش داد: `/assets`
+
+خروجیِ پیش‌فرضِ Vite در `dist/assets/` می‌نشیند ⇒ مرورگر باندل را از
+`/assets/index-<hash>.js` می‌خواهد. ولی **`/assets` یکی از پیشوندهای api است**
+(`GET /assets/:fileId`) ⇒ reverse proxy کلِ JS/CSS را به api می‌فرستاد و اپ **هرگز بالا
+نمی‌آمد**. در dev هرگز دیده نمی‌شود چون سرورِ dev اصلاً `/assets/*` تولید نمی‌کند.
+
+رفع: `build.assetsDir = "static"`. اثبات: `index.html` به `/static/…` اشاره می‌کند و در
+مرورگرِ واقعی هر پنج دارایی (JS/CSS/دو فونتِ Vazirmatn) ۲۰۰ گرفتند.
+
+### ★★ نقصِ دوم: اسکریپت‌های اپراتور در ایمیج resolve نمی‌شدند
+
+`docker compose run migrate` با `ERR_MODULE_NOT_FOUND: @hamboom/config` می‌مُرد. علتش
+ساده و ظریف است: Node شناسه‌ی bare را از **محلِ خودِ فایل** به بالا resolve می‌کند، پس
+`/app/scripts/migrate.ts` سراغِ `/app/node_modules` می‌رود — و نصبِ
+`--prod --filter @hamboom/api...` اصلاً پروژه‌ی ریشه را نصب نمی‌کرد.
+
+⚠️ **این همان کلاسِ نقصِ فاز ۱ است، یک طبقه بالاتر:** پروژه‌ی ریشه **وابستگیِ runtime دارد**
+(اسکریپت‌های اپراتور به production می‌روند) ولی manifest هرگز نگفته بود. رفع: `@hamboom/config`
+و `pg` از `devDependencies`ِ ریشه به `dependencies` رفتند و Dockerfile
+`--filter hamboom` را هم انتخاب می‌کند.
+
+⊕ `billing-reconcile.ts` از اول کار می‌کرد — چون همه‌ی importهایش **نسبی** به
+`apps/api/src` اند. یعنی تفاوت را فقط اجرا نشان می‌داد، نه خواندنِ کد.
+
+### ★ نقصِ سوم: کانتینرِ آشتی‌دهی کلِ configِ api را می‌خواهد
+
+`scripts/billing-reconcile.ts` همان `loadApiConfig` را صدا می‌زند ⇒ بدونِ `JWT_SECRET` و
+`S3_*` بالا نمی‌آید، با اینکه هیچ‌کدام را مصرف نمی‌کند. با یک بلوکِ envِ جدا، اولین متغیرِ
+تازه‌ی api این کانتینر را **بی‌صدا** می‌شکست؛ پس api و reconcile یک anchorِ مشترک دارند.
+⊕ **باریک‌کردنِ خودِ schema** (تا ابزارِ اپراتور رازِ JWT را نبیند) به **فاز ۴** رفت.
+
+### ⚠️⚠️ یافته‌ای که تصمیمِ مالک می‌خواهد: پیامک در production
+
+در همین مشق، کدِ OTP از **لاگِ سرور** خوانده شد در حالی که `APP_ENV=production` بود —
+`app.ts` بی‌قیدوشرط `createMockSmsProvider` می‌سازد. یعنی یک نقضِ [ADR-031](ARCHITECTURE_DECISIONS.md#adr-031)
+که تا امروز کسی ندیده بودش، و **بلاک‌کننده‌ی launch است**: با آن، هیچ کاربرِ واقعی‌ای
+نمی‌تواند وارد شود (پیامکی فرستاده نمی‌شود) و کد در لاگ می‌نشیند.
+
+⚠️ رفعش کدِ صرف نیست — **یک حسابِ سرویسِ پیامکِ ایرانی می‌خواهد**، مثلِ زرین‌پال. گاردِ
+بوتش در گامِ ۴٫۱ می‌نشیند؛ انتخابِ سرویس تصمیمِ مالک است.
+
+### RT از دامنه‌ی پخته‌شده آزاد شد
+
+`VITE_RT_URL` در build تزریق می‌شد ⇒ هر محیط ایمیجِ خودش را می‌خواست و آنچه آزموده‌ایم
+دقیقاً آنچه مستقر می‌شود نبود. حالا پیش‌فرضِ **production هم‌مبدأ** است (`wss://<host>/rt`
+از راهِ پروکسی) و dev بی‌تغییر مستقیم به `RT_PORT` می‌رود.
+
+### آنچه واقعاً اجرا شد (نه ادعا)
+
+| چه چیزی | نتیجه |
+|---|---|
+| کلِ استک با `APP_ENV=production` | هر ۵ سرویس **healthy**؛ `migrate` با exit 0 و ۷ migration |
+| `/` · `/static/*.js` · فونت‌ها | ۲۰۰ — و در **مرورگرِ واقعی** صفحه‌ی ورودِ فارسی/RTL رندر شد |
+| `/healthz` · `/openapi.json` · `/api/v1/docs` | ۲۰۰ از پشتِ پروکسی |
+| `/billing/plans` | ۲۰۰ با پلن‌های واقعیِ migration `0006` |
+| `POST /public/boards/resolve` | **۴۰۱ JSON** — پیشوندِ تازه‌افزوده واقعاً به api می‌رسد |
+| WebSocket روی `/rt` | upgrade رد شد · `1008 TOKEN_MISSING` ⇒ fail-closed سالم |
+| ★ چرخه‌ی کاملِ ورود | OTP → verify → **کوکیِ HttpOnly با `path=/auth`** → `/me` → `/auth/refresh` |
+| ★★ گیتِ production + `mock` | **exit 1** (`GatewayNotAllowedError`) |
+| ★★ گاردِ مسیرِ callback | **exit 1** با `/api/v1/…`ِ غلط |
+| ۲٫۵ آشتی‌دهیِ یک‌بارمصرف | exit 0، با `--dry-run` هم |
+
+### عددها
+
+| چه چیزی | فاز ۱ | حالا |
+|---|---|---|
+| ایمیجِ api | ۴۹۶MB | **۴۷۰MB** |
+| ایمیجِ realtime | ۴۹۱MB | **۴۶۵MB** |
+| ایمیجِ web | — | **۱۴۲MB** |
+| buildِ web (سرد) | — | ~۸۹s |
+
+⚠️ حجم هنوز زیرِ سلطه‌ی ایمیجِ پایه (`node:24-bookworm-slim`) و `@aws-sdk/client-s3` است؛
+`pnpm deploy` بررسی شد و **صرف نمی‌کرد** (سورس چند مگابایت است، نه چند صد).
+
+### قدم بعد
+
+**فاز ۳ — CI.** گامِ ۳٫۶ (وابستگیِ اعلام‌نشده) حالا **دو** نمونه‌ی واقعی دارد: `apps/realtime`
+از فاز ۱ و پروژه‌ی ریشه از همین فاز.

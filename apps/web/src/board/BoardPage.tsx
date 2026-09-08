@@ -61,8 +61,23 @@ type UndoScope = NonNullable<YjsSyncAdapter["undo"]>;
 type CanvasApi = Parameters<NonNullable<HamboomCanvasProps["onReady"]>>[0];
 type SceneElement = ReturnType<CanvasApi["getSceneElementsIncludingDeleted"]>[number];
 
-/** نشانیِ سرورِ realtime؛ در dev پیش‌فرض ۳۰۰۱ (RT_PORT)، در production از env. */
-const RT_URL = (import.meta.env.VITE_RT_URL as string | undefined) ?? "ws://127.0.0.1:3001";
+/**
+ * نشانیِ سرورِ realtime.
+ *
+ * ★★ **پیش‌فرضِ production هم‌مبدأ است، نه یک دامنه‌ی پخته‌شده در ایمیج** (M5 گام ۲٫۲):
+ * reverse proxy مسیرِ `/rt` را با upgradeِ WebSocket به `apps/realtime` می‌بَرد، پس یک
+ * ایمیجِ **دامنه‌ناشناس** روی staging و production یکی کار می‌کند. اگر این‌جا
+ * `VITE_RT_URL` را در build تزریق می‌کردیم، هر محیط ایمیجِ خودش را می‌خواست و آن‌وقت
+ * چیزی که آزموده‌ایم دقیقاً همانی نیست که مستقر می‌شود.
+ *
+ * در dev هم‌مبدأ **نیست** — سرورِ Vite (۱۵۳۸۰) اصلاً WS را پروکسی نمی‌کند و کلاینت
+ * مستقیم به `RT_PORT` وصل می‌شود. `VITE_RT_URL` هر دو را override می‌کند.
+ */
+const RT_URL =
+  (import.meta.env.VITE_RT_URL as string | undefined) ??
+  (import.meta.env.PROD
+    ? `${globalThis.location.protocol === "https:" ? "wss" : "ws"}://${globalThis.location.host}`
+    : "ws://127.0.0.1:3001");
 
 /**
  * مرزِ ژست برای گروه‌بندیِ undo: onChangeهای ظرفِ این فاصله یک ژست‌اند (یک درگ)، پس

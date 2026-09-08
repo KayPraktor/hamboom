@@ -90,6 +90,21 @@
  * پوششِ واقعیِ زیرِ ۶۰٪ (`canvas-sync`، زیرمجموعه‌ی ضعیفِ ۴۴٫۴۴٪) و thresholdِ
  * بالاتر از پوششِ واقعی (`ydoc-schema`، ۹۸٫۶۱٪ در برابرِ ۹۹٫۵٪).
  *
+ * ── ★ چرا گیتِ پروکسی هم اینجاست (M5 گام ۲٫۳) ─────────────────────────
+ *
+ * **باز هم همان استدلال.** فهرستِ پیشوندهای api (`apps/web/src/api-prefixes.ts`)
+ * دستی بود و هیچ‌چیز آن را با مسیرهای واقعیِ ثبت‌شده مقایسه نمی‌کرد — و در فاز ۹ی
+ * M4 دقیقاً همین دو نقصِ مسیر را ساخت که فقط با **اجرای واقعی در مرورگر** پیدا
+ * شدند. حالا reverse proxyِ production هم از همان فهرست تولید می‌شود، یعنی یک
+ * فهرستِ کهنه به کاربرِ واقعی `index.html` می‌دهد به‌جای JSON.
+ *
+ * ★ و همان لحظه‌ی ساختنش **دو دریفتِ واقعیِ موجود** را گرفت: `/public` (مسیرِ
+ * `POST /public/boards/resolve`ِ `sdk.links.resolve`) اصلاً در فهرست نبود، و
+ * `/links` در فهرست بود ولی هیچ مسیری نداشت.
+ *
+ * هزینه‌اش ~۱ ثانیه (یک `buildApp` با dbِ دروغین، بدونِ شبکه)، و خودش
+ * `--self-test` دارد که هر دو مقایسه را با ورودیِ خراب قرمز می‌کند.
+ *
  * اجرا: `pnpm verify` — قبل از تیک‌زدنِ هر گام و قبل از هر کامیت.
  */
 import { spawnSync } from "node:child_process";
@@ -124,6 +139,9 @@ const GATES = [
   // گیتِ اصل P1 — شاملِ self-testِ ارزیابِ SPDX.
   { name: "license", run: "node scripts/license-check.ts --self-test" },
   { name: "license (درخت)", run: "node scripts/license-check.ts" },
+  // ★ گیتِ M5 گام ۲٫۳ — دلیلِ داخل بودنش پایین، «چرا گیتِ پروکسی هم اینجاست».
+  { name: "proxy", run: "node scripts/infra-check-proxy.ts --self-test" },
+  { name: "proxy (api ↔ dev ↔ nginx)", run: "node scripts/infra-check-proxy.ts" },
 ];
 
 const results = [];

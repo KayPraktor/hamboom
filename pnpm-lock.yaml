@@ -7,6 +7,13 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@hamboom/config':
+        specifier: workspace:*
+        version: link:packages/config
+      pg:
+        specifier: ^8.13.1
+        version: 8.22.0
     devDependencies:
       '@hamboom/auth-core':
         specifier: workspace:*
@@ -20,9 +27,6 @@ importers:
       '@hamboom/canvas-sync':
         specifier: workspace:*
         version: link:packages/canvas-sync
-      '@hamboom/config':
-        specifier: workspace:*
-        version: link:packages/config
       '@hamboom/eslint-config':
         specifier: workspace:*
         version: link:packages/eslint-config
@@ -56,9 +60,6 @@ importers:
       lib0:
         specifier: 0.2.117
         version: 0.2.117
-      pg:
-        specifier: ^8.13.1
-        version: 8.22.0
       prettier:
         specifier: ^3.4.0
         version: 3.9.6

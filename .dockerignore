@@ -15,3 +15,11 @@ node_modules
 !.env.example
 verify.log
 *.log
+
+# ★ فونت‌های خودمیزبانِ Excalidraw (~۱۴MB) — تولیدی‌اند و در .gitignore هم هستند.
+#   ایمیجِ web خودش در `prebuild` بازتولیدشان می‌کند، و ایمیجِ api/realtime اصلاً
+#   لازمشان ندارد. بیرون‌ماندنشان contextِ هر سه build را سبک می‌کند.
+apps/web/public/excalidraw-assets
+
+# خروجیِ buildِ محلیِ Vite — ایمیج خودش داخلِ کانتینر می‌سازدش.
+apps/web/dist

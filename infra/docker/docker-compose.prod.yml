@@ -1,0 +1,240 @@
+# استکِ **production/staging** هم‌بوم — M5 گام ۲٫۴ ([ADR-059](../../ARCHITECTURE_DECISIONS.md#adr-059):
+# Compose روی VM، نه K8s).
+#
+#   docker compose -f infra/docker/docker-compose.prod.yml --env-file .env.production up -d
+#
+# ⚠️ این فایل با [`docker-compose.yml`](docker-compose.yml)ِ توسعه **قاطی نمی‌شود**: آن یکی
+# فقط زیرساخت را می‌آورد (و MinIO)، این یکی خودِ اپ را هم می‌آورد و Object Storage را از
+# آروان می‌گیرد.
+#
+# ── چهار تصمیمِ عمدی ──────────────────────────────────────────────────────────
+#
+# ۱. ★★ **postgres و redis هیچ پورتی روی هاست publish نمی‌کنند.** فقط از شبکه‌ی داخلیِ
+#    compose دیده می‌شوند؛ تنها دربِ ورودی `web` است. یک دیتابیسِ باز روی IPِ عمومیِ VM
+#    همان اتفاقی است که در گزارش‌های نشتِ داده تکرار می‌شود.
+# ۲. ★ **هر سرویس فقط متغیرهای خودش را می‌بیند** (`environment:` صریح، نه `env_file`ِ
+#    فراگیر) — M5-D6. پس `ZARINPAL_*` هرگز داخلِ کانتینرِ postgres نیست.
+# ۳. ★ **migration یک سرویسِ یک‌بارمصرف است**، نه کاری که کسی دستی یادش می‌ماند؛ `api`
+#    تا موفق‌شدنش بالا نمی‌آید (`service_completed_successfully`).
+# ۴. ★ `init: true` — reaperِ PID 1 برای فرایندهای یتیم.
+#
+# ⚠️ **مقادیرِ داخلِ `.env.production` با `.env`ِ توسعه فرق دارند**: میزبانِ دیتابیس
+# `postgres` است نه `localhost` (نامِ سرویس در شبکه‌ی compose)، همین‌طور `redis`.
+name: hamboom-prod
+
+x-restart: &restart unless-stopped
+
+# ★★ **یک بلوکِ env برای api و برای کانتینرِ یک‌بارمصرفِ آشتی‌دهی.**
+#
+# ⚠️ کشفِ گام ۲٫۵: `scripts/billing-reconcile.ts` همان `loadApiConfig` را صدا می‌زند، پس
+# **کلِ** schemaی api را می‌خواهد — `JWT_SECRET` و `S3_*` هم، با اینکه هیچ‌کدام را مصرف
+# نمی‌کند. با یک بلوکِ جدا، اولین متغیرِ تازه‌ی api این کانتینر را بی‌صدا می‌شکست.
+# ⊕ باریک‌کردنِ خودِ schema (تا یک ابزارِ اپراتور رازِ JWT را نبیند) کارِ فاز ۴ است.
+x-api-env: &api-env
+  NODE_ENV: production
+  APP_ENV: ${APP_ENV}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  PORT: 3002
+  DATABASE_URL: ${DATABASE_URL}
+  DATABASE_SSL: ${DATABASE_SSL:-false}
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
+  JWT_SECRET: ${JWT_SECRET}
+  ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+  REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
+  RT_TOKEN_TTL_SECONDS: ${RT_TOKEN_TTL_SECONDS:-60}
+  OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-120}
+  OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
+  OTP_COOLDOWN_SECONDS: ${OTP_COOLDOWN_SECONDS:-60}
+  RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+  RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
+  RATE_LIMIT_OTP_MAX: ${RATE_LIMIT_OTP_MAX:-5}
+  S3_ENDPOINT: ${S3_ENDPOINT}
+  S3_REGION: ${S3_REGION}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+  S3_PRESIGN_TTL_SECONDS: ${S3_PRESIGN_TTL_SECONDS:-900}
+  S3_BUCKET_ASSETS: ${S3_BUCKET_ASSETS}
+  S3_BUCKET_SNAPSHOTS: ${S3_BUCKET_SNAPSHOTS}
+  UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-10485760}
+  PAYMENT_PROVIDER: ${PAYMENT_PROVIDER}
+  ZARINPAL_MODE: ${ZARINPAL_MODE:-sandbox}
+  ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}
+  ZARINPAL_CALLBACK_URL: ${ZARINPAL_CALLBACK_URL}
+  VAT_PERCENT: ${VAT_PERCENT:-0}
+  WEB_BASE_URL: ${WEB_BASE_URL}
+  # ⚠️ پیش‌فرض خاموش می‌مانَد تا انتخابِ رهبرِ فاز ۶ بیاید (ADR-060).
+  BILLING_RECONCILE_ENABLED: ${BILLING_RECONCILE_ENABLED:-false}
+  BILLING_RECONCILE_INTERVAL_SECONDS: ${BILLING_RECONCILE_INTERVAL_SECONDS:-300}
+  BILLING_PENDING_STALE_MINUTES: ${BILLING_PENDING_STALE_MINUTES:-20}
+  BILLING_PENDING_EXPIRE_HOURS: ${BILLING_PENDING_EXPIRE_HOURS:-72}
+  BILLING_RECONCILE_BATCH: ${BILLING_RECONCILE_BATCH:-50}
+  BILLING_ADOPT_ORPHANS: ${BILLING_ADOPT_ORPHANS:-false}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: *restart
+    init: true
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      TZ: UTC
+      PGTZ: UTC
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # فقط EXTENSIONها؛ schema با سرویسِ `migrate` می‌آید (ADR-005).
+      - ../sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: *restart
+    init: true
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+      --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  # ── migration: کانتینرِ یک‌بارمصرفِ **همان ایمیجِ api** (ADR-062) ────────────
+  migrate:
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    command: ["node", "scripts/migrate.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_ENV: ${APP_ENV}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
+
+  api:
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: *restart
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment: *api-env
+
+  realtime:
+    image: hamboom/realtime:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/realtime.Dockerfile
+    restart: *restart
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      APP_ENV: ${APP_ENV}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RT_PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
+      REDIS_URL: ${REDIS_URL}
+      REDIS_TLS: ${REDIS_TLS:-false}
+      JWT_SECRET: ${JWT_SECRET}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      RT_TOKEN_TTL_SECONDS: ${RT_TOKEN_TTL_SECONDS:-60}
+      RT_MAX_ROOMS_PER_NODE: ${RT_MAX_ROOMS_PER_NODE:-500}
+      RT_ROOM_IDLE_TIMEOUT_MS: ${RT_ROOM_IDLE_TIMEOUT_MS:-120000}
+      # ⚠️ باید **کوتاه‌تر** از `proxy_read_timeout`ِ nginx (۳۶۰۰s) و از idle timeoutِ
+      #    هر لودبالانسرِ جلوتر باشد (ADR-006).
+      RT_HEARTBEAT_INTERVAL_MS: ${RT_HEARTBEAT_INTERVAL_MS:-25000}
+      RT_SNAPSHOT_EVERY_UPDATES: ${RT_SNAPSHOT_EVERY_UPDATES:-500}
+      RT_SNAPSHOT_EVERY_MS: ${RT_SNAPSHOT_EVERY_MS:-60000}
+      RT_MAX_DOC_BYTES: ${RT_MAX_DOC_BYTES:-52428800}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      S3_PRESIGN_TTL_SECONDS: ${S3_PRESIGN_TTL_SECONDS:-900}
+      S3_BUCKET_ASSETS: ${S3_BUCKET_ASSETS}
+      S3_BUCKET_SNAPSHOTS: ${S3_BUCKET_SNAPSHOTS}
+
+  # ── تنها دربِ ورودی: SPA + reverse proxy ────────────────────────────────
+  web:
+    image: hamboom/web:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
+    restart: *restart
+    init: true
+    depends_on:
+      api:
+        condition: service_started
+      realtime:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+
+  # ── کارِ دوره‌ایِ آشتی‌دهی: کانتینرِ یک‌بارمصرفِ همان ایمیجِ api ─────────────
+  #
+  # ★★ [ADR-062](../../ARCHITECTURE_DECISIONS.md#adr-062): کارِ دوره‌ای **worker نمی‌خواهد**.
+  #    از cronِ خودِ VM:
+  #      docker compose -f … --env-file .env.production run --rm reconcile
+  #    ⚠️ `--profile ops` دارد تا با `up -d` بالا نیاید؛ یک sweepِ ناخواسته در بوت،
+  #    همان اتلافی است که `BILLING_RECONCILE_ENABLED=false` جلویش را گرفته.
+  reconcile:
+    profiles: ["ops"]
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    command: ["node", "scripts/billing-reconcile.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *api-env
+
+volumes:
+  pgdata:
+  redisdata:

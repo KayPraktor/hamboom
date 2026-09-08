@@ -9,7 +9,8 @@
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۲ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ و ۱ تمام**، قدمِ بعد فاز ۲ (ایمیجِ production) |
+| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰، ۱ و ۲ تمام**، قدمِ بعد فاز ۳ (CI) |
+| ★ [infra/README.md](infra/README.md) | **چطور استقرار می‌شود** — چیدمان، `docker-compose.prod.yml`، کارهای اپراتور |
 | [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | بایگانیِ M4 (`billing`، تمام‌شده) — مرجعِ تاریخی |
 | ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
 | [docs/m4-handoff.md](docs/m4-handoff.md) | بایگانی — نقطه‌ی ورودِ M4 (مدلِ billing و درس‌های M3) |
@@ -51,6 +52,7 @@ pnpm lint
 pnpm test
 pnpm test:coverage    # گیتِ ۶۰٪ — ★ از گام ۶٫۲ **داخلِ** verify هم هست
 pnpm license:check    # گیت اصل P1 — شامل self-test ارزیاب SPDX
+pnpm infra:check-proxy # ★ گیتِ پروکسی (M5 فاز ۲) — از گام ۲٫۳ **داخلِ** verify هم هست
 pnpm license:list     # فهرست کامل لایسنس‌های درخت وابستگی
 pnpm format
 
@@ -87,6 +89,8 @@ pnpm billing:quota           # ★★ فاز ۶: ۶ چک — سقف، همزما
 pnpm billing:probe-reconcile # ★★ فاز ۷: ۹ چک — callbackِ گم‌شده، یتیم، فرزندخواندگی، دو sweepِ هم‌زمان
 pnpm billing:reconcile       # ★ ابزارِ اپراتور (نه سنجه): همان کدِ پلاگین، دستی
 pnpm infra:probe-lock        # ★★ M5 فاز ۱: ۴ چک — انحصار، مرگِ نشست، تله‌ی اتصالِ استخر
+pnpm infra:check-proxy       # ★★ M5 فاز ۲: مسیرهای api ↔ پروکسیِ dev ↔ nginx — **داخلِ verify هم هست**
+#   -- --write   بازتولیدِ infra/nginx/api-locations.conf بعد از افزودنِ مسیرِ نو
 #   -- --dry-run | --adopt | --stale-minutes=N | --expire-hours=N
 
 # ★ E2Eِ مرورگر (بیرون از pnpm verify — مرورگر لازم دارند)
@@ -242,9 +246,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M5 (`infra`) در جریان — فاز ۰ و ۱ تمام** (۱۴۰۵/۰۶/۱۷). TODO در
+- **★★ M5 (`infra`) در جریان — فاز ۰، ۱ و ۲ تمام** (۱۴۰۵/۰۶/۱۸). TODO در
   [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
-  **قدمِ بعد: فاز ۲ (ایمیج‌های production).**
+  **قدمِ بعد: فاز ۳ (CI).**
   - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
     **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
     ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).
@@ -282,6 +286,32 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
   ⚠️ **دو یافته برای فاز ۵:** `apps/realtime` **هیچ health endpointی ندارد** · `/readyz`ِ api
   با دیتابیسِ خاموش **۸ ثانیه** طول می‌کشد و **هیچ لاگی از علت نمی‌دهد**.
+
+  ### ★★ فاز ۲ (ایمیجِ production) — چهار نقص که فقط **اجرای واقعی** نشانشان داد
+
+  کلِ استک با `APP_ENV=production` بالا آمد و از پشتِ nginx اثبات شد: چرخه‌ی کاملِ ورود
+  (OTP → کوکیِ HttpOnly با `path=/auth` → `/me` → refresh) · `/billing/plans` · WSِ `/rt`
+  با `1008 TOKEN_MISSING` · و هر دو گاردِ بوت با **exit 1**. ایمیج‌ها: **api ۴۷۰MB ·
+  realtime ۴۶۵MB · web ۱۴۲MB**.
+
+  **۱. ★★ `/assets`ِ Vite با پیشوندِ api تصادم داشت** — باندلِ JS به api می‌رفت و اپ اصلاً
+  بالا نمی‌آمد؛ در dev دیده نمی‌شود چون `/assets/*` فقط در build ساخته می‌شود ⇒
+  `build.assetsDir = "static"`. **۲. پروژه‌ی ریشه وابستگیِ runtime داشت و اعلام نکرده بود**
+  (`scripts/migrate.ts` → `@hamboom/config`+`pg`) ⇒ همان کلاسِ نقصِ فاز ۱، یک طبقه بالاتر.
+  **۳. کانتینرِ آشتی‌دهی کلِ configِ api را می‌خواهد** (`loadApiConfig`) ⇒ envِ مشترک؛
+  باریک‌کردنِ schema کارِ فاز ۴. **۴. `VITE_RT_URL` دامنه را در ایمیج می‌پخت** ⇒ حالا
+  پیش‌فرضِ production هم‌مبدأ است.
+
+  ★★ **گیتِ نو (گیت‌ها ۸ → ۱۰): [`infra:check-proxy`](scripts/infra-check-proxy.ts)** —
+  مسیرهای **واقعیِ ثبت‌شده‌ی** api را با فهرستِ پروکسیِ dev و فایلِ **تولیدشده‌ی** nginx
+  می‌سنجد. همان اجرای اول **دو دریفتِ از-M3-مانده** گرفت: `/public` (مسیرِ
+  `sdk.links.resolve`) در فهرست نبود، و `/links` هیچ مسیری نداشت. با شکستنِ عمدی داخلِ
+  `pnpm verify` قرمز شد.
+
+  ⚠️⚠️ **بلاک‌کننده‌ی launch که تصمیمِ مالک می‌خواهد:** `createMockSmsProvider` در
+  `APP_ENV=production` هم بالا می‌آید (نقضِ ADR-031) ⇒ هیچ کاربرِ واقعی نمی‌تواند وارد شود و
+  کدِ OTP در **لاگ** می‌نشیند. رفعش **حسابِ یک سرویسِ پیامکِ ایرانی** می‌خواهد، مثلِ زرین‌پال؛
+  گاردِ بوتش گامِ ۴٫۱ است.
 
   ### ✅⏳ وضعیتِ حساب‌ها (۱۴۰۵/۰۶/۱۷)
 
