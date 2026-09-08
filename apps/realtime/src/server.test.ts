@@ -304,7 +304,11 @@ describe("★★ گیتِ runtime — ADR-031", () => {
   it("★ یک پیاده‌سازیِ واقعی در production مشکلی ندارد", async () => {
     // ⚠️ ضدِ ادعا: اگر گیت روی «production» می‌بست نه روی «توسعه‌ای بودن»، این
     //    تست هم می‌افتاد و معلوم می‌شد گیت بیش از اندازه سفت است.
+    // ★ `developmentOnly` از M5 گام ۴٫۴ **اجباری** است. تا آن روز همین بدل آن را
+    //   ننوشته بود و بی‌صدا `undefined` می‌شد — یعنی دقیقاً همان fail-openی که گیت
+    //   قرار بود جلویش را بگیرد، در خودِ تستِ گیت.
     const real: BoardAuthority = {
+      developmentOnly: false,
       verify: () => Promise.resolve({ sub: "u", boardId: BOARD, role: "owner", exp: future() }),
     };
     running = await createRtServer({

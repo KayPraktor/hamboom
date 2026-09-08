@@ -24,12 +24,10 @@ name: hamboom-prod
 
 x-restart: &restart unless-stopped
 
-# ★★ **یک بلوکِ env برای api و برای کانتینرِ یک‌بارمصرفِ آشتی‌دهی.**
+# envِ کاملِ `apps/api`.
 #
-# ⚠️ کشفِ گام ۲٫۵: `scripts/billing-reconcile.ts` همان `loadApiConfig` را صدا می‌زند، پس
-# **کلِ** schemaی api را می‌خواهد — `JWT_SECRET` و `S3_*` هم، با اینکه هیچ‌کدام را مصرف
-# نمی‌کند. با یک بلوکِ جدا، اولین متغیرِ تازه‌ی api این کانتینر را بی‌صدا می‌شکست.
-# ⊕ باریک‌کردنِ خودِ schema (تا یک ابزارِ اپراتور رازِ JWT را نبیند) کارِ فاز ۴ است.
+# ⊕ تا فاز ۳، کانتینرِ آشتی‌دهی هم از همین استفاده می‌کرد (چون `loadApiConfig` یک‌تکه بود).
+# فاز ۴ آن را باریک کرد و حالا anchorِ خودش را دارد — پایین.
 x-api-env: &api-env
   NODE_ENV: production
   APP_ENV: ${APP_ENV}
@@ -66,6 +64,27 @@ x-api-env: &api-env
   # ⚠️ پیش‌فرض خاموش می‌مانَد تا انتخابِ رهبرِ فاز ۶ بیاید (ADR-060).
   BILLING_RECONCILE_ENABLED: ${BILLING_RECONCILE_ENABLED:-false}
   BILLING_RECONCILE_INTERVAL_SECONDS: ${BILLING_RECONCILE_INTERVAL_SECONDS:-300}
+  BILLING_PENDING_STALE_MINUTES: ${BILLING_PENDING_STALE_MINUTES:-20}
+  BILLING_PENDING_EXPIRE_HOURS: ${BILLING_PENDING_EXPIRE_HOURS:-72}
+  BILLING_RECONCILE_BATCH: ${BILLING_RECONCILE_BATCH:-50}
+  BILLING_ADOPT_ORPHANS: ${BILLING_ADOPT_ORPHANS:-false}
+
+# ★ envِ **باریکِ** کارِ آشتی‌دهی — M5 گام ۴٫۲.
+#
+# ⚠️ تا فاز ۳ این کانتینر کلِ `*api-env` را می‌گرفت، چون `billing-reconcile.ts` همان
+# `loadApiConfig` را صدا می‌زد. حالا `loadReconcileConfig` باریک است، پس یک ابزارِ
+# اپراتور دیگر **`JWT_SECRET` و کلیدهای S3 را نمی‌بیند** — کمترین دسترسیِ لازم.
+x-reconcile-env: &reconcile-env
+  NODE_ENV: production
+  APP_ENV: ${APP_ENV}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: ${DATABASE_URL}
+  DATABASE_SSL: ${DATABASE_SSL:-false}
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
+  PAYMENT_PROVIDER: ${PAYMENT_PROVIDER}
+  ZARINPAL_MODE: ${ZARINPAL_MODE:-sandbox}
+  ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}
+  ZARINPAL_CALLBACK_URL: ${ZARINPAL_CALLBACK_URL}
   BILLING_PENDING_STALE_MINUTES: ${BILLING_PENDING_STALE_MINUTES:-20}
   BILLING_PENDING_EXPIRE_HOURS: ${BILLING_PENDING_EXPIRE_HOURS:-72}
   BILLING_RECONCILE_BATCH: ${BILLING_RECONCILE_BATCH:-50}
@@ -233,7 +252,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment: *api-env
+    environment: *reconcile-env
 
 volumes:
   pgdata:

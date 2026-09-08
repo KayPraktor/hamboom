@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createPgBoardAccessReader } from "@hamboom/board-access-db";
 import {
   appEnvSchema,
+  assertProductionConfig,
   authEnvSchema,
   databaseEnvSchema,
   loadEnv,
@@ -47,6 +48,11 @@ async function main(): Promise<void> {
       .and(authEnvSchema)
       .and(s3EnvSchema),
   );
+  // ★★ گاردهای production (M5 گام ۴٫۱/۴٫۴) — **پیش از** ساختِ هر چیزی. گیتِ ADR-031ِ
+  //    خودِ سرور (`assertAuthorityUsable`) دربارهٔ پیاده‌سازیِ احراز است؛ این‌ها دربارهٔ
+  //    خودِ پیکربندی‌اند: رازِ ضعیف، دیتابیسِ دورِ بدونِ TLS، و متغیرهای dev-only.
+  assertProductionConfig(env);
+
   const logger = createLogger({ level: env.LOG_LEVEL });
 
   /**

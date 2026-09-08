@@ -1,5 +1,6 @@
 import {
   apiServerEnvSchema,
+  assertProductionConfig,
   appEnvSchema,
   authEnvSchema,
   databaseEnvSchema,
@@ -29,8 +30,35 @@ const apiEnvSchema = appEnvSchema
   .and(paymentEnvSchema);
 
 export function loadApiConfig() {
-  return loadEnv(apiEnvSchema);
+  const config = loadEnv(apiEnvSchema);
+  // ★★ گاردهای production (M5 گام ۴٫۱) — این‌جا و نه فقط در `buildApp`، چون
+  //    اسکریپت‌های اپراتور هم از همین مسیر رد می‌شوند.
+  assertProductionConfig(config);
+  return config;
 }
+
+/**
+ * ★ پیکربندیِ **باریکِ** کارِ آشتی‌دهی — M5 گام ۴٫۲.
+ *
+ * ⚠️ **یافته‌ی فاز ۲:** کانتینرِ یک‌بارمصرفِ آشتی‌دهی `loadApiConfig` را صدا می‌زد، پس
+ * `JWT_SECRET` و کلیدهای `S3_*` را **لازم داشت** — با اینکه هیچ‌کدام را مصرف نمی‌کند.
+ * یک ابزارِ اپراتور نباید رازِ امضای توکن را ببیند فقط به این دلیل که schema یک‌تکه بود.
+ *
+ * ⊕ `apiServerEnvSchema` این‌جاست چون `createPaymentGateway` برای URLِ صفحه‌ی mock به
+ * `PORT` نگاه می‌کند؛ راز نیست و پیش‌فرض دارد.
+ */
+const reconcileEnvSchema = appEnvSchema
+  .and(databaseEnvSchema)
+  .and(apiServerEnvSchema)
+  .and(paymentEnvSchema);
+
+export function loadReconcileConfig() {
+  const config = loadEnv(reconcileEnvSchema);
+  assertProductionConfig(config);
+  return config;
+}
+
+export type ReconcileConfig = ReturnType<typeof loadReconcileConfig>;
 
 export type ApiConfig = ReturnType<typeof loadApiConfig>;
 

@@ -165,3 +165,60 @@ describe("گاردِ بوتِ آدرسِ بازگشت از درگاه (M4 فاز
     await app.close();
   });
 });
+
+/**
+ * گاردهای بوتِ production — M5 فاز ۴.
+ *
+ * ⚠️ هر سه از یک اجرای **واقعی** آمدند، نه از بازبینیِ کد: در فاز ۲ کلِ استک با
+ * `APP_ENV=production` بالا آمد و کدِ OTP از **لاگِ سرور** خوانده شد.
+ */
+describe("گاردهای بوتِ production (M5 فاز ۴)", () => {
+  const db = () => fakeDb(() => Promise.resolve({ rows: [] }));
+  /** کمترین تغییرِ لازم تا configِ تست «شبیهِ production» شود. */
+  const prod = (over: Partial<typeof TEST_CONFIG> = {}) => ({
+    ...TEST_CONFIG,
+    APP_ENV: "production" as const,
+    JWT_SECRET: "9f3a7c1e4b8d2065af13ce97b402d85f",
+    PAYMENT_PROVIDER: "zarinpal" as const,
+    ZARINPAL_MERCHANT_ID: "00000000-0000-0000-0000-000000000000",
+    ...over,
+  });
+
+  it("★★ پیامکِ ساختگی در production ⇒ اپ **بالا نمی‌آید**", async () => {
+    await expect(buildApp({ config: prod(), db: db() })).rejects.toThrow(
+      /SmsProviderNotAllowedError|پیامک/,
+    );
+  });
+
+  it("رازِ ضعیف در production ⇒ اپ **بالا نمی‌آید**", async () => {
+    // ★ همان پیش‌فرضِ **واقعیِ** `.env.example` — چیزی که یک اپراتور کپی می‌کند.
+    await expect(
+      buildApp({
+        config: prod({ JWT_SECRET: "change_me_dev_only_jwt_secret_at_least_32_chars_long" }),
+        db: db(),
+      }),
+    ).rejects.toThrow(/JWT_SECRET/);
+    // و رازِ خودِ فیکسچرِ تست هم نباید از گیت رد شود.
+    await expect(
+      buildApp({ config: prod({ JWT_SECRET: TEST_CONFIG.JWT_SECRET }), db: db() }),
+    ).rejects.toThrow(/JWT_SECRET/);
+  });
+
+  it("★ دیتابیسِ دور بدونِ SSL در production ⇒ اپ **بالا نمی‌آید**", async () => {
+    await expect(
+      buildApp({
+        config: prod({ DATABASE_URL: "postgres://u:p@db.example.ir:5432/x", DATABASE_SSL: false }),
+        db: db(),
+      }),
+    ).rejects.toThrow(/DATABASE_SSL/);
+  });
+
+  it("⚠️ همان configِ production با `APP_ENV=staging` **بالا می‌آید** (mock مجاز است)", async () => {
+    const app = await buildApp({
+      config: { ...prod(), APP_ENV: "staging", PAYMENT_PROVIDER: "mock" },
+      db: db(),
+    });
+    expect(app.registeredRoutes.length).toBeGreaterThan(0);
+    await app.close();
+  });
+});

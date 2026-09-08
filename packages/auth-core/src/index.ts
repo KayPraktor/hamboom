@@ -31,7 +31,9 @@ export {
   maskPhone,
   requestOtp,
   verifyOtp,
+  assertSmsProviderAllowed,
   createMockSmsProvider,
+  SmsProviderNotAllowedError,
   createMemoryOtpStore,
 } from "./otp.ts";
 export type { OtpStore, OtpRecord, SmsProvider, OtpConfig, OtpResult } from "./otp.ts";

@@ -93,15 +93,16 @@ export const realtimeEnvSchema = z.object({
 export type RealtimeEnv = z.infer<typeof realtimeEnvSchema>;
 
 /**
- * ── احراز هویتِ توسعه‌ای ────────────────────────────────────────────
+ * ── ⚠️ `devAuthEnvSchema` حذف شد (M5 گام ۴٫۴) ───────────────────────────
  *
- * ★ فقط تا وقتی M3 نیامده ([ADR-031](../../../ARCHITECTURE_DECISIONS.md#adr-031)).
- * حداقلِ ۳۲ کاراکتر الزامی است تا کسی در محیطِ مشترک با یک کلیدِ کوتاه توکن جعل نکند.
+ * `RT_DEV_JWT_SECRET` برای `DevBoardAuthority` بود، و آن پیاده‌سازی در **M3 فاز ۷**
+ * حذف شد — از آن روز این بخش **هیچ مصرف‌کننده‌ای نداشت**. قاعده‌ی سرِ همین فایل همان
+ * موقع هم می‌گفت فقط بخشِ دارای مصرف‌کننده بماند؛ این یکی از قلم افتاده بود.
+ *
+ * ★ ولی **وجودِ** آن متغیر هنوز معنا دارد: نشانه‌ی یک `.env`ِ کپی‌شده از dev. پس
+ * به‌جای schema، حالا [`assertProductionConfig`](./production-guards.ts) در
+ * `APP_ENV=production` وجودش را **رد** می‌کند.
  */
-export const devAuthEnvSchema = z.object({
-  RT_DEV_JWT_SECRET: z.string().min(32, "حداقل ۳۲ کاراکتر لازم است"),
-});
-export type DevAuthEnv = z.infer<typeof devAuthEnvSchema>;
 
 /**
  * ── Object Storage سازگار با S3 (M3، `packages/storage`) ─────────────────

@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ConfigError, loadEnv } from "./load.ts";
-import {
-  appEnvSchema,
-  databaseEnvSchema,
-  devAuthEnvSchema,
-  realtimeEnvSchema,
-} from "./sections.ts";
+import { appEnvSchema, authEnvSchema, databaseEnvSchema, realtimeEnvSchema } from "./sections.ts";
 
 /**
  * این تست‌ها روی یک منبعِ **ساختگی** کار می‌کنند، نه `process.env` — وگرنه خودشان
@@ -100,13 +95,15 @@ describe("APP_ENV — پایه‌ی گیتِ ADR-031", () => {
   });
 });
 
-describe("کلیدِ توسعه‌ای", () => {
+describe("رازِ HS256", () => {
+  // ⚠️ این تست تا M5 گام ۴٫۴ روی `devAuthEnvSchema` بود — schemaیی که از M3 فاز ۷
+  //    هیچ مصرف‌کننده‌ای نداشت. همان ادعا (کفِ ۳۲ کاراکتر)، این‌بار روی متغیرِ **زنده**.
   it("کلیدِ کوتاه را رد می‌کند", () => {
-    expect(() => loadEnv(devAuthEnvSchema, { RT_DEV_JWT_SECRET: "short" })).toThrow(ConfigError);
+    expect(() => loadEnv(authEnvSchema, { JWT_SECRET: "short" })).toThrow(ConfigError);
   });
 
   it("کلیدِ ۳۲ کاراکتری را می‌پذیرد", () => {
     const secret = "x".repeat(32);
-    expect(loadEnv(devAuthEnvSchema, { RT_DEV_JWT_SECRET: secret }).RT_DEV_JWT_SECRET).toBe(secret);
+    expect(loadEnv(authEnvSchema, { JWT_SECRET: secret }).JWT_SECRET).toBe(secret);
   });
 });

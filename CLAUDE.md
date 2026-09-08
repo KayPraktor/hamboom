@@ -9,7 +9,7 @@
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۲ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۳ تمام**، قدمِ بعد فاز ۴ |
+| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۴ تمام**، قدمِ بعد فاز ۵ |
 | ★ [infra/README.md](infra/README.md) | **چطور استقرار می‌شود** — چیدمان، `docker-compose.prod.yml`، کارهای اپراتور |
 | [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | بایگانیِ M4 (`billing`، تمام‌شده) — مرجعِ تاریخی |
 | ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
@@ -249,9 +249,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۳ تمام** (۱۴۰۵/۰۶/۱۸).
+- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۴ تمام** (۱۴۰۵/۰۶/۱۸).
   TODO در [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
-  **قدمِ بعد: فاز ۴ (سخت‌سازیِ پیکربندی و راز).**
+  **قدمِ بعد: فاز ۵ (رصدپذیریِ حداقلی).**
   - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
     **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
     ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).
@@ -343,6 +343,30 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
   ⚠️ **محدودیتِ ابزار:** خواندنِ لاگِ Actions از API دسترسیِ **admin** می‌خواهد
   (`403`). تشخیصِ شکست از روی **نامِ مرحله** + بازتولیدِ محلی انجام می‌شود.
+
+  ### ⛔ فاز ۴ — و از حالا `APP_ENV=production` عمداً بالا نمی‌آید
+
+  ★★ **`assertSmsProviderAllowed` دقیقاً مثلِ گیتِ زرین‌پال است:** با `production`،
+  `MockSmsProvider` بالا نمی‌آید ⇒ **production تا سیم‌کشیِ یک سرویسِ پیامکِ ایرانی استارت
+  نمی‌خورد.** درست است — با mock هیچ کاربرِ واقعی وارد نمی‌شود و کدِ ورود در **لاگ**
+  می‌نشیند. ⏳ **انتخابِ سرویس تصمیمِ مالک است** (دومین بلاک‌کننده‌ی launch، کنارِ زرین‌پال).
+  ★ `APP_ENV=staging` کاملاً کار می‌کند و کلِ استک رویش اثبات شد.
+
+  **چهار گاردِ بوت** ([`production-guards.ts`](packages/config/src/production-guards.ts))، هر
+  چهار با اجرای واقعیِ **ایمیج** (exit 1): پیامکِ ساختگی · رازِ ضعیف · دیتابیسِ دورِ بدونِ
+  SSL · متغیرِ dev-only. همه‌ی تخلف‌ها **با هم** گزارش می‌شوند.
+
+  ⚠️ **گاردِ SSL «همیشه true» نیست** — ADR-059 یعنی Postgres در همان compose است و یک قاعده‌ی
+  مطلق استقرارِ خودمان را روزِ اول می‌شکست. قاعده: **میزبانِ نقطه‌دار یا IP ⇒ SSL اجباری**.
+
+  ★ **کمترین دسترسی:** configِ آشتی‌دهی باریک شد — داخلِ آن کانتینر
+  `env | grep -c "JWT_SECRET\|S3_"` حالا **صفر** است. نمونه‌ی محیطِ استقرار:
+  [`.env.production.example`](.env.production.example).
+
+  ★ **دو یافته‌ی ممیزیِ ADR-031:** `devAuthEnvSchema` از M3 **مرده** بود (حذف شد؛ حالا
+  وجودش تخلف است) · و `BoardAuthority.developmentOnly` **اختیاری** بود در حالی که همان پرچم
+  در دو پورتِ دیگر اجباری است ⇒ fail-open. اجباری شد — و بدلِ تستِ خودِ آن گیت دقیقاً همان
+  اشتباه را داشت.
 
   ### ✅⏳ وضعیتِ حساب‌ها (۱۴۰۵/۰۶/۱۷)
 

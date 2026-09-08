@@ -19,7 +19,7 @@
  * رشته می‌شود و بی‌صدا خراب. خودِ `runReconcile` هم قبل از هر کاری این را **می‌سنجد** و
  * روی استخرِ بی‌کوئرس بالا نمی‌آید.
  */
-import { loadApiConfig } from "../apps/api/src/config.ts";
+import { loadReconcileConfig } from "../apps/api/src/config.ts";
 import { createDbPool } from "../apps/api/src/plugins/db.ts";
 import { createPaymentGateway } from "../apps/api/src/plugins/payment.ts";
 import {
@@ -64,7 +64,8 @@ const policy: ReconcilePolicy = {
   dryRun: flags.has("dry-run"),
 };
 
-const config = loadApiConfig();
+// ★ configِ **باریک** — این ابزار `JWT_SECRET` و کلیدهای S3 را نه لازم دارد و نه باید ببیند.
+const config = loadReconcileConfig();
 const pool = createDbPool({
   connectionString: config.DATABASE_URL,
   ssl: config.DATABASE_SSL,

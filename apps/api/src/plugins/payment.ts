@@ -27,7 +27,24 @@ import type { ApiConfig } from "../config.ts";
  */
 export const MOCK_CHECKOUT_PATH = "/billing/mock/pay";
 
-export function createPaymentGateway(config: ApiConfig): PaymentGateway {
+/**
+ * ★ فقط همان چیزی که واقعاً لازم است — نه کلِ `ApiConfig` (M5 گام ۴٫۲).
+ *
+ * این‌طوری کانتینرِ یک‌بارمصرفِ آشتی‌دهی می‌تواند با یک configِ **باریک** همین درگاه را
+ * بسازد، بدونِ اینکه `JWT_SECRET` و کلیدهای S3 را لازم داشته باشد.
+ */
+export type PaymentGatewayConfig = Pick<
+  ApiConfig,
+  | "APP_ENV"
+  | "PORT"
+  | "PAYMENT_PROVIDER"
+  | "ZARINPAL_MODE"
+  | "ZARINPAL_MERCHANT_ID"
+  | "ZARINPAL_CURRENCY"
+  | "ZARINPAL_CALLBACK_URL"
+>;
+
+export function createPaymentGateway(config: PaymentGatewayConfig): PaymentGateway {
   const gateway =
     config.PAYMENT_PROVIDER === "zarinpal"
       ? createZarinpal(config)
@@ -41,7 +58,7 @@ export function createPaymentGateway(config: ApiConfig): PaymentGateway {
   return gateway;
 }
 
-function createZarinpal(config: ApiConfig): PaymentGateway {
+function createZarinpal(config: PaymentGatewayConfig): PaymentGateway {
   const merchantId = config.ZARINPAL_MERCHANT_ID;
   if (merchantId === undefined || merchantId.length === 0) {
     // ⚠️ در schema عمداً `optional` است تا `pnpm dev` merchantِ واقعی نخواهد (P3). اجباری‌بودنش

@@ -45,8 +45,13 @@ export interface BoardAuthority {
    * دلیلش ساختاری است: اگر گیت به `APP_ENV` **و** یک `if` در جای درست وابسته
    * بود، اولین مسیرِ فراموش‌شده دورش می‌زد. با علامت روی **خودِ پیاده‌سازی**، هر
    * مسیری که آن را تزریق کند از گیت رد می‌شود (`assertAuthorityUsable`).
+   *
+   * ⚠️ **از M5 گام ۴٫۴ اجباری است، و قبلاً نبود.** ممیزیِ آن گام نشان داد همین پرچم در
+   * `PaymentGateway` و `SmsProvider` **اجباری** است و فقط این‌جا اختیاری بود — یعنی یک
+   * پیاده‌سازیِ آینده که فراموشش کند، بی‌صدا `undefined` می‌شود و **از گیت رد می‌شود**.
+   * یک گاردِ fail-open، گارد نیست.
    */
-  readonly developmentOnly?: boolean;
+  readonly developmentOnly: boolean;
 
   /**
    * توکن را بررسی کن و claimها را برگردان، یا `AuthError` بینداز.
@@ -93,7 +98,7 @@ export function isBoardRole(value: unknown): value is BoardRole {
  * پیاده‌اش می‌کنیم.
  */
 export function assertAuthorityUsable(authority: BoardAuthority, appEnv: string): void {
-  if (appEnv === "production" && authority.developmentOnly === true) {
+  if (appEnv === "production" && authority.developmentOnly) {
     throw new Error(
       "‏[hamboom] پیاده‌سازیِ توسعه‌ایِ احراز هویت در production مجاز نیست: هرکس " +
         "RT_DEV_JWT_SECRET را بداند می‌تواند برای خودش نقشِ owner صادر کند (ADR-031). " +

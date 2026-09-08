@@ -3,8 +3,9 @@ import { randomUUID } from "node:crypto";
 import fastifyCookie from "@fastify/cookie";
 import fastifyRateLimit from "@fastify/rate-limit";
 import { createAssetService } from "@hamboom/assets";
-import { createMockSmsProvider, maskPhone } from "@hamboom/auth-core";
+import { assertSmsProviderAllowed, createMockSmsProvider, maskPhone } from "@hamboom/auth-core";
 import { assertGatewayAllowed, type PaymentGateway } from "@hamboom/billing-core";
+import { assertProductionConfig } from "@hamboom/config";
 import type { ObjectStore } from "@hamboom/storage";
 import Fastify, { type FastifyInstance } from "fastify";
 import type pg from "pg";
@@ -57,6 +58,9 @@ export interface BuildAppOptions {
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadApiConfig();
+  // ★★ روی configِ **حل‌شده**، نه فقط شاخه‌ی `??` — همان درسِ `assertGatewayAllowed`
+  //    پایین: گیتی که فقط مسیرِ پیش‌فرض را ببیند، از تزریق رد می‌شود.
+  assertProductionConfig(config);
 
   const app = Fastify({
     logger: loggerOptions(config.LOG_LEVEL),
@@ -123,6 +127,10 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const sms = createMockSmsProvider((phone, code) => {
     app.log.warn(`[SMS mock — فقط dev] کدِ ورود ${code} → ${maskPhone(phone)}`);
   });
+  // ★★ گیتِ M5 گام ۴٫۱ — بدونِ آن، `APP_ENV=production` با پیامکِ **ساختگی** بالا می‌آید:
+  //    هیچ کاربرِ واقعی نمی‌تواند وارد شود و کدِ ورود در لاگ می‌نشیند. در فاز ۲ با یک
+  //    اجرای واقعی دیده شد (کد از لاگ خوانده شد، در حالی که APP_ENV=production بود).
+  assertSmsProviderAllowed(sms, config.APP_ENV);
 
   registerAuthRoutes(app, {
     pool,

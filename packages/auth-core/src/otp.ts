@@ -24,9 +24,47 @@ export interface OtpStore {
   incrementAttempts(phone: string): Promise<void>;
 }
 
-/** درگاهِ پیامک — `MockProvider` در dev، کاوه‌نگار با سوییچِ env در production (فاز ۵، P2/P3). */
+/**
+ * درگاهِ پیامک — `MockProvider` در dev، و یک سرویسِ ایرانیِ واقعی در production.
+ *
+ * ★ `name`/`developmentOnly` عمداً **اجباری**اند و دقیقاً مثلِ `PaymentGateway` (M4):
+ * تنها راهی که یک پیاده‌سازیِ آینده نتواند بی‌صدا از گیتِ production رد شود، این است که
+ * مجبور باشد خودش را معرفی کند.
+ */
 export interface SmsProvider {
+  /** نامِ خوانا — فقط برای پیامِ خطا و لاگ. */
+  readonly name: string;
+  /** ★★ `true` یعنی این پیاده‌سازی در `APP_ENV=production` **بالا نمی‌آید** (ADR-031). */
+  readonly developmentOnly: boolean;
   send(phone: string, code: string): Promise<void>;
+}
+
+/** وقتی درگاهِ پیامک در محیطِ اشتباه سیم‌کشی شود. */
+export class SmsProviderNotAllowedError extends Error {
+  constructor(providerName: string, appEnv: string) {
+    super(
+      `درگاهِ پیامکِ «${providerName}» فقط برای توسعه است و در محیطِ «${appEnv}» بالا نمی‌آید ` +
+        "(ADR-031). یک سرویسِ پیامکِ واقعی سیم‌کشی کن یا APP_ENV را درست بگذار.",
+    );
+    this.name = "SmsProviderNotAllowedError";
+  }
+}
+
+/**
+ * ★★ گیتی که نبودنش یعنی **هیچ کاربرِ واقعی نمی‌تواند وارد شود** — و کدِ ورود در لاگِ
+ * سرور می‌نشیند.
+ *
+ * ⚠️ این نقص در M5 فاز ۲ با یک اجرای واقعی پیدا شد: کلِ استک با `APP_ENV=production`
+ * بالا آمد و کدِ OTP از **لاگِ سرور** خوانده شد. `MockSmsProvider` هیچ پیامکی نمی‌فرستد،
+ * پس در production نه فقط ناامن است — **بی‌فایده** است.
+ *
+ * ⚠️ **پیامدِ عمدی:** تا وقتی یک سرویسِ پیامکِ واقعی سیم‌کشی نشود، `APP_ENV=production`
+ * اصلاً بالا نمی‌آید. دقیقاً مثلِ گیتِ `MockGateway` در M4 — و به همان دلیل.
+ */
+export function assertSmsProviderAllowed(sms: SmsProvider, appEnv: string): void {
+  if (sms.developmentOnly && appEnv === "production") {
+    throw new SmsProviderNotAllowedError(sms.name, appEnv);
+  }
 }
 
 export interface OtpConfig {
@@ -116,6 +154,8 @@ function timingSafeEqualHex(a: string, b: string): boolean {
  */
 export function createMockSmsProvider(sink?: (phone: string, code: string) => void): SmsProvider {
   return {
+    name: "mock",
+    developmentOnly: true,
     send(phone, code) {
       // ⚠️ چاپِ کد فقط در MockProviderِ **dev** است (بدونِ حسابِ پیامکِ واقعی، P3)؛ `warn` تنها
       //    متدِ مجازِ console است و اینجا معنایش «این mock است، نه پیامکِ واقعی» را هم می‌رساند.

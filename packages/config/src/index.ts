@@ -17,12 +17,20 @@
 export { ConfigError, loadEnv } from "./load.ts";
 export type { EnvSource } from "./load.ts";
 
+// ★★ گاردهای بوتِ production (M5 گام ۴٫۱) — بینِ بخش‌ها، پس نمی‌توانند داخلِ zod باشند.
+export {
+  assertProductionConfig,
+  isRemoteDatabaseHost,
+  ProductionConfigError,
+  weakSecretReason,
+} from "./production-guards.ts";
+export type { ProductionGuardInput } from "./production-guards.ts";
+
 export {
   apiServerEnvSchema,
   appEnvSchema,
   authEnvSchema,
   databaseEnvSchema,
-  devAuthEnvSchema,
   otpEnvSchema,
   paymentEnvSchema,
   rateLimitEnvSchema,
@@ -36,7 +44,6 @@ export type {
   AppEnv,
   AuthEnv,
   DatabaseEnv,
-  DevAuthEnv,
   OtpEnv,
   PaymentEnv,
   RateLimitEnv,

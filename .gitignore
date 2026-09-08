@@ -26,6 +26,8 @@ playwright/.cache/
 .env
 .env.*
 !.env.example
+# ★ نمونه‌ی محیطِ استقرار (M5 گام ۴٫۲) — راز ندارد، جای «‼️» دارد.
+!.env.production.example
 
 # داده‌ی لوکال کانتینرها
 infra/docker/data/

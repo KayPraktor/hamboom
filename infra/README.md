@@ -1,8 +1,8 @@
 # `infra/` — استقرارِ هم‌بوم
 
-> **وضعیت: M5 فاز ۲ (ایمیج‌های production) تمام است.** CI (فاز ۳)، سخت‌سازیِ راز
-> (فاز ۴)، رصدپذیری (فاز ۵)، پشتیبان (فاز ۷) و TLS/لبه (فاز ۹) هنوز نیامده‌اند.
-> runbookِ کامل کارِ گامِ ۱۰٫۱ است؛ این فایل امروز فقط «چطور بالا می‌آید» را می‌گوید.
+> **وضعیت: M5 فاز ۰ تا ۴ تمام است** — ایمیج، CI، و سخت‌سازیِ پیکربندی و راز.
+> رصدپذیری (فاز ۵)، پشتیبان (فاز ۷) و TLS/لبه (فاز ۹) هنوز نیامده‌اند. runbookِ کامل
+> کارِ گامِ ۱۰٫۱ است؛ این فایل امروز فقط «چطور بالا می‌آید» را می‌گوید.
 
 | مسیر | چیست |
 |---|---|
@@ -42,8 +42,8 @@ HttpOnly مسیرِ `/auth` دارد و `baseUrl`ِ sdk خالی است. api ر�
 ## بالاآوردن روی یک ماشینِ تمیز
 
 ```bash
-# ۱. فایلِ محیط را بساز (هنوز نمونه‌ی رسمی ندارد — گامِ ۴٫۲)
-cp .env.example .env.production   # و مقادیر را عوض کن، به‌ویژه بندِ «تفاوت‌ها» پایین
+# ۱. فایلِ محیط را بساز
+cp .env.production.example .env.production   # و همه‌ی «‼️»ها را عوض کن
 
 # ۲. ساختِ ایمیج‌ها (یا pullِ ایمیجِ CI — گامِ ۳٫۵)
 docker compose -f infra/docker/docker-compose.prod.yml --env-file .env.production build
@@ -62,15 +62,21 @@ docker compose -f infra/docker/docker-compose.prod.yml --env-file .env.productio
 | `DATABASE_URL` | `…@localhost:5544/…` | `…@postgres:5432/…` (نامِ سرویس در شبکه‌ی compose) |
 | `REDIS_URL` | `…@localhost:7600/0` | `…@redis:6379/0` |
 | `S3_ENDPOINT` | MinIOی لوکال | آروان (`https://s3.ir-thr-at1.arvanstorage.ir`) |
+| `DATABASE_SSL` | `false` | `false` **فقط** تا وقتی دیتابیس در همان compose است — وگرنه ★ اپ بالا نمی‌آید |
 | `APP_ENV` | `local` | `staging` یا `production` |
 | `WEB_BASE_URL` · `ZARINPAL_CALLBACK_URL` | `localhost` | دامنه‌ی واقعی |
 
 ★★ **مسیرِ `ZARINPAL_CALLBACK_URL` باید دقیقاً `/billing/zarinpal/callback` باشد** —
 `registerBillingRoutes` وگرنه در **بوت** می‌شکند (اثبات‌شده در همین ایمیج، exit 1).
 
-⏳ **`APP_ENV=production` تا تاییدِ حسابِ زرین‌پال بالا نمی‌آید** و این عمدی است:
-`assertGatewayAllowed` نمی‌گذارد `MockGateway` در production بالا بیاید (اثبات‌شده در
-ایمیج، exit 1). تا آن‌وقت **`APP_ENV=staging` با mock کاملاً کار می‌کند**.
+⛔ **`APP_ENV=production` تا سیم‌کشیِ دو سرویسِ واقعی بالا نمی‌آید، و هر دو عمدی‌اند:**
+`assertGatewayAllowed` (درگاهِ پرداخت) و `assertSmsProviderAllowed` (پیامک) — هر دو
+اثبات‌شده در ایمیج با exit 1. ★ تا آن‌وقت **`APP_ENV=staging` با mock کاملاً کار می‌کند** و
+کلِ استک رویش اثبات شده است.
+
+★★ **و سه گاردِ دیگر روی خودِ پیکربندی** ([`production-guards.ts`](../packages/config/src/production-guards.ts)):
+رازِ ضعیف · دیتابیسِ **دورِ** بدونِ SSL · و متغیرهای dev-only (`RT_DEV_JWT_SECRET`،
+`OTP_DEV_FIXED_CODE`). همه‌ی تخلف‌ها **با هم** گزارش می‌شوند، نه یکی‌یکی.
 
 ---
 
@@ -119,4 +125,4 @@ pnpm infra:check-proxy -- --write   # بازتولید بعد از افزودن�
 | `/metrics` و گیجِ حافظه‌ی اتاق | فاز ۵ ([ADR-061](../ARCHITECTURE_DECISIONS.md#adr-061)) |
 | health endpointِ `apps/realtime` | فاز ۵٫۳ — امروز healthcheckِ کانتینر فقط **listen بودنِ پورت** را می‌سنجد |
 | پشتیبان و مشقِ بازیابی | فاز ۷ |
-| ⚠️⚠️ **فرستنده‌ی واقعیِ پیامک** | ببین «یافته‌ها»ی [`PROGRESS-M5-infra.md`](../PROGRESS-M5-infra.md) — امروز `MockSmsProvider` در production هم بالا می‌آید |
+| ⚠️⚠️ **فرستنده‌ی واقعیِ پیامک** | ⛔ بلاک‌کننده‌ی launch — از فاز ۴، `APP_ENV=production` بدونِ آن **بالا نمی‌آید**. انتخابِ سرویس تصمیمِ مالک است |
