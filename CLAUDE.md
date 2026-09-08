@@ -8,8 +8,9 @@
 | فایل | چه چیزی دارد |
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
-| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۵۷ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | **TODOی فعالِ M4** — ۱۱ فاز؛ **M4 تمام و تحویل شد** — فاز ۰ تا ۱۰ |
+| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۲ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
+| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تمام**، قدمِ بعد فاز ۱ (probe) |
+| [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | بایگانیِ M4 (`billing`، تمام‌شده) — مرجعِ تاریخی |
 | ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
 | [docs/m4-handoff.md](docs/m4-handoff.md) | بایگانی — نقطه‌ی ورودِ M4 (مدلِ billing و درس‌های M3) |
 | [TODO-M3-backend-api.md](TODO-M3-backend-api.md) · [PROGRESS-M3-backend-api.md](PROGRESS-M3-backend-api.md) · [docs/m3-handoff.md](docs/m3-handoff.md) | بایگانیِ M3 (`backend-api`، تمام‌شده) — مرجعِ تاریخی |
@@ -240,9 +241,38 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
+- **★★ M5 (`infra`) در جریان — فاز ۰ تمام** (۱۴۰۵/۰۶/۱۷). TODO در
+  [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
+  **قدمِ بعد: فاز ۱ (probe — اول بسنج، بعد بساز).**
+  - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
+    **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
+    ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).
+  - **نُه تصمیمِ مرزی → پنج ADR (تاییدِ مالک ۱۴۰۵/۰۶/۱۷):**
+    [ADR-058](ARCHITECTURE_DECISIONS.md#adr-058) (ایمیج **سورس** می‌برد؛ type-strippingِ Node 24
+    می‌مانَد — چون هیچ پکیجی build ندارد و همه `src/*.ts` را export می‌کنند) ·
+    [ADR-059](ARCHITECTURE_DECISIONS.md#adr-059) (**Compose روی VM، نه K8s** — انحرافِ ثبت‌شده از
+    PLAN §M5) · [ADR-060](ARCHITECTURE_DECISIONS.md#adr-060) (advisory lockِ Postgres — ★★ برای
+    **اتلاف** است نه درستی؛ درستی از قفلِ ردیف می‌آید) ·
+    [ADR-061](ARCHITECTURE_DECISIONS.md#adr-061) (رصدپذیریِ حداقلی، ولی **گیجِ حافظه‌ی اتاق
+    اجباری**) · [ADR-062](ARCHITECTURE_DECISIONS.md#adr-062) (بدونِ `apps/worker` — کارِ دوره‌ای
+    = اسکریپتِ یک‌بارمصرف).
+
+  ### ★★ سه یافته‌ی فاز ۰ که نقشه را شکل دادند
+
+  **هیچ پکیجی `build` ندارد جز `apps/web`** (همه `./src/index.ts` را export می‌کنند) ⇒ سوالِ
+  «Dockerfile چه بسازد» از قبل جواب داشت · ★★ **تریگرِ عددیِ ADR-048 امروز اندازه‌ناپذیر است**
+  (حافظه‌ی اتاق هیچ‌جا گزارش نمی‌شود) ⇒ به همین دلیل رصدپذیری **پیش از** چندنودی می‌آید ·
+  **کلِ `plugins/` فقط یک گاردِ بوت دارد** — `JWT_SECRET`/`DATABASE_SSL`/`RT_DEV_JWT_SECRET`
+  هیچ‌کدام گارد ندارند (کارِ فاز ۴).
+
+  ### ⏳ سه چیزِ باز
+
+  **M5-D9** (عددهای نگهداشتِ داده — فقط فاز ۸ را بلاک می‌کند) · **حسابِ آروان و دامنه** ·
+  **تاییدِ زرین‌پالِ production**. ⚠️ فاز ۱ و ۲ کاملاً **لوکال** اثبات می‌شوند، پس هیچ‌کدام
+  امروز بلاک نیستند.
+
 - **★★ M4 (`billing`) تمام و تحویل شد** (۱۴۰۵/۰۶/۱۵) — فاز ۰ تا ۱۰. TODO در
   [`TODO-M4-billing.md`](TODO-M4-billing.md)، دفترِ کار در [`PROGRESS-M4-billing.md`](PROGRESS-M4-billing.md).
-  **قدمِ بعد: M5 (زیرساخت/استقرار) — از [`docs/m5-handoff.md`](docs/m5-handoff.md).**
   - **دامنه:** فاز ۰–۱۰ — probe → قرارداد → `packages/billing-core` → migration → مسیرهای
     billingِ api → ظرفیت → **آشتی‌دهی** → sdk → `apps/web` → تحویل. ⛔ **بیرون:** استردادِ کامل
     (`refund` = GraphQL+OAuth، در dev اجراناپذیر) و `reverse` (whitelistِ IP) → **M6** ·
