@@ -1,0 +1,17 @@
+# ⚠️ node_modules باید بیرون بماند: هم حجمِ contextِ build را چند صد مگابایت کم می‌کند،
+#    هم symlinkهای pnpmِ ماشینِ توسعه (ویندوز) را به کانتینرِ لینوکسی نمی‌بَرد.
+node_modules
+**/node_modules
+.git
+.turbo
+**/.turbo
+**/dist
+**/coverage
+**/.vite
+**/test-results
+**/playwright-report
+.env
+.env.*
+!.env.example
+verify.log
+*.log

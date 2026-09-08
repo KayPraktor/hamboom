@@ -27,6 +27,7 @@
   "dependencies": {
     "@hamboom/auth-core": "workspace:*",
     "@hamboom/board-access-db": "workspace:*",
+    "@hamboom/config": "workspace:*",
     "@hamboom/shared-types": "workspace:*",
     "@hamboom/storage": "workspace:*",
     "@hamboom/ydoc-schema": "workspace:*",

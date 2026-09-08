@@ -9,7 +9,7 @@
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۲ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تمام**، قدمِ بعد فاز ۱ (probe) |
+| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ و ۱ تمام**، قدمِ بعد فاز ۲ (ایمیجِ production) |
 | [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | بایگانیِ M4 (`billing`، تمام‌شده) — مرجعِ تاریخی |
 | ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
 | [docs/m4-handoff.md](docs/m4-handoff.md) | بایگانی — نقطه‌ی ورودِ M4 (مدلِ billing و درس‌های M3) |
@@ -86,6 +86,7 @@ pnpm billing:settle          # ★★ فاز ۵: ۸ چک — دو تسویه‌�
 pnpm billing:quota           # ★★ فاز ۶: ۶ چک — سقف، همزمانی، سنتینلِ -1، فضای شخصی، staff
 pnpm billing:probe-reconcile # ★★ فاز ۷: ۹ چک — callbackِ گم‌شده، یتیم، فرزندخواندگی، دو sweepِ هم‌زمان
 pnpm billing:reconcile       # ★ ابزارِ اپراتور (نه سنجه): همان کدِ پلاگین، دستی
+pnpm infra:probe-lock        # ★★ M5 فاز ۱: ۴ چک — انحصار، مرگِ نشست، تله‌ی اتصالِ استخر
 #   -- --dry-run | --adopt | --stale-minutes=N | --expire-hours=N
 
 # ★ E2Eِ مرورگر (بیرون از pnpm verify — مرورگر لازم دارند)
@@ -193,7 +194,7 @@ threshold گذاشت؛ گذاشتنشان بیرونِ گیت یعنی تکرا�
 > `.env.example` روی پیش‌فرض PLAN (۹۰۰۰) ماندند. **`docker compose up` حالا `minio-init` را هم دارد**
 > (ساختِ باکت‌های assets/snapshots، P3).
 
-> **Redis روی این ماشین ۷۳۷۹ است، نه ۶۳۷۹** (M3 گام ۸٫۴) — **همان تله‌ی MinIO، این‌بار روی ۶۳۷۹**:
+> **Redis روی این ماشین **۷۶۰۰** است (۷۳۷۹ **بود** تا M5 فاز ۱، که رنجِ excluded به ۷۳۷۳–۷۴۷۲ رفت)** (M3 گام ۸٫۴) — **همان تله‌ی MinIO، این‌بار روی ۶۳۷۹**:
 > رنجِ excludedِ ویندوز **جابه‌جا شد** و حالا ۶۳۷۹ داخلِ ۶۳۰۳–۶۴۰۲ افتاد، پس `docker` نمی‌توانست
 > host:۶۳۷۹ را bind کند (کانتینر بالا بود ولی `docker port` خالی؛ سرورِ realtime «خطای اتصالِ Redis»
 > می‌داد). در `.env` محلی: `REDIS_PORT=7379` + `REDIS_URL=…localhost:7379…`؛ compose/`.env.example` روی
@@ -241,9 +242,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M5 (`infra`) در جریان — فاز ۰ تمام** (۱۴۰۵/۰۶/۱۷). TODO در
+- **★★ M5 (`infra`) در جریان — فاز ۰ و ۱ تمام** (۱۴۰۵/۰۶/۱۷). TODO در
   [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
-  **قدمِ بعد: فاز ۱ (probe — اول بسنج، بعد بساز).**
+  **قدمِ بعد: فاز ۲ (ایمیج‌های production).**
   - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
     **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
     ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).

@@ -153,6 +153,9 @@ importers:
       '@hamboom/board-access-db':
         specifier: workspace:*
         version: link:../../packages/board-access-db
+      '@hamboom/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@hamboom/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
