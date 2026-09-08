@@ -6,6 +6,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 
 import { assertAuthorityUsable, type BoardAuthority } from "./auth/index.ts";
 import { createLogger, maskSubject, type Logger } from "./log.ts";
+import { renderRealtimeMetrics, type RoomSample } from "./metrics.ts";
 import { RtProtocolError } from "./protocol-error.ts";
 
 /**
@@ -58,6 +59,14 @@ export interface RtServerOptions {
    * سرور نمی‌داند خطا از کدام لایه آمده، فقط کدش را می‌داند.
    */
   onJoin?: (session: RtSession) => void | Promise<unknown>;
+  /**
+   * ★★ نمونه‌بردارِ اتاق‌ها برای `/metrics` — M5 گام ۵٫۲.
+   *
+   * ⚠️ عمداً تزریق‌پذیر است و سرور به `RoomManager` وابسته نمی‌شود: تست‌های این فایل
+   * اتاقِ واقعی نمی‌سازند، و بدونِ تزریق یا باید وابستگی سنگین شود یا `/metrics` در
+   * تست اصلاً آزموده نشود. بدونش، فقط بخشِ اتاق‌ها خالی می‌مانَد.
+   */
+  sampleRooms?: () => RoomSample[];
 }
 
 export interface RtServer {
@@ -114,6 +123,7 @@ export async function createRtServer({
   heartbeatMs = 25_000,
   logger = createLogger(),
   onJoin = () => {},
+  sampleRooms = () => [],
 }: RtServerOptions): Promise<RtServer> {
   // ★★ **اولین کار، قبل از هر listen** — ADR-031. اگر اینجا نبود، سرور بالا
   //    می‌آمد و تازه اولین اتصال معلوم می‌کرد که با احراز هویتِ ساختگی کار می‌کند.
@@ -127,6 +137,9 @@ export async function createRtServer({
    * نود برگردد — چون لودبالانسر هنوز آن را سالم می‌داند.
    */
   let ready = true;
+  /** شمارنده‌های تجمعیِ دست‌دادن — `/metrics` نرخِ reconnect را از این‌ها می‌سازد. */
+  let handshakesAccepted = 0;
+  let handshakesRejected = 0;
 
   const http = createServer((request, response) => {
     // ── ★ کاوشِ سلامت — بدونِ auth (الزامِ K8s در ADR-006) ──────────
@@ -146,6 +159,23 @@ export async function createRtServer({
       return;
     }
 
+    // ── ★★ `/metrics` — M5 گام ۵٫۲ (ADR-061) ─────────────────────────
+    //
+    // ⚠️⚠️ **عمومی نیست، و این با شبکه اعمال می‌شود نه با توکن:** در
+    //    `docker-compose.prod.yml` این سرویس هیچ پورتی روی هاست publish نمی‌کند و
+    //    nginx هم `/metrics` را پروکسی **نمی‌کند** (فهرستِ `NEVER_PROXIED` در
+    //    `apps/web/src/api-prefixes.ts`). تنها راهِ رسیدن، شبکه‌ی داخلیِ compose است.
+    if (request.url === "/metrics") {
+      const body = renderRealtimeMetrics({
+        rooms: sampleRooms(),
+        connections: wss.clients.size,
+        handshakesAccepted,
+        handshakesRejected,
+      });
+      response.writeHead(200, { "content-type": "text/plain; version=0.0.4" }).end(body);
+      return;
+    }
+
     // این سرور HTTP سرو نمی‌کند؛ فقط جایی برای upgrade است.
     response.writeHead(404).end();
   });
@@ -155,12 +185,14 @@ export async function createRtServer({
     // ⚠️ در حالِ خاموشی هیچ اتصالِ تازه‌ای نمی‌پذیریم — وگرنه کلاینتی وصل می‌شود
     //    که چند لحظه بعد با ۱۰۰۱ بیرون انداخته می‌شود.
     if (!ready) {
+      handshakesRejected += 1;
       rejectHandshake(socket, 503, "shutting down");
       return;
     }
 
     const target = parseTarget(request);
     if (!target) {
+      handshakesRejected += 1;
       // ⚠️ بدونِ upgrade — این کلاینتِ ما نیست.
       rejectHandshake(socket, 404, "not found");
       return;
@@ -171,6 +203,7 @@ export async function createRtServer({
       //    آن رویداد **خودش emit نمی‌شود** — `handleUpgrade` فقط این callback را
       //    صدا می‌زند. با تکیه بر `connection`، هیچ سوکتی «زنده» علامت نمی‌خورد و
       //    اولین تیکِ heartbeat **همه‌ی کلاینت‌ها را می‌کشت**.
+      handshakesAccepted += 1;
       markAlive(ws);
       void authenticate(ws, target, { authority, logger, onJoin });
     });

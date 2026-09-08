@@ -17,6 +17,7 @@ import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
 import { createRoomPresence, type RoomPresence } from "./awareness.ts";
+import { createDocSizeCache, ROOM_MEMORY_RATIO, type RoomSample } from "./metrics.ts";
 import { createLogger, maskSubject, type Logger } from "./log.ts";
 import { mayBroadcastPresence, mayWriteDocument } from "./permission.ts";
 import type { Compactor } from "./persistence/compactor.ts";
@@ -177,6 +178,14 @@ export interface RoomManager {
   /** اتاق‌های **در حافظه** — تستِ تخلیه همین را می‌خواند. */
   readonly size: number;
   has(boardId: string): boolean;
+  /**
+   * ★★ نمونه‌برداری برای `/metrics` — M5 گام ۵٫۱.
+   *
+   * ⚠️ حجمِ سند **کش می‌شود** (پیش‌فرض ۳۰ ثانیه): `encodeStateAsUpdate` روی بوردِ
+   * ۵۰۰۰عنصری چند مگابایت allocate می‌کند و انجامش در هر scrape یعنی خودِ متریک به
+   * منبعِ فشارِ حافظه تبدیل شود — یعنی ابزارِ اندازه‌گیری چیزی را که می‌سنجد خراب کند.
+   */
+  sample(): RoomSample[];
   close(): Promise<void>;
 }
 
@@ -212,6 +221,8 @@ export function createRoomManager({
   logger = createLogger(),
 }: RoomManagerOptions): RoomManager {
   const rooms = new Map<string, LiveRoom>();
+  /** کشِ حجمِ سند برای `/metrics` (گام ۵٫۱) — دلیلش در `sample()`. */
+  const docSizes = createDocSizeCache();
   /** بارگذاری‌های در جریان — دو نشستِ همزمان نباید دو بار سند را بسازند. */
   const loading = new Map<string, Promise<LiveRoom>>();
   /** نوشتن‌های در جریان — خاموشیِ مودبانه منتظرشان می‌مانَد (گام ۴٫۸). */
@@ -220,6 +231,8 @@ export function createRoomManager({
   function evict(room: LiveRoom): void {
     if (room.sessions.size > 0) return;
     rooms.delete(room.boardId);
+    // ⚠️ کشِ اندازه هم پاک شود، وگرنه اتاقِ رفته در حافظه‌ی متریک می‌مانَد.
+    docSizes.forget(room.boardId);
     releaseRoom(room);
     room.doc.destroy();
     logger.info("اتاق از حافظه رفت", { boardId: room.boardId });
@@ -821,6 +834,20 @@ export function createRoomManager({
     },
 
     has: (boardId) => rooms.has(boardId),
+
+    sample() {
+      return [...rooms.values()].map((room) => {
+        const docBytes = docSizes.get(room.boardId, () =>
+          Y.encodeStateAsUpdate(room.doc).byteLength,
+        );
+        return {
+          boardId: room.boardId,
+          sessions: room.sessions.size,
+          docBytes,
+          estimatedResidentBytes: docBytes * ROOM_MEMORY_RATIO,
+        };
+      });
+    },
 
     applyRoleChange(boardId, sub, role) {
       const room = rooms.get(boardId);

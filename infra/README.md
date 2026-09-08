@@ -1,7 +1,7 @@
 # `infra/` — استقرارِ هم‌بوم
 
-> **وضعیت: M5 فاز ۰ تا ۴ تمام است** — ایمیج، CI، و سخت‌سازیِ پیکربندی و راز.
-> رصدپذیری (فاز ۵)، پشتیبان (فاز ۷) و TLS/لبه (فاز ۹) هنوز نیامده‌اند. runbookِ کامل
+> **وضعیت: M5 فاز ۰ تا ۵ تمام است** — ایمیج، CI، سخت‌سازیِ راز، و رصدپذیری.
+> پشتیبان (فاز ۷) و TLS/لبه (فاز ۹) هنوز نیامده‌اند. runbookِ کامل
 > کارِ گامِ ۱۰٫۱ است؛ این فایل امروز فقط «چطور بالا می‌آید» را می‌گوید.
 
 | مسیر | چیست |
@@ -11,6 +11,7 @@
 | [`docker/api.Dockerfile`](docker/api.Dockerfile) · [`realtime`](docker/realtime.Dockerfile) · [`web`](docker/web.Dockerfile) | ایمیج‌ها |
 | [`nginx/`](nginx/) | reverse proxy — ⚠️ `api-locations.conf` **تولیدشده** است |
 | [`sql/`](sql/) | EXTENSIONهای اولیه + migrationهای مشترکِ realtime |
+| ★ [`docs/observability.md`](../docs/observability.md) | `/metrics`، آستانه‌های هشدار، و `/healthz` در برابرِ `/readyz` |
 
 ---
 
@@ -122,7 +123,5 @@ pnpm infra:check-proxy -- --write   # بازتولید بعد از افزودن�
 | چه چیزی | کجا |
 |---|---|
 | TLS و سقفِ نرخِ لبه | فاز ۹ — تصمیمِ «گواهی از آروان یا ACME» عمداً باز است |
-| `/metrics` و گیجِ حافظه‌ی اتاق | فاز ۵ ([ADR-061](../ARCHITECTURE_DECISIONS.md#adr-061)) |
-| health endpointِ `apps/realtime` | فاز ۵٫۳ — امروز healthcheckِ کانتینر فقط **listen بودنِ پورت** را می‌سنجد |
 | پشتیبان و مشقِ بازیابی | فاز ۷ |
 | ⚠️⚠️ **فرستنده‌ی واقعیِ پیامک** | ⛔ بلاک‌کننده‌ی launch — از فاز ۴، `APP_ENV=production` بدونِ آن **بالا نمی‌آید**. انتخابِ سرویس تصمیمِ مالک است |

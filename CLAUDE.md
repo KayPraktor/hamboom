@@ -9,7 +9,7 @@
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۲ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۴ تمام**، قدمِ بعد فاز ۵ |
+| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۵ تمام**، قدمِ بعد فاز ۶ |
 | ★ [infra/README.md](infra/README.md) | **چطور استقرار می‌شود** — چیدمان، `docker-compose.prod.yml`، کارهای اپراتور |
 | [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | بایگانیِ M4 (`billing`، تمام‌شده) — مرجعِ تاریخی |
 | ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
@@ -89,6 +89,7 @@ pnpm billing:quota           # ★★ فاز ۶: ۶ چک — سقف، همزما
 pnpm billing:probe-reconcile # ★★ فاز ۷: ۹ چک — callbackِ گم‌شده، یتیم، فرزندخواندگی، دو sweepِ هم‌زمان
 pnpm billing:reconcile       # ★ ابزارِ اپراتور (نه سنجه): همان کدِ پلاگین، دستی
 pnpm infra:probe-lock        # ★★ M5 فاز ۱: ۴ چک — انحصار، مرگِ نشست، تله‌ی اتصالِ استخر
+pnpm infra:probe-metrics     # ★★ M5 فاز ۵: ۳ چک — ضریبِ حافظه با heapِ واقعی + هر دو /metrics زنده
 pnpm infra:check-proxy       # ★★ M5 فاز ۲: مسیرهای api ↔ پروکسیِ dev ↔ nginx — **داخلِ verify هم هست**
 pnpm deps:check              # ★★ M5 فاز ۳٫۶: هر importِ bare اعلام شده؟ — **داخلِ verify هم هست**
 pnpm openapi:check           # ★★ M5 فاز ۳٫۳: docs/api.md + openapi.json کهنه نیستند — **داخلِ verify**
@@ -249,9 +250,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۴ تمام** (۱۴۰۵/۰۶/۱۸).
+- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۵ تمام** (۱۴۰۵/۰۶/۱۸).
   TODO در [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
-  **قدمِ بعد: فاز ۵ (رصدپذیریِ حداقلی).**
+  **قدمِ بعد: فاز ۶ (انتخابِ رهبر و درستیِ چندنودی).**
   - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
     **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
     ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).
@@ -287,8 +288,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   `pnpm infra:probe-lock` (۴ چک) دو فرضِ ADR-060 را **اثبات** کرد: مرگِ نشست قفل را خودکار
   آزاد می‌کند · و آزادسازی روی اتصالِ **دیگرِ** استخر `false` می‌دهد و قفل می‌مانَد.
 
-  ⚠️ **دو یافته برای فاز ۵:** `apps/realtime` **هیچ health endpointی ندارد** · `/readyz`ِ api
-  با دیتابیسِ خاموش **۸ ثانیه** طول می‌کشد و **هیچ لاگی از علت نمی‌دهد**.
+  ⚠️⚠️ **و یکی از دو «یافته»ی این فاز بعداً غلط از آب درآمد:** «`apps/realtime` هیچ health
+  endpointی ندارد» — فاز ۵ با درخواستِ واقعی سنجید و هر دو مسیر از M2 وجود داشتند. یافته‌ی
+  دوم (`/readyz`ِ api علتش را نمی‌گوید) **درست** بود، ولی عددش نه: ۲۱ ثانیه، نه ۸.
 
   ### ★★ فاز ۲ (ایمیجِ production) — چهار نقص که فقط **اجرای واقعی** نشانشان داد
 
@@ -372,6 +374,28 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   وجودش تخلف است) · و `BoardAuthority.developmentOnly` **اختیاری** بود در حالی که همان پرچم
   در دو پورتِ دیگر اجباری است ⇒ fail-open. اجباری شد — و بدلِ تستِ خودِ آن گیت دقیقاً همان
   اشتباه را داشت.
+
+  ### ✅ فاز ۵ (رصدپذیری) — تریگرِ ADR-048 حالا **اندازه‌پذیر** است
+
+  `/metrics` روی هر دو سرور ([`observability.md`](docs/observability.md) آستانه‌ها را دارد):
+  ۱۲ متریکِ realtime · ۱۵ متریکِ api. ★★ مهم‌ترینش
+  **`hamboom_rt_adr048_trigger_ratio`** است — خودِ تریگر، از قبل حساب‌شده، تا فرمولِ تصمیم
+  در داشبوردِ کسی کهنه نشود. ⚠️ **غیرعمومی‌بودنش شبکه‌ای است نه توکنی** (بدونِ پورتِ هاست،
+  و nginx نمی‌بَردش).
+
+  ⚠️ **یک عدد تخمین است و اسمش هم می‌گوید:** حافظه‌ی مقیمِ اتاق = حجمِ سند × **۲۰×**
+  (اندازه‌گیریِ `realtime-baseline` روی اتاقِ واقعی). `pnpm infra:probe-metrics` مستقلاً
+  ~۱۱–۱۳× می‌سنجد — تناقض نیست: سندِ تک‌تراکنشی ساختارِ داخلیِ کمتری دارد ⇒ **۲۰× دست‌بالا
+  می‌گیرد**، که برای تریگرِ ظرفیت جهتِ **امن** است.
+
+  ⚠️⚠️ **و یک یافته‌ی فاز ۱ غلط بود:** `apps/realtime` **health endpoint دارد** (از M2،
+  `/healthz`+`/readyz`) ⇒ healthcheckِ ضعیفِ TCPیِ کانتینر به `/healthz` عوض شد. ولی دو
+  نقصِ **واقعی** در `/readyz`ِ api پیدا شد: علت را می‌بلعید، و با میزبانِ **غیرقابلِ دسترس**
+  **۲۱ ثانیه** طول می‌کشید (با *refused* فقط ۸ms) ⇒ `connectionTimeoutMillis`.
+
+  ★ **الگوی «استثنای صریح»:** `/metrics` دو گیت را قرمز کرد و هر دو حق داشتند. راهِ سوم:
+  استثنای نام‌دار با دلیل (`NEVER_PROXIED` · `NOT_IN_PUBLIC_SPEC`) — و **خودِ استثناها
+  آزموده می‌شوند**؛ استثنای مرده قرمز می‌شود.
 
   ### ✅⏳ وضعیتِ حساب‌ها (۱۴۰۵/۰۶/۱۷)
 

@@ -139,6 +139,8 @@ async function main(): Promise<void> {
     heartbeatMs: env.RT_HEARTBEAT_INTERVAL_MS,
     logger,
     onJoin: (session) => rooms.join(session),
+    // ★★ گیجِ حافظه‌ی اتاق (گام ۵٫۱) — بدونِ این، تریگرِ ADR-048 اندازه‌ناپذیر است.
+    sampleRooms: () => rooms.sample(),
   });
 
   // ★ ترتیبِ خاموشی عمداً **اینجا نیست** — در [`shutdown.ts`](./shutdown.ts) است

@@ -45,6 +45,15 @@ export interface DbPoolConfig {
   statementTimeoutMs?: number;
   /** ★ سقفِ **بی‌کاریِ داخلِ تراکنش** — نگهبانِ واقعیِ M4 (پایین). */
   idleInTransactionTimeoutMs?: number;
+  /**
+   * ★★ سقفِ **برقراریِ اتصال** — M5 گام ۵٫۳، از یک اندازه‌گیری آمد نه از سلیقه.
+   *
+   * ⚠️ بدونِ این، وقتی میزبانِ دیتابیس **غیرقابلِ دسترس** باشد (نه «رد شده»)، `pool.query`
+   * منتظرِ تایم‌اوتِ TCPِ سیستم‌عامل می‌مانَد: `/readyz` اندازه‌گیری شد و **۲۱ ثانیه** طول
+   * کشید. یک probeِ استقرار که ۲۱ ثانیه جواب ندهد، عملاً یعنی نودِ سالم هم unhealthy
+   * علامت می‌خورد. (با اتصالِ **refused** مسئله‌ای نبود: ۸ میلی‌ثانیه.)
+   */
+  connectionTimeoutMs?: number;
 }
 
 /**
@@ -63,6 +72,8 @@ export interface DbPoolConfig {
  */
 const DEFAULT_STATEMENT_TIMEOUT_MS = 15_000;
 const DEFAULT_IDLE_IN_TRANSACTION_TIMEOUT_MS = 30_000;
+/** ⚠️ باید از سقفِ probeِ استقرار کوتاه‌تر باشد. دلیلِ عددش در `connectionTimeoutMs`. */
+const DEFAULT_CONNECTION_TIMEOUT_MS = 5_000;
 
 /** استخرِ `pg` می‌سازد و کوئرسِ P5 را تضمین می‌کند. */
 export function createDbPool(config: DbPoolConfig): pg.Pool {
@@ -74,6 +85,7 @@ export function createDbPool(config: DbPoolConfig): pg.Pool {
     statement_timeout: config.statementTimeoutMs ?? DEFAULT_STATEMENT_TIMEOUT_MS,
     idle_in_transaction_session_timeout:
       config.idleInTransactionTimeoutMs ?? DEFAULT_IDLE_IN_TRANSACTION_TIMEOUT_MS,
+    connectionTimeoutMillis: config.connectionTimeoutMs ?? DEFAULT_CONNECTION_TIMEOUT_MS,
   });
 }
 

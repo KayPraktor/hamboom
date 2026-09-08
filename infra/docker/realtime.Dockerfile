@@ -26,11 +26,17 @@ COPY --from=deps --chown=node:node /app /app
 USER node
 EXPOSE 3001
 
-# ⚠️⚠️ **این فقط می‌گوید پورت listen است، نه اینکه سرور سالم است.**
-#    `apps/realtime` هیچ health endpointی ندارد — یافته‌ی فاز ۱، و کارِ گامِ ۵٫۳.
-#    تا آن‌وقت همین حداقل بهتر از هیچ است: یک فرایندِ مرده را compose می‌بیند.
+# ★★ **اصلاحِ یک یافته‌ی غلطِ فاز ۱.**
+#
+# ⚠️ فاز ۱ ثبت کرده بود «`apps/realtime` هیچ health endpointی ندارد» و به همین دلیل
+# این‌جا یک چکِ TCPی گذاشته شد که فقط listen بودنِ پورت را می‌سنجید. فاز ۵ با یک
+# درخواستِ واقعی سنجید: `/healthz` → **۲۰۰ `ok`** و `/readyz` → **۲۰۰ `ready`** — هر دو
+# از M2 وجود داشته‌اند و در خاموشیِ مودبانه هم درست رفتار می‌کنند.
+#
+# ★ فرقش واقعی است: چکِ TCPی یک فرایندِ **قفل‌شده** را سالم می‌دید، چون سوکتِ listen
+# هنوز باز بود.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "const s=require('node:net').connect(Number(process.env.RT_PORT||3001),'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.RT_PORT||3001)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # ★ بدونِ pnpm در runtime — ورودی مستقیماً همان فایلِ .ts است (ADR-058).
 CMD ["node", "apps/realtime/src/main.ts"]

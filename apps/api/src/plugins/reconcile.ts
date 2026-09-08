@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type pg from "pg";
 
 import type { ApiConfig } from "../config.ts";
+import type { ReconcileRecorder } from "../metrics.ts";
 import { runReconcile, type ReconcilePolicy } from "../services/reconcile.ts";
 
 /**
@@ -24,6 +25,8 @@ export interface ReconcileJobDeps {
   pool: pg.Pool;
   gateway: PaymentGateway;
   config: ApiConfig;
+  /** ★ اختیاری — بدونش پلاگین دقیقاً مثلِ قبل کار می‌کند (M5 گام ۵٫۲). */
+  recorder?: ReconcileRecorder;
 }
 
 /** سیاستِ اجرا از config — تنها جایی که این متغیرها خوانده می‌شوند. */
@@ -64,6 +67,9 @@ export function registerReconcileJob(app: FastifyInstance, deps: ReconcileJobDep
     running = true;
     try {
       const report = await runReconcile({ pool: deps.pool, gateway: deps.gateway }, policy);
+      // ★ پیش از هر شاخه‌ی لاگ ضبط می‌شود: یک اجرای «بدونِ تغییر» هم باید در
+      //   `runs_total` دیده شود، وگرنه «آشتی‌دهی اصلاً اجرا شده؟» جواب ندارد.
+      deps.recorder?.record(report);
       if (report.activated > 0 || report.expired > 0 || report.subscriptionsEnded > 0) {
         app.log.info(
           {

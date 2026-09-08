@@ -56,6 +56,18 @@ describe("سندِ OpenAPI 3.1", () => {
   });
 });
 
+/**
+ * ★★ مسیرهایی که **عمداً** در سندِ عمومیِ API نیستند — M5 گام ۵٫۲.
+ *
+ * ⚠️ `GET /openapi.json` و `GET /api/v1/docs` **عمومی**اند. مستندکردنِ یک مسیرِ
+ * عملیاتی در آن سند، یعنی تبلیغِ چیزی که [ADR-061](../../../ARCHITECTURE_DECISIONS.md#adr-061)
+ * گفته نباید عمومی باشد. ولی «فقط از فهرست بیرونش بگذار» هم غلط است — آن‌وقت گارد
+ * ضعیف می‌شود. پس مثلِ `NEVER_PROXIED`: استثنای **صریح**، با دلیل.
+ */
+const NOT_IN_PUBLIC_SPEC: Record<string, string> = {
+  "GET /metrics": "ADR-061: رصدپذیری عمومی نیست؛ فقط از شبکه‌ی داخلیِ compose",
+};
+
 describe("★ گاردِ دریفتِ OpenAPI — هر مسیرِ ثبت‌شده مستند است", () => {
   it("routeهای ثبت‌شده و documentedRoutes دقیقاً یکی‌اند", async () => {
     const app = await buildApp({
@@ -64,7 +76,13 @@ describe("★ گاردِ دریفتِ OpenAPI — هر مسیرِ ثبت‌شد�
     });
     const registered = new Set(app.registeredRoutes);
     const documented = documentedRoutes();
-    const undocumented = [...registered].filter((r) => !documented.has(r)).sort();
+    // ⚠️ استثنا باید **زنده** بماند: اگر مسیرش حذف شود، این‌جا قرمز می‌شود.
+    for (const route of Object.keys(NOT_IN_PUBLIC_SPEC)) {
+      expect(registered, `استثنای مرده: ${route}`).toContain(route);
+    }
+    const undocumented = [...registered]
+      .filter((r) => !documented.has(r) && !(r in NOT_IN_PUBLIC_SPEC))
+      .sort();
     const unregistered = [...documented].filter((r) => !registered.has(r)).sort();
     expect(undocumented, "مسیرهای ثبت‌شده‌ی بی‌سند").toEqual([]);
     expect(unregistered, "مسیرهای مستندِ ثبت‌نشده").toEqual([]);

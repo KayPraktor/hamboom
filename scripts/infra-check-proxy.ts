@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 
 import { buildApp } from "../apps/api/src/app.ts";
 import { fakeDb, TEST_CONFIG } from "../apps/api/src/test-fixtures.ts";
-import { API_PREFIXES } from "../apps/web/src/api-prefixes.ts";
+import { API_PREFIXES, NEVER_PROXIED } from "../apps/web/src/api-prefixes.ts";
 
 const NGINX_CONF = fileURLToPath(new URL("../infra/nginx/api-locations.conf", import.meta.url));
 
@@ -80,12 +80,25 @@ interface Problem {
 export function checkPrefixesAgainstRoutes(
   prefixes: readonly string[],
   routes: readonly string[],
+  excluded: readonly string[] = [],
 ): Problem[] {
   const problems: Problem[] = [];
   // مسیرها به شکلِ «METHOD /url» می‌آیند؛ فقط بخشِ url مهم است.
   const urls = [...new Set(routes.map((r) => r.slice(r.indexOf(" ") + 1)))].sort();
 
-  const uncovered = urls.filter((u) => !prefixes.some((p) => covers(p, u)));
+  // ★ مسیرهای **عمداً** مستثنا (مثلِ `/metrics`) نه پوشیده لازم‌اند و نه تخلف.
+  //   ⚠️ ولی اگر روزی مسیرشان حذف شود، پایین به‌عنوانِ «استثنای مرده» گرفته می‌شوند.
+  const deadExclusions = excluded.filter((e) => !urls.some((u) => covers(e, u)));
+  if (deadExclusions.length > 0) {
+    problems.push({
+      claim: "استثنای بدونِ مسیر",
+      detail: `${deadExclusions.join("، ")} در NEVER_PROXIED است ولی هیچ مسیری ندارد`,
+    });
+  }
+
+  const uncovered = urls.filter(
+    (u) => !prefixes.some((p) => covers(p, u)) && !excluded.some((e) => covers(e, u)),
+  );
   if (uncovered.length > 0) {
     problems.push({
       claim: "مسیرِ ثبت‌شده‌ای که پروکسی نمی‌بیندش",
@@ -140,6 +153,16 @@ function selfTest(): boolean {
     ok: checkPrefixesAgainstRoutes(["/api/v1"], ["GET /api/v1/docs"]).length === 0,
   });
   cases.push({
+    name: "★ مسیرِ عمداً مستثنا تخلف شمرده نمی‌شود",
+    ok: checkPrefixesAgainstRoutes(["/auth"], ["GET /auth/x", "GET /metrics"], ["/metrics"]).length === 0,
+  });
+  cases.push({
+    name: "★★ ولی استثنای **مرده** گرفته می‌شود (مسیرش حذف شده)",
+    ok: checkPrefixesAgainstRoutes(["/auth"], ["GET /auth/x"], ["/metrics"]).some((p) =>
+      p.claim.includes("استثنا"),
+    ),
+  });
+  cases.push({
     name: "دریفتِ فایلِ nginx گرفته می‌شود",
     ok: checkNginxFile(renderNginxLocations(["/auth"]), renderNginxLocations(["/auth", "/me"]))
       .length===1,
@@ -176,12 +199,16 @@ async function main(): Promise<void> {
   }
 
   const actual = readFileSync(NGINX_CONF, "utf8").replace(/\r\n/g, "\n");
+  const excluded = NEVER_PROXIED.map((e) => e.prefix);
   const problems = [
-    ...checkPrefixesAgainstRoutes(API_PREFIXES, routes),
+    ...checkPrefixesAgainstRoutes(API_PREFIXES, routes, excluded),
     ...checkNginxFile(expected, actual),
   ];
 
-  console.log(`مسیرهای ثبت‌شده: ${routes.length} · پیشوندها: ${API_PREFIXES.length}`);
+  console.log(
+    `مسیرهای ثبت‌شده: ${routes.length} · پیشوندها: ${API_PREFIXES.length} · ` +
+      `مستثنای عمدی: ${excluded.length} (${excluded.join("، ")})`,
+  );
   if (problems.length > 0) {
     for (const p of problems) console.error(`✖ ${p.claim}\n    ${p.detail}`);
     console.error("\n✖ پروکسی با api نمی‌خوانَد.");

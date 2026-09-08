@@ -13,6 +13,7 @@ import * as Y from "yjs";
 import { describe, expect, it, vi } from "vitest";
 
 import { createLogger } from "./log.ts";
+import { ROOM_MEMORY_RATIO } from "./metrics.ts";
 import { BUS_KINDS, MemoryBoardBus } from "./pubsub/board-bus.ts";
 import { createRoomManager, type RoomLimits } from "./room.ts";
 import type { RtSession } from "./server.ts";
@@ -472,5 +473,42 @@ describe("★★ F-2 — نودی که دیرتر اتاق را باز می‌ک
 
     await first.close();
     await second.close();
+  });
+});
+
+/**
+ * گیجِ حافظه‌ی اتاق — M5 گام ۵٫۱.
+ *
+ * ⚠️ بدونِ این عدد، تریگرِ [ADR-048](../../../ARCHITECTURE_DECISIONS.md#adr-048)
+ * اندازه‌ناپذیر است. این‌جا خودِ **مسیرِ داده** آزموده می‌شود؛ درستیِ *ضریب* کارِ
+ * `pnpm infra:probe-metrics` است که با heapِ واقعی می‌سنجدش.
+ */
+describe("★ نمونه‌برداریِ متریک", () => {
+  it("اتاقِ زنده با حجمِ سندِ ناصفر و تخمینِ متناسب گزارش می‌شود", async () => {
+    const { rooms } = manager(seededStore());
+    const { session: s } = session();
+    await rooms.join(s);
+
+    const [sample, ...rest] = rooms.sample();
+    expect(rest).toHaveLength(0);
+    expect(sample?.boardId).toBe(BOARD);
+    expect(sample?.sessions).toBe(1);
+    expect(sample?.docBytes).toBeGreaterThan(0);
+    // ★ تخمین دقیقاً ضریب × سند است — نه یک عددِ مستقل که بتواند واگرا شود.
+    expect(sample?.estimatedResidentBytes).toBe((sample?.docBytes ?? 0) * ROOM_MEMORY_RATIO);
+
+    await rooms.close();
+  });
+
+  it("★★ اتاقی که از حافظه رفته، در متریک هم نمی‌مانَد", async () => {
+    // ⚠️ کشِ حجمِ سند اگر پاک نشود، یک اتاقِ تخلیه‌شده تا ابد در عددِ حافظه می‌مانَد
+    //    و ظرفیت را بیشتر از واقع نشان می‌دهد.
+    const { rooms } = manager(seededStore());
+    const { session: s } = session();
+    await rooms.join(s);
+    expect(rooms.sample()).toHaveLength(1);
+
+    await rooms.close();
+    expect(rooms.sample()).toHaveLength(0);
   });
 });

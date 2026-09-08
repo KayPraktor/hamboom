@@ -15,6 +15,11 @@ import { loadApiConfig, secretBytes, type ApiConfig } from "./config.ts";
 import { registerErrorHandler } from "./errors.ts";
 import { registerIdempotency } from "./idempotency.ts";
 import { loggerOptions } from "./logger.ts";
+import {
+  createReconcileRecorder,
+  createStalePendingCounter,
+  renderApiMetrics,
+} from "./metrics.ts";
 import { createDbPool } from "./plugins/db.ts";
 import { createPaymentGateway } from "./plugins/payment.ts";
 import { registerReconcileJob } from "./plugins/reconcile.ts";
@@ -106,14 +111,55 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }
 
   // ── سلامت ──────────────────────────────────────────────────────────
+  //
+  // ⚠️ دو چیزِ متفاوت‌اند: `/healthz` = «زنده‌ام» · `/readyz` = «ترافیک بده».
   app.get("/healthz", () => ({ status: "ok" }));
   app.get("/readyz", async (_req, reply) => {
     try {
       await pool.query("SELECT 1");
       return { status: "ready" };
-    } catch {
+    } catch (error) {
+      /**
+       * ★★ **علت لاگ می‌شود** — M5 گام ۵٫۳.
+       *
+       * ⚠️ تا امروز این `catch` خطا را کاملاً می‌بلعید: یک نودِ ناسالم فقط ۵۰۳ می‌داد و
+       * **هیچ سرنخی** از اینکه چرا. در اندازه‌گیریِ فاز ۵ با میزبانِ غیرقابلِ دسترس، ۲۱
+       * ثانیه طول کشید و لاگ **یک کلمه** هم نگفت.
+       *
+       * ⚠️ فقط `message` می‌رود، نه خودِ خطا: رشته‌ی اتصال (با **رمزِ عبور**) در
+       * فیلدهای دیگرِ خطای `pg` می‌تواند باشد و این‌جا P7 هم صدق می‌کند.
+       */
+      app.log.warn(
+        { reason: String((error as Error).message) },
+        "readyz: دیتابیس پاسخ نداد — این نود از لودبالانسر خارج می‌شود",
+      );
       return reply.code(503).send({ status: "not_ready" });
     }
+  });
+
+  // ── ★★ `/metrics` — M5 گام ۵٫۲ (ADR-061) ───────────────────────────
+  //
+  // ⚠️⚠️ **عمومی نیست، و کنترلش شبکه‌ای است نه توکنی:** این سرویس در
+  //    `docker-compose.prod.yml` هیچ پورتی روی هاست ندارد، و nginx مسیرِ `/metrics` را
+  //    **پروکسی نمی‌کند** — در `apps/web/src/api-prefixes.ts` صریحاً در `NEVER_PROXIED`
+  //    ثبت شده تا گیتِ پروکسی هم آن را «جاافتاده» نشمارد و هم بیرون نبَرَدش.
+  const reconcileRecorder = createReconcileRecorder();
+  const stalePending = createStalePendingCounter(pool, config.BILLING_PENDING_STALE_MINUTES);
+  app.get("/metrics", (_req, reply) => {
+    // ⚠️ تازه‌سازی **در پس‌زمینه**؛ scrape هرگز منتظرِ دیتابیس نمی‌مانَد.
+    stalePending.refresh();
+    return reply.type("text/plain; version=0.0.4").send(
+      renderApiMetrics({
+        pool: {
+          totalCount: pool.totalCount,
+          idleCount: pool.idleCount,
+          waitingCount: pool.waitingCount,
+        },
+        poolMax: config.DATABASE_POOL_MAX,
+        reconcile: reconcileRecorder.snapshot(),
+        stalePending: stalePending.value(),
+      }),
+    );
   });
 
   // ── مستندات (عمومی، بدونِ احراز): OpenAPI 3.1 + مرورگرِ سبک ──────────
@@ -214,7 +260,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   // ── آشتی‌دهیِ بازه‌ای (M4 فاز ۷) — **پیش‌فرض خاموش** ─────────────────
   // ★ بعد از routeها ثبت می‌شود چون همان درگاهِ حل‌شده را می‌گیرد؛ یک درگاهِ دوم یعنی
   //   احتمالِ اینکه sweep با درگاهی حرف بزند که پرداخت را نساخته است.
-  registerReconcileJob(app, { pool, gateway: resolvedGateway, config });
+  // ★ ضبط‌کننده تزریق می‌شود تا `/metrics` شمارنده‌های **تجمعی** داشته باشد؛
+  //   یک gauge که فقط آخرین اجرا را نشان دهد، `activated` را بینِ دو scrape گم می‌کند.
+  registerReconcileJob(app, {
+    pool,
+    gateway: resolvedGateway,
+    config,
+    recorder: reconcileRecorder,
+  });
 
   return app;
 }
