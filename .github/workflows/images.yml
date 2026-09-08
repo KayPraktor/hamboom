@@ -9,7 +9,7 @@
 # قاعده‌اش را گذاشته. ⇒ در TODO به‌عنوانِ **M5-D10** ثبت شد.
 #
 # پس کارِ امروزِ این job یک ادعای کوچک‌تر ولی واقعی است: **Dockerfileها هنوز build
-# می‌شوند و گاردِ بوت هنوز داخلِ ایمیجِ ساخته‌شده زنده است.**
+# می‌شوند و گاردهای بوت هنوز داخلِ ایمیجِ ساخته‌شده زنده‌اند.**
 
 name: images
 
@@ -33,28 +33,53 @@ jobs:
       - name: build — web
         run: docker build -f infra/docker/web.Dockerfile -t hamboom/web:ci .
 
-      # ★★ گاردِ [ADR-031](../../ARCHITECTURE_DECISIONS.md#adr-031)/[ADR-049](../../ARCHITECTURE_DECISIONS.md#adr-049)
-      #    باید **داخلِ خودِ ایمیج** زنده باشد، نه فقط در تستِ واحد: `APP_ENV=production`
-      #    با `PAYMENT_PROVIDER=mock` نباید بالا بیاید، وگرنه هر اشتراکی رایگان فعال می‌شود.
-      #    ⚠️ بدونِ دیتابیس اجرا می‌شود و همین درست است — گیت **پیش از** هر کوئری می‌شکند.
-      - name: گاردِ بوت داخلِ ایمیج زنده است
+      # ★★ گاردهای بوت باید **داخلِ خودِ ایمیج** زنده باشند، نه فقط در تستِ واحد.
+      #    ⚠️ بدونِ دیتابیس اجرا می‌شوند و همین درست است — هر دو **پیش از** هر کوئری می‌شکنند.
+      #
+      # ⚠️⚠️ **این چک عمداً به نامِ خطا حساس است، و همان حساسیت یک‌بار قرمزش کرد.**
+      #    نگارشِ اول دنبالِ `GatewayNotAllowedError` می‌گشت؛ فاز ۴ گیتِ **پیامک** را جلوتر
+      #    گذاشت و این مرحله در CI افتاد با پیامِ «بالا نیامد، ولی به دلیلِ دیگری» — دقیقاً
+      #    کاری که باید می‌کرد: یک شکستِ دیگر را به‌جای اثباتِ گیت **قبول نکرد**.
+      #    ⊕ گیتِ درگاه حالا در production هرگز **اول** نمی‌شکند (پیامک قبلش می‌ایستد)؛
+      #    اثباتش در [`app.test.ts`](../../apps/api/src/app.test.ts) است.
+      - name: گاردهای بوت داخلِ ایمیج زنده‌اند
         run: |
-          if docker run --rm \
-            -e APP_ENV=production -e PAYMENT_PROVIDER=mock \
-            -e DATABASE_URL=postgres://u:p@nowhere:5432/db \
-            -e JWT_SECRET=ci_dummy_secret_at_least_thirty_two_chars \
-            -e S3_ENDPOINT=http://nowhere:9000 -e S3_ACCESS_KEY_ID=x -e S3_SECRET_ACCESS_KEY=y \
-            -e S3_BUCKET_ASSETS=a -e S3_BUCKET_SNAPSHOTS=b \
-            -e ZARINPAL_CALLBACK_URL=http://example.test/billing/zarinpal/callback \
-            -e WEB_BASE_URL=http://example.test \
-            hamboom/api:ci > gate.log 2>&1; then
-            echo "✖ ایمیج با production + mock بالا آمد — گیت مرده است."
-            cat gate.log
-            exit 1
-          fi
-          grep -q GatewayNotAllowedError gate.log || {
-            echo "✖ ایمیج بالا نیامد، ولی به دلیلِ **دیگری**. گیت اثبات نشد:"; cat gate.log; exit 1; }
-          echo "✔ production + mock ⇒ بوت رد شد (GatewayNotAllowedError)"
+          BASE_ENV=(
+            -e DATABASE_URL=postgres://u:p@nowhere:5432/db
+            -e S3_ENDPOINT=http://nowhere:9000
+            -e S3_ACCESS_KEY_ID=x
+            -e S3_SECRET_ACCESS_KEY=y
+            -e S3_BUCKET_ASSETS=a
+            -e S3_BUCKET_SNAPSHOTS=b
+            -e ZARINPAL_CALLBACK_URL=http://example.test/billing/zarinpal/callback
+            -e WEB_BASE_URL=http://example.test
+            -e APP_ENV=production
+            -e PAYMENT_PROVIDER=zarinpal
+            -e ZARINPAL_MERCHANT_ID=00000000-0000-0000-0000-000000000000
+          )
+
+          assert_refused() {
+            local name="$1" expected="$2" secret="$3"
+            if docker run --rm "${BASE_ENV[@]}" -e JWT_SECRET="$secret" hamboom/api:ci > gate.log 2>&1; then
+              echo "✖ $name: ایمیج بالا آمد — گیت مرده است."
+              cat gate.log
+              exit 1
+            fi
+            if ! grep -q "$expected" gate.log; then
+              echo "✖ $name: بالا نیامد، ولی به دلیلِ **دیگری**؛ انتظار: $expected"
+              cat gate.log
+              exit 1
+            fi
+            echo "✔ $name ⇒ بوت رد شد ($expected)"
+          }
+
+          # ۱. رازِ سالم ⇒ گاردِ پیکربندی رد می‌شود و **پیامک** اولین چیزی است که می‌ایستد.
+          assert_refused "پیامکِ ساختگی در production" \
+            SmsProviderNotAllowedError 9f3a7c1e4b8d2065af13ce97b402d85f
+
+          # ۲. رازِ ضعیف ⇒ گاردِ پیکربندی **پیش از** همه می‌شکند (پیش‌فرضِ واقعیِ .env.example).
+          assert_refused "رازِ ضعیف در production" \
+            ProductionConfigError change_me_dev_only_jwt_secret_at_least_32_chars_long
 
       - name: حجمِ ایمیج‌ها
         run: |
