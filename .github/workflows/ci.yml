@@ -1,0 +1,112 @@
+# CI هم‌بوم — M5 فاز ۳.
+#
+# ── دو job، و دلیلِ دو تا بودنشان ───────────────────────────────────────────
+#
+# `verify`   — همان **یک** دستورِ `pnpm verify`. هیچ گیتی این‌جا کپی نمی‌شود.
+# `services` — چیزهایی که **دیتابیسِ زنده** می‌خواهند و به همین دلیل بیرونِ verifyاند.
+#
+# ★★ **هیچ گیتی در YAML بازنویسی نمی‌شود.** هر مرحله یک اسکریپتِ `package.json` است که
+# روی ماشینِ توسعه هم دقیقاً همان‌طور اجرا می‌شود. اگر گیتی این‌جا کپی می‌شد، همان لحظه
+# دو تعریف پیدا می‌کرد و یکی‌شان بی‌صدا کهنه می‌شد.
+#
+# ★ `services` **از `docker-compose.yml`ِ خودِ ریپو** استفاده می‌کند، نه از یک تعریفِ
+# موازیِ `services:`ِ گیت‌هاب. دلیلش P3 است: «`docker compose up` باید کافی باشد» — پس
+# CI باید دقیقاً همان مسیر را برود که توسعه‌دهنده می‌رود.
+#
+# ★ و `.env` از `.env.example` ساخته می‌شود، که یعنی **`.env.example` هم آزموده می‌شود**:
+# اگر کسی متغیری اضافه کند و آن‌جا ننویسدش، این job قرمز می‌شود.
+#
+# ── ⚠️ گام ۳٫۴: چیزهایی که در CI اجرا **نمی‌شوند** و جبرانشان ───────────────
+#
+# | گیت | چرا نمی‌شود | جبران |
+# |---|---|---|
+# | E2Eی مرورگر (`test:e2e`) | مرورگرِ واقعی + بومِ GPU لازم دارد؛ در همین محیط هم screenshot تایم‌اوت می‌کند | دستی پیش از هر تحویل — و رفتارِ بوم در فاز ۸/۹ی M3 در مرورگر اثبات شد |
+# | `billing:probe-gateway` | **اینترنت + پرداختِ دستیِ انسان** روی سندباکسِ زرین‌پال | دستی، و قراردادِ درگاه در M4 فاز ۱ با تماسِ زنده قفل شد |
+# | `rt:bench` | عددش machine-specific است؛ در CI یعنی یک عددِ بی‌معنا که قرمز/سبزش تصادفی است | دستی، و در [`docs/realtime-baseline.md`](../../docs/realtime-baseline.md) ثبت است |
+# | مشقِ بازیابیِ پشتیبان | هنوز ساخته نشده | **فاز ۷** — و آن‌جا گیت می‌شود |
+#
+# ⚠️ **و یک وابستگیِ بیرونی که هنوز اثبات نشده:** خودِ GitHub Actions از این حساب/شبکه.
+# این فایل عمداً هیچ‌چیزِ مخصوصِ گیت‌هاب ندارد جز نحوِ YAML — همه‌ی مراحل `pnpm …`اند، پس
+# اگر لازم شد روی هر runnerِ دیگری هم منتقل می‌شود.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# اجرای قبلیِ همان شاخه لغو شود — صفِ CI برای یک توسعه‌دهنده‌ی تک‌نفره بی‌معناست.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: pnpm verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # ★ تنها گیتِ قابلِ استناد. دلیلش در صدرِ scripts/verify.mjs.
+      - run: pnpm verify
+
+  services:
+    name: سنجه‌های زیرساختِ زنده
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # ⚠️ پورت‌ها این‌جا پیش‌فرضِ PLAN اند (۵۴۳۲/۶۳۷۹/۹۰۰۰). روی ماشینِ توسعه‌ی ویندوز
+      #    جابه‌جا شده‌اند چون رنجِ excludedِ ویندوز آن‌ها را می‌گیرد — یک تله‌ی محیطی که
+      #    runnerِ لینوکسی ندارد.
+      - name: ساختِ .env از .env.example
+        run: cp .env.example .env
+      - name: بالاآوردنِ postgres + redis + minio
+        run: pnpm db:up
+      - name: انتظار برای آمادگیِ سرویس‌ها
+        run: node scripts/ci-wait-services.mjs
+
+      - name: migration
+        run: pnpm db:migrate
+      - name: db:smoke
+        run: pnpm db:smoke
+      - name: db:fk-test
+        run: pnpm db:fk-test
+      - name: db:store-test
+        run: pnpm db:store-test
+      - name: storage + assets
+        run: pnpm storage:smoke && pnpm assets:smoke
+
+      - name: billing — probeها
+        run: pnpm billing:probe-db && pnpm billing:probe-idem && pnpm billing:probe-math
+      - name: billing — سنجه‌های تسویه/ظرفیت/آشتی‌دهی
+        run: pnpm billing:settle && pnpm billing:quota && pnpm billing:probe-reconcile
+      - name: قراردادِ sdk
+        run: pnpm sdk:contract
+      - name: advisory lock (ADR-060)
+        run: pnpm infra:probe-lock
+
+      # ⚠️ این هفت **skip نمی‌شوند** (CLAUDE.md): هرکدام باگی گرفتند که همه‌ی تست‌های
+      #    واحدِ سبز از رویش رد شده بودند. `rt:bench` عمداً نیست — دلیلش در جدولِ بالا.
+      - name: هفت سنجه‌ی realtime
+        run: >
+          pnpm rt:durability && pnpm rt:compaction && pnpm rt:permission &&
+          pnpm rt:presence && pnpm rt:cluster && pnpm rt:shutdown && pnpm rt:reconnect
+
+      - name: لاگِ سرویس‌ها در صورتِ شکست
+        if: failure()
+        run: docker compose -f infra/docker/docker-compose.yml --env-file .env logs --tail=100

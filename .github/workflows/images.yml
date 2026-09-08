@@ -1,0 +1,66 @@
+# ساختِ ایمیج‌های production — M5 گام ۳٫۵.
+#
+# ⚠️⚠️ **این workflow هیچ‌جا push نمی‌کند، و این عمدی است.**
+#
+# مقصدِ رجیستری هنوز **تصمیم گرفته نشده** و تصمیمش به یک اندازه‌گیری بسته است که هنوز
+# ممکن نبوده: **VMِ آروان از کجا می‌تواند pull کند؟** فاز ۱ کشیدنِ `node:24-bookworm-slim`
+# را در ۴۳ ثانیه اندازه گرفت، ولی **از ماشینِ توسعه** — نه از داخلِ ایران روی آن VM.
+# انتخابِ ghcr.io یا Docker Hub بدونِ آن عدد، همان «فرض به‌جای probe»ی است که این ماژول
+# قاعده‌اش را گذاشته. ⇒ در TODO به‌عنوانِ **M5-D10** ثبت شد.
+#
+# پس کارِ امروزِ این job یک ادعای کوچک‌تر ولی واقعی است: **Dockerfileها هنوز build
+# می‌شوند و گاردِ بوت هنوز داخلِ ایمیجِ ساخته‌شده زنده است.**
+
+name: images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build (بدونِ push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build — api
+        run: docker build -f infra/docker/api.Dockerfile -t hamboom/api:ci .
+      - name: build — realtime
+        run: docker build -f infra/docker/realtime.Dockerfile -t hamboom/realtime:ci .
+      - name: build — web
+        run: docker build -f infra/docker/web.Dockerfile -t hamboom/web:ci .
+
+      # ★★ گاردِ [ADR-031](../../ARCHITECTURE_DECISIONS.md#adr-031)/[ADR-049](../../ARCHITECTURE_DECISIONS.md#adr-049)
+      #    باید **داخلِ خودِ ایمیج** زنده باشد، نه فقط در تستِ واحد: `APP_ENV=production`
+      #    با `PAYMENT_PROVIDER=mock` نباید بالا بیاید، وگرنه هر اشتراکی رایگان فعال می‌شود.
+      #    ⚠️ بدونِ دیتابیس اجرا می‌شود و همین درست است — گیت **پیش از** هر کوئری می‌شکند.
+      - name: گاردِ بوت داخلِ ایمیج زنده است
+        run: |
+          if docker run --rm \
+            -e APP_ENV=production -e PAYMENT_PROVIDER=mock \
+            -e DATABASE_URL=postgres://u:p@nowhere:5432/db \
+            -e JWT_SECRET=ci_dummy_secret_at_least_thirty_two_chars \
+            -e S3_ENDPOINT=http://nowhere:9000 -e S3_ACCESS_KEY_ID=x -e S3_SECRET_ACCESS_KEY=y \
+            -e S3_BUCKET_ASSETS=a -e S3_BUCKET_SNAPSHOTS=b \
+            -e ZARINPAL_CALLBACK_URL=http://example.test/billing/zarinpal/callback \
+            -e WEB_BASE_URL=http://example.test \
+            hamboom/api:ci > gate.log 2>&1; then
+            echo "✖ ایمیج با production + mock بالا آمد — گیت مرده است."
+            cat gate.log
+            exit 1
+          fi
+          grep -q GatewayNotAllowedError gate.log || {
+            echo "✖ ایمیج بالا نیامد، ولی به دلیلِ **دیگری**. گیت اثبات نشد:"; cat gate.log; exit 1; }
+          echo "✔ production + mock ⇒ بوت رد شد (GatewayNotAllowedError)"
+
+      - name: حجمِ ایمیج‌ها
+        run: |
+          {
+            echo "| ایمیج | حجم |"
+            echo "|---|---|"
+            docker images --format '| `{{.Repository}}:{{.Tag}}` | {{.Size}} |' \
+              hamboom/api:ci hamboom/realtime:ci hamboom/web:ci
+          } >> "$GITHUB_STEP_SUMMARY"

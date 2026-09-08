@@ -9,7 +9,7 @@
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۲ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰، ۱ و ۲ تمام**، قدمِ بعد فاز ۳ (CI) |
+| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰–۲ تمام، فاز ۳ نوشته و محلی مشق‌شده**، قدمِ بعد فاز ۴ |
 | ★ [infra/README.md](infra/README.md) | **چطور استقرار می‌شود** — چیدمان، `docker-compose.prod.yml`، کارهای اپراتور |
 | [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | بایگانیِ M4 (`billing`، تمام‌شده) — مرجعِ تاریخی |
 | ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
@@ -90,6 +90,9 @@ pnpm billing:probe-reconcile # ★★ فاز ۷: ۹ چک — callbackِ گم‌�
 pnpm billing:reconcile       # ★ ابزارِ اپراتور (نه سنجه): همان کدِ پلاگین، دستی
 pnpm infra:probe-lock        # ★★ M5 فاز ۱: ۴ چک — انحصار، مرگِ نشست، تله‌ی اتصالِ استخر
 pnpm infra:check-proxy       # ★★ M5 فاز ۲: مسیرهای api ↔ پروکسیِ dev ↔ nginx — **داخلِ verify هم هست**
+pnpm deps:check              # ★★ M5 فاز ۳٫۶: هر importِ bare اعلام شده؟ — **داخلِ verify هم هست**
+pnpm openapi:check           # ★★ M5 فاز ۳٫۳: docs/api.md + openapi.json کهنه نیستند — **داخلِ verify**
+node --env-file-if-exists=.env scripts/ci-wait-services.mjs   # انتظارِ آمادگیِ واقعیِ pg/redis/minio
 #   -- --write   بازتولیدِ infra/nginx/api-locations.conf بعد از افزودنِ مسیرِ نو
 #   -- --dry-run | --adopt | --stale-minutes=N | --expire-hours=N
 
@@ -246,9 +249,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M5 (`infra`) در جریان — فاز ۰، ۱ و ۲ تمام** (۱۴۰۵/۰۶/۱۸). TODO در
-  [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
-  **قدمِ بعد: فاز ۳ (CI).**
+- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۲ تمام، فاز ۳ نوشته و محلی مشق‌شده** (۱۴۰۵/۰۶/۱۸).
+  TODO در [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
+  **قدمِ بعد: فاز ۴ (سخت‌سازیِ پیکربندی و راز).**
   - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
     **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
     ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).
@@ -312,6 +315,31 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   `APP_ENV=production` هم بالا می‌آید (نقضِ ADR-031) ⇒ هیچ کاربرِ واقعی نمی‌تواند وارد شود و
   کدِ OTP در **لاگ** می‌نشیند. رفعش **حسابِ یک سرویسِ پیامکِ ایرانی** می‌خواهد، مثلِ زرین‌پال؛
   گاردِ بوتش گامِ ۴٫۱ است.
+
+  ### ◑ فاز ۳ (CI) — سه گیتِ نو، و یک نقصِ ماه‌هاقدیمی
+
+  ⚠️⚠️ **سه گامِ CI تیک نخورده‌اند و این عمدی است:** معیارشان «سبز روی PR» است و **هیچ
+  کامیتی push نشده** (`origin/main` هجده کامیت عقب، روی یک کامیتِ M3) ⇒ workflow هرگز
+  روی runner اجرا نشده. آنچه اثبات شد: **هر ۱۸ مرحله‌ی jobِ سرویس‌ها محلی سبز شد**.
+
+  ★★ **و همان مشق `pnpm db:smoke` را شکسته یافت** — از **M3**: `0002_board_fks.sql` روی
+  `board_updates.board_id` یک FK گذاشت و اسکریپت هنوز UUIDِ تصادفی درج می‌کرد (`23503`).
+  ماه‌ها قرمز بود و کسی ندید، چون هیچ‌چیز خودکار اجرایش نمی‌کرد.
+
+  **دو گیتِ تازه داخلِ `verify` (گیت‌ها ۱۰ → ۱۳):** `docs (openapi)` — بستنِ یافته‌ی فاز
+  ۱۰ی M4 (۶۶۴ خط سندِ کهنه که هیچ گیتی نگرفت) · و
+  [`deps`](scripts/check-workspace-deps.ts) با **دو** ادعا: هر importِ bare باید در منیفستِ
+  همان پکیج باشد، **و** importهای دو اسکریپتِ productionِ داخلِ ایمیج باید در
+  `dependencies`ِ ریشه باشند نه `devDependencies` (ادعای اول به‌تنهایی نقصِ فاز ۲ را
+  نمی‌گرفت). ★ با **بازساختنِ هر دو نقصِ تاریخی** قرمز شد.
+
+  **دو تصمیمِ ساختاریِ CI:** jobِ سرویس‌ها از `docker-compose.yml`ِ **خودِ ریپو** استفاده
+  می‌کند نه `services:`ِ گیت‌هاب (P3) · و `.env` از `.env.example` ساخته می‌شود ⇒
+  **`.env.example` هم آزموده می‌شود**. گیت‌های اجراناپذیر در CI (E2E، `probe-gateway`،
+  `rt:bench`) با جبرانشان در صدرِ [`ci.yml`](.github/workflows/ci.yml) ثبت‌اند.
+
+  ⏳ **M5-D10 باز است: مقصدِ رجیستریِ ایمیج** — تصمیمش به یک probe از **VMِ آروان**
+  بسته است (از کجا می‌تواند pull کند؟)، پس CI فقط build می‌کند و push نمی‌کند.
 
   ### ✅⏳ وضعیتِ حساب‌ها (۱۴۰۵/۰۶/۱۷)
 

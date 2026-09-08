@@ -56,6 +56,31 @@ async function main(): Promise<void> {
   try {
     await client.query("BEGIN");
 
+    // ★★ ردیف‌های پیش‌نیاز — **از M3 لازم شدند و این اسکریپت عقب مانده بود.**
+    //
+    // ⚠️ `0002_board_fks.sql` روی `board_updates.board_id` یک FK به `boards` گذاشت،
+    //    پس یک UUIDِ تصادفی دیگر پذیرفته نمی‌شود. این اسکریپت از آن روز **شکسته بود**
+    //    و هیچ‌کس ندید، چون فقط دستی اجرا می‌شد — همان دلیلی که گامِ ۳٫۲ی CI برایش
+    //    ساخته شد. همه‌چیز داخلِ همین تراکنش است و در `ROLLBACK` پاک می‌شود.
+    const userId = randomUUID();
+    const teamId = randomUUID();
+    await client.query("INSERT INTO users (id, display_name, presence_color) VALUES ($1, $2, $3)", [
+      userId,
+      "تستِ دود",
+      "#3366cc",
+    ]);
+    await client.query("INSERT INTO teams (id, slug, name, owner_user_id) VALUES ($1, $2, $3, $4)", [
+      teamId,
+      `smoke-${teamId.slice(0, 8)}`,
+      "تیمِ تستِ دود",
+      userId,
+    ]);
+    await client.query("INSERT INTO boards (id, team_id, created_by) VALUES ($1, $2, $3)", [
+      boardId,
+      teamId,
+      userId,
+    ]);
+
     await client.query(
       "INSERT INTO board_updates (board_id, seq, payload, byte_size) VALUES ($1, $2, $3, $4)",
       [boardId, 1, payload, payload.byteLength],

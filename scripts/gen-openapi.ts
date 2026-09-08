@@ -4,9 +4,19 @@
  * منبعِ حقیقت zodِ `shared-types` + منیفستِ `apps/api/src/openapi.ts` است؛ این اسکریپت فقط آن را
  * به دو فایلِ ایستا می‌ریزد. سندِ **زنده** روی `GET /openapi.json` و `GET /api/v1/docs` است.
  *
- * اجرا: `node scripts/gen-openapi.ts`
+ * ── ★★ گیتِ کهنگی (`--check`) — M5 گام ۳٫۳ ───────────────────────────────────
+ *
+ * ⚠️ در فاز ۱۰ی M4 معلوم شد `docs/openapi.json` **۶۶۴ خط** کهنه است: کلِ سطحِ billing از
+ * فاز ۵ در سند نبود و **هیچ گیتی قرمز نشد**. گاردِ دریفتِ داخلِ اپ تمامِ آن مدت سبز بود،
+ * چون آن **تعریفِ** OpenAPI را می‌سنجد نه **فایلِ تولیدشده** را — دو چیزِ متفاوت.
+ *
+ * `--check` همان دو فایل را می‌سازد و با نسخه‌ی کامیت‌شده مقایسه می‌کند. چون به هیچ
+ * سرویسی نیاز ندارد و ~۱ ثانیه است، **داخلِ `pnpm verify`** نشست، نه فقط در CI —
+ * وگرنه همان اشتباه است: گیتی که خودکار اجرا نشود، اجرا نمی‌شود.
+ *
+ * اجرا: `node scripts/gen-openapi.ts` · گیت: `node scripts/gen-openapi.ts --check`
  */
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { buildOpenApiDocument } from "../apps/api/src/openapi.ts";
@@ -77,8 +87,28 @@ lines.push(
 lines.push("");
 
 const docsDir = join(import.meta.dirname, "..", "docs");
-writeFileSync(join(docsDir, "api.md"), `${lines.join("\n")}\n`, "utf8");
-writeFileSync(join(docsDir, "openapi.json"), `${JSON.stringify(doc, null, 2)}\n`, "utf8");
+const generated: [string, string][] = [
+  ["api.md", `${lines.join("\n")}\n`],
+  ["openapi.json", `${JSON.stringify(doc, null, 2)}\n`],
+];
+
+if (process.argv.includes("--check")) {
+  // ★ `\r\n` نرمال می‌شود: `.gitattributes` همه‌چیز را LF نگه می‌دارد، ولی یک checkoutِ
+  //   بدقلق روی ویندوز نباید گیت را با یک تفاوتِ **نامرئی** قرمز کند.
+  const stale = generated.filter(
+    ([name, content]) =>
+      readFileSync(join(docsDir, name), "utf8").replace(/\r\n/g, "\n") !== content,
+  );
+  if (stale.length > 0) {
+    console.error(`✖ سندِ تولیدشده کهنه است: ${stale.map(([n]) => `docs/${n}`).join("، ")}`);
+    console.error("    بازتولید: pnpm openapi:gen");
+    process.exit(1);
+  }
+  console.log("✔ docs/api.md و docs/openapi.json با تعریفِ زنده می‌خوانند.");
+  process.exit(0);
+}
+
+for (const [name, content] of generated) writeFileSync(join(docsDir, name), content, "utf8");
 
 const endpointCount = Object.values(doc.paths).reduce(
   (n, methods) => n + Object.keys(methods).length,
