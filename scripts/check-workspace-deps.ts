@@ -62,6 +62,10 @@ const PRODUCTION_SCRIPTS = [
   "scripts/pg-tools.ts",
   // ⚠️ مشقِ بازیابی این را **spawn** می‌کند؛ پس این هم داخلِ ایمیج اجرا می‌شود.
   "scripts/db-fk-test.ts",
+  // ★ M5 فاز ۸ — نگهداشت و پاک‌سازی، از cronِ همان VM.
+  "scripts/sweep-orphans.ts",
+  "scripts/sweep-orphans-core.ts",
+  "scripts/purge-deleted.ts",
 ];
 
 const BUILTINS = new Set([...builtinModules, ...builtinModules.map((m) => `node:${m}`)]);

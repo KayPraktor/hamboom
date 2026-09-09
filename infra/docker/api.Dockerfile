@@ -62,7 +62,8 @@ COPY --from=deps --chown=node:node /app /app
 #    ⚠️ کلِ `scripts/` می‌آید ولی فقط ورودی‌های زیر پشتیبانی می‌شوند — بقیه ابزارِ
 #    dev/CI اند و وابستگی‌هایشان در نصبِ `--prod` نیستند:
 #      migrate.ts · billing-reconcile.ts · backup-db.ts · backup-storage.ts ·
-#      restore-drill.ts  (+ کمکی‌ها: backup-common.ts، pg-tools.ts، db-fk-test.ts)
+#      restore-drill.ts · sweep-orphans.ts · purge-deleted.ts
+#      (+ کمکی‌ها: backup-common.ts، pg-tools.ts، db-fk-test.ts، sweep-orphans-core.ts)
 #    ★ این فهرست با `PRODUCTION_SCRIPTS` در `scripts/check-workspace-deps.ts` یکی
 #      است و گیتِ `deps` جداافتادنشان را قرمز می‌کند.
 COPY --chown=node:node scripts ./scripts

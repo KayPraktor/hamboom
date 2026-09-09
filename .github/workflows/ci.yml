@@ -112,6 +112,11 @@ jobs:
       - name: ★★ مشقِ بازیابی + خودآزمونش
         run: pnpm infra:restore-drill && pnpm infra:restore-drill -- --self-test
 
+      # ★★ M5 فاز ۸ — نگهداشت. هر دو **حذف** می‌کنند، پس هر دو خودآزمونشان این‌جا
+      #    می‌آید: خطای این‌ها یک گزارشِ غلط نیست، پاک‌شدنِ داده‌ی یک کاربرِ زنده است.
+      - name: ★★ جاروبِ بلابِ یتیم + purge — خودآزمون
+        run: pnpm infra:sweep-orphans -- --self-test && pnpm infra:purge -- --self-test
+
       # ⚠️ این هفت **skip نمی‌شوند** (CLAUDE.md): هرکدام باگی گرفتند که همه‌ی تست‌های
       #    واحدِ سبز از رویش رد شده بودند. `rt:bench` عمداً نیست — دلیلش در جدولِ بالا.
       - name: هفت سنجه‌ی realtime

@@ -24,10 +24,6 @@ async function createPersonalTeam(tx: pg.PoolClient, userId: string): Promise<st
     teamId,
     userId,
   ]);
-  await tx.query(
-    "INSERT INTO usage_counters (team_id) VALUES ($1) ON CONFLICT (team_id) DO NOTHING",
-    [teamId],
-  );
   return teamId;
 }
 

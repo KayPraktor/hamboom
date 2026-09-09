@@ -82,6 +82,9 @@ export function createS3ObjectStore(config: S3StorageConfig): ObjectStore {
           size: res.ContentLength ?? 0,
           contentType: res.ContentType,
           etag: res.ETag,
+          // ★ S3 همیشه می‌دهدش؛ ولی تایپ `undefined` را هم می‌پذیرد تا اگر روزی
+          //   سرویسی ندادش، مصرف‌کننده مجبور باشد حالتِ «نمی‌دانم» را ببیند.
+          lastModified: res.LastModified,
         };
         return head;
       } catch (e) {

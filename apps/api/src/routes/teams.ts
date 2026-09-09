@@ -59,9 +59,6 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
         teamId,
         sub,
       ]);
-      await tx.query("INSERT INTO usage_counters (team_id) VALUES ($1) ON CONFLICT DO NOTHING", [
-        teamId,
-      ]);
       const { rows } = await tx.query<TeamRow>(
         `SELECT t.id, t.slug, t.name, 'owner' AS my_role,
                 ${MC}, t.created_at,

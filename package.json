@@ -64,7 +64,9 @@
     "infra:backup-storage": "node --env-file-if-exists=.env scripts/backup-storage.ts",
     "infra:restore-drill": "node --env-file-if-exists=.env scripts/restore-drill.ts",
     "sms:probe": "node --env-file-if-exists=.env scripts/sms-probe.ts",
-    "infra:ship": "node scripts/ship-images.ts"
+    "infra:ship": "node scripts/ship-images.ts",
+    "infra:sweep-orphans": "node --env-file-if-exists=.env scripts/sweep-orphans.ts",
+    "infra:purge": "node --env-file-if-exists=.env scripts/purge-deleted.ts"
   },
   "dependencies": {
     "@hamboom/config": "workspace:*",

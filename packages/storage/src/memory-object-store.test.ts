@@ -22,12 +22,14 @@ describe("MemoryObjectStore", () => {
 
   it("headObject اندازه و نوع را می‌دهد", async () => {
     const store = createMemoryObjectStore();
+    const before = Date.now();
     await store.putObject("k", new Uint8Array([1, 2, 3]), { contentType: "text/plain" });
-    expect(await store.headObject("k")).toEqual({
-      size: 3,
-      contentType: "text/plain",
-      etag: undefined,
-    });
+    const head = await store.headObject("k");
+    expect(head).toMatchObject({ size: 3, contentType: "text/plain", etag: undefined });
+    // ★★ `lastModified` تزئینی نیست — جاروبِ بلابِ یتیم (M5 فاز ۸) تنها چیزی است که
+    //    با آن می‌تواند «زباله‌ی ماه‌ها پیش» را از «آپلودی که همین حالا تمام شد» جدا کند.
+    expect(head?.lastModified).toBeInstanceOf(Date);
+    expect(head?.lastModified?.getTime()).toBeGreaterThanOrEqual(before);
   });
 
   it("delete idempotent است و listPrefix مرتب‌شده و prefix-محور", async () => {

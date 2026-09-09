@@ -105,7 +105,18 @@ $C --profile ops run --rm reconcile node scripts/billing-reconcile.ts --dry-run
 $C --profile ops run --rm backup -- --prune=14
 $C --profile ops run --rm backup-storage
 $C --profile ops run --rm restore-drill
+
+# نگهداشت و پاک‌سازی (فاز ۸) — ⚠️ ترتیب اجباری است
+$C --profile ops run --rm purge node scripts/purge-deleted.ts --days=N --delete
+$C --profile ops run --rm sweep-orphans node scripts/sweep-orphans.ts --delete
 ```
+
+⚠️⚠️ **اول purge بعد sweep.** purge فقط **ردیف** می‌بَرد؛ بلابِ S3 با CASCADE پاک
+نمی‌شود (نشتیِ ثبت‌شده از M3) و تازه بعدش **یتیم** می‌شود تا جاروب برش دارد. برعکسش
+بی‌اثر است: تا ردیف هست، جاروب بلاب را «دارای مرجع» می‌بیند — که همان رفتارِ درست است.
+
+⚠️ **هر دو پیش‌فرضِ «فقط گزارش» دارند** و `--delete` صریح می‌خواهند؛ و `purge` بدونِ
+`--days=N` عمداً بالا نمی‌آید (M5-D9 تصمیمِ مالک است، نه پیش‌فرضِ ما).
 
 ★★ **مشقِ بازیابی تزئینی نیست:** یک پشتیبانِ بازیابی‌نشده پشتیبان نیست. روی یک دیتابیسِ
 موقت برمی‌گرداند و پنج ادعا را می‌سنجد — از جمله **شمارشِ ردیف**، که تنها چکی است که
@@ -113,8 +124,8 @@ $C --profile ops run --rm restore-drill
 [`docs/backup-restore.md`](../docs/backup-restore.md).
 
 ⚠️ **فقط این ورودی‌ها از `scripts/` در ایمیج پشتیبانی می‌شوند** — `migrate.ts`،
-`billing-reconcile.ts`، `backup-db.ts`، `backup-storage.ts` و `restore-drill.ts`
-(به‌همراهِ کمکی‌هایشان). بقیه ابزارِ dev/CI اند و وابستگی‌هایشان در نصبِ `--prod` نیستند.
+`billing-reconcile.ts`، `backup-db.ts`، `backup-storage.ts`، `restore-drill.ts`،
+`sweep-orphans.ts` و `purge-deleted.ts` (به‌همراهِ کمکی‌هایشان). بقیه ابزارِ dev/CI اند و وابستگی‌هایشان در نصبِ `--prod` نیستند.
 ★ فهرست در `PRODUCTION_SCRIPTS`ِ [`check-workspace-deps.ts`](../scripts/check-workspace-deps.ts)
 است و گیتِ `deps` جداافتادنش از Dockerfile را قرمز می‌کند.
 

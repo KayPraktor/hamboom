@@ -14,11 +14,18 @@ import type {
  * `put`/`get`/`delete` می‌خواهند (مثلِ snapshot) با این کار می‌کنند.
  */
 export function createMemoryObjectStore(): ObjectStore {
-  const objects = new Map<string, { bytes: Uint8Array; contentType: string | undefined }>();
+  const objects = new Map<
+    string,
+    { bytes: Uint8Array; contentType: string | undefined; lastModified: Date }
+  >();
 
   return {
     putObject(key, body, opts) {
-      objects.set(key, { bytes: body.slice(), contentType: opts?.contentType });
+      objects.set(key, {
+        bytes: body.slice(),
+        contentType: opts?.contentType,
+        lastModified: new Date(),
+      });
       return Promise.resolve();
     },
 
@@ -39,6 +46,7 @@ export function createMemoryObjectStore(): ObjectStore {
         size: found.bytes.byteLength,
         contentType: found.contentType,
         etag: undefined,
+        lastModified: found.lastModified,
       };
       return Promise.resolve(head);
     },

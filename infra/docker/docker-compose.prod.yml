@@ -24,6 +24,21 @@ name: hamboom-prod
 
 x-restart: &restart unless-stopped
 
+# ★★ چرخشِ لاگ — M5 گام ۸٫۴.
+#
+# ⚠️ **درایورِ پیش‌فرضِ `json-file` هیچ سقفی ندارد.** یعنی لاگِ یک سرویسِ پرترافیک تا
+# پرشدنِ دیسکِ VM بزرگ می‌شود، و بعد **همه‌چیز** می‌ایستد — نه فقط لاگ‌نویسی. این
+# رایج‌ترین راهی است که یک استقرارِ تک‌ماشینه می‌میرد.
+#
+# ⊕ این با «نگهداشتِ داده»ی M5-D9 قاطی نمی‌شود: آن یکی تصمیمِ سیاستی درباره‌ی داده‌ی
+#   **کاربر** است و عددش را مالک می‌دهد؛ این یکی بهداشتِ دیسک است و عددش فنی است.
+#   ۱۰MB × ۳ فایل = سقفِ ۳۰MB برای هر سرویس.
+x-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 # envِ کاملِ `apps/api`.
 #
 # ⊕ تا فاز ۳، کانتینرِ آشتی‌دهی هم از همین استفاده می‌کرد (چون `loadApiConfig` یک‌تکه بود).
@@ -123,6 +138,7 @@ x-backup-env: &backup-env
 services:
   postgres:
     image: postgres:16-alpine
+    logging: *logging
     restart: *restart
     init: true
     environment:
@@ -150,6 +166,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    logging: *logging
     restart: *restart
     init: true
     command: >
@@ -193,6 +210,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/api.Dockerfile
+    logging: *logging
     restart: *restart
     init: true
     depends_on:
@@ -207,6 +225,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/realtime.Dockerfile
+    logging: *logging
     restart: *restart
     init: true
     depends_on:
@@ -253,6 +272,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/web.Dockerfile
+    logging: *logging
     restart: *restart
     init: true
     depends_on:
@@ -327,6 +347,45 @@ services:
     restart: "no"
     init: true
     command: ["node", "scripts/restore-drill.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *backup-env
+
+  # ── نگهداشت و پاک‌سازی (M5 فاز ۸) ─────────────────────────────────────────
+  #
+  #   $C --profile ops run --rm sweep-orphans                    # فقط گزارش
+  #   $C --profile ops run --rm sweep-orphans node scripts/sweep-orphans.ts --delete
+  #   $C --profile ops run --rm purge node scripts/purge-deleted.ts --days=N --delete
+  #
+  # ⚠️ **ترتیب مهم است:** اول purge (ردیف‌ها) بعد sweep (بلاب‌ها). برعکسش بی‌اثر است،
+  #    چون تا ردیف هست جاروب بلاب را «دارای مرجع» می‌بیند.
+  # ⚠️⚠️ و هیچ‌کدام پیش‌فرضِ حذف ندارند: `--delete` صریح لازم است، و `purge` بدونِ
+  #    `--days=N` اصلاً بالا نمی‌آید (M5-D9 تصمیمِ مالک است).
+  sweep-orphans:
+    profiles: ["ops"]
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    command: ["node", "scripts/sweep-orphans.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *backup-env
+
+  purge:
+    profiles: ["ops"]
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    # ⚠️ بدونِ `--days` عمداً می‌شکند — پیش‌فرضِ حدسی این‌جا یعنی حذفِ داده طبقِ حدس.
+    command: ["node", "scripts/purge-deleted.ts"]
     depends_on:
       postgres:
         condition: service_healthy
