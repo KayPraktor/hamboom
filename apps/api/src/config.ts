@@ -9,6 +9,7 @@ import {
   paymentEnvSchema,
   rateLimitEnvSchema,
   s3EnvSchema,
+  smsEnvSchema,
   uploadEnvSchema,
 } from "@hamboom/config";
 
@@ -27,7 +28,10 @@ const apiEnvSchema = appEnvSchema
   .and(rateLimitEnvSchema)
   .and(s3EnvSchema)
   .and(uploadEnvSchema)
-  .and(paymentEnvSchema);
+  .and(paymentEnvSchema)
+  // ★★ M5 فازِ ۴٫۵ — فرستنده‌ی واقعیِ پیامک. تا امروز هیچ متغیرِ پیامکی وجود نداشت،
+  //    چون تنها فرستنده mock بود و چیزی برای پیکربندی نداشت.
+  .and(smsEnvSchema);
 
 export function loadApiConfig() {
   const config = loadEnv(apiEnvSchema);
@@ -51,6 +55,8 @@ const reconcileEnvSchema = appEnvSchema
   .and(databaseEnvSchema)
   .and(apiServerEnvSchema)
   .and(paymentEnvSchema);
+// ⚠️ **و `smsEnvSchema` عمداً این‌جا نیست** (M5 فازِ ۴٫۵): آشتی‌دهی پیامکی نمی‌فرستد،
+//    پس کلیدِ sms.ir هم نباید داخلِ آن کانتینر باشد — همان کمترین‌دسترسیِ فاز ۴٫
 
 export function loadReconcileConfig() {
   const config = loadEnv(reconcileEnvSchema);

@@ -115,4 +115,25 @@ describe("OTP", () => {
     expect(maskPhone("09121234567")).toBe("0912***67");
     expect(maskPhone("12345")).toBe("***");
   });
+
+  it("★★ اگر ارسالِ پیامک شکست بخورد، چالش پس گرفته می‌شود (M5 فازِ ۴٫۵)", async () => {
+    // ⚠️ بدونِ این، یک شکستِ گذرا کاربر را برای کلِ cooldown بی‌کد و بی‌راهِ‌چاره
+    //    می‌گذاشت: چالش ذخیره شده بود، پس تلاشِ دوباره **بی‌صدا** رد می‌شد.
+    const store = createMemoryOtpStore();
+    const failing = {
+      name: "failing",
+      developmentOnly: true,
+      send: () => Promise.reject(new Error("سرویسِ پیامک در دسترس نیست")),
+    };
+    await expect(requestOtp(store, failing, PHONE, cfg({ fixedCode: "111111" }))).rejects.toThrow();
+    expect(await store.get(PHONE)).toBeNull();
+
+    // و بلافاصله تلاشِ دوباره واقعاً می‌فرستد — cooldown راه را نبسته است.
+    let sent = 0;
+    const working = createMockSmsProvider(() => {
+      sent++;
+    });
+    await requestOtp(store, working, PHONE, cfg({ fixedCode: "222222" }));
+    expect(sent).toBe(1);
+  });
 });

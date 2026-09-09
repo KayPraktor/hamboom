@@ -124,4 +124,38 @@ describe("assertProductionConfig", () => {
   it("راز/آدرسِ غایب بررسی نمی‌شود (اپی که آن بخش را ندارد نباید بشکند)", () => {
     expect(() => assertProductionConfig({ APP_ENV: "production" }, {})).not.toThrow();
   });
+
+  describe("★ کلیدِ sms.ir (M5 فازِ ۴٫۵)", () => {
+    it("کلیدِ جای‌نگه‌دار با smsir رد می‌شود", () => {
+      let message = "";
+      try {
+        assertProductionConfig(
+          { ...base, SMS_PROVIDER: "smsir", SMS_IR_API_KEY: "your_api_key_here" },
+          {},
+        );
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain("SMS_IR_API_KEY");
+    });
+
+    it("کلیدِ واقعیِ تصادفی رد نمی‌شود", () => {
+      expect(() =>
+        assertProductionConfig(
+          {
+            ...base,
+            SMS_PROVIDER: "smsir",
+            SMS_IR_API_KEY: "9Cl8lFMUO3eR89NLovkMs4dk3Hd8f8pI9AgB1tcQ",
+          },
+          {},
+        ),
+      ).not.toThrow();
+    });
+
+    it("⊕ با mock اصلاً بررسی نمی‌شود (کلید خوانده نمی‌شود)", () => {
+      expect(() =>
+        assertProductionConfig({ ...base, SMS_PROVIDER: "mock", SMS_IR_API_KEY: "change_me" }, {}),
+      ).not.toThrow();
+    });
+  });
 });

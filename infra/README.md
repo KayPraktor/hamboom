@@ -71,10 +71,11 @@ docker compose -f infra/docker/docker-compose.prod.yml --env-file .env.productio
 ★★ **مسیرِ `ZARINPAL_CALLBACK_URL` باید دقیقاً `/billing/zarinpal/callback` باشد** —
 `registerBillingRoutes` وگرنه در **بوت** می‌شکند (اثبات‌شده در همین ایمیج، exit 1).
 
-⛔ **`APP_ENV=production` تا سیم‌کشیِ دو سرویسِ واقعی بالا نمی‌آید، و هر دو عمدی‌اند:**
-`assertGatewayAllowed` (درگاهِ پرداخت) و `assertSmsProviderAllowed` (پیامک) — هر دو
-اثبات‌شده در ایمیج با exit 1. ★ تا آن‌وقت **`APP_ENV=staging` با mock کاملاً کار می‌کند** و
-کلِ استک رویش اثبات شده است.
+⛔ **`APP_ENV=production` هنوز یک بلاک‌کننده دارد — و فقط یکی.** ✅ گیتِ پیامک با
+`SMS_PROVIDER=smsir` باز شد (M5 فازِ ۴٫۵)، پس آنچه می‌مانَد `assertGatewayAllowed` است:
+تا تاییدِ حسابِ زرین‌پال و `ZARINPAL_MERCHANT_ID`، production بالا نمی‌آید. اثبات‌شده با
+چهار حالتِ بوت — با `smsir` خطا حالا `GatewayNotAllowedError` است، نه پیامک.
+★ تا آن‌وقت **`APP_ENV=staging` کاملاً کار می‌کند** و کلِ استک رویش اثبات شده است.
 
 ★★ **و سه گاردِ دیگر روی خودِ پیکربندی** ([`production-guards.ts`](../packages/config/src/production-guards.ts)):
 رازِ ضعیف · دیتابیسِ **دورِ** بدونِ SSL · و متغیرهای dev-only (`RT_DEV_JWT_SECRET`،
@@ -157,4 +158,4 @@ pnpm infra:check-proxy -- --write   # بازتولید بعد از افزودن�
 | چه چیزی | کجا |
 |---|---|
 | TLS و سقفِ نرخِ لبه | فاز ۹ — تصمیمِ «گواهی از آروان یا ACME» عمداً باز است |
-| ⚠️⚠️ **فرستنده‌ی واقعیِ پیامک** | ⛔ بلاک‌کننده‌ی launch — از فاز ۴، `APP_ENV=production` بدونِ آن **بالا نمی‌آید**. انتخابِ سرویس تصمیمِ مالک است |
+

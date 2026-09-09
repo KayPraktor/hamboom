@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import fastifyCookie from "@fastify/cookie";
 import fastifyRateLimit from "@fastify/rate-limit";
 import { createAssetService } from "@hamboom/assets";
-import { assertSmsProviderAllowed, createMockSmsProvider, maskPhone } from "@hamboom/auth-core";
+import { assertSmsProviderAllowed, maskPhone } from "@hamboom/auth-core";
 import { assertGatewayAllowed, type PaymentGateway } from "@hamboom/billing-core";
 import { assertProductionConfig } from "@hamboom/config";
 import type { ObjectStore } from "@hamboom/storage";
@@ -29,6 +29,7 @@ import { registerDocsRoutes } from "./routes/docs.ts";
 import { registerFolderRoutes } from "./routes/folders.ts";
 import { registerMeRoutes } from "./routes/me.ts";
 import { registerTeamRoutes } from "./routes/teams.ts";
+import { createSmsProvider } from "./sms.ts";
 
 /**
  * `buildApp()` — نمونه‌ی Fastifyِ **تست‌پذیر** (بدونِ `listen`). ماژول M3، فاز ۵.
@@ -165,10 +166,12 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const secret = secretBytes(config);
   // ⚠️ کدِ ثابت فقط در dev و اگر داده شده باشد؛ وگرنه تصادفی.
   const fixedCode = config.APP_ENV === "local" ? config.OTP_DEV_FIXED_CODE : undefined;
-  // ★ MockSms کدِ خام را در لاگِ سرور چاپ می‌کند (فقط dev، P3: بدونِ حسابِ پیامکِ واقعی)؛ شماره ماسک.
-  const sms = createMockSmsProvider((phone, code) => {
+  // ★ با `SMS_PROVIDER=mock` کدِ خام در لاگِ سرور چاپ می‌شود (فقط dev، P3: بدونِ حسابِ
+  //   پیامکِ واقعی)؛ شماره ماسک. با `smsir` هیچ کدی به لاگ نمی‌رسد — M5 فازِ ۴٫۵.
+  const sms = createSmsProvider(config, (phone, code) => {
     app.log.warn(`[SMS mock — فقط dev] کدِ ورود ${code} → ${maskPhone(phone)}`);
   });
+  app.log.info(`فرستنده‌ی پیامک: ${sms.name}`);
   // ★★ گیتِ M5 گام ۴٫۱ — بدونِ آن، `APP_ENV=production` با پیامکِ **ساختگی** بالا می‌آید:
   //    هیچ کاربرِ واقعی نمی‌تواند وارد شود و کدِ ورود در لاگ می‌نشیند. در فاز ۲ با یک
   //    اجرای واقعی دیده شد (کد از لاگ خوانده شد، در حالی که APP_ENV=production بود).

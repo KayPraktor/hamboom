@@ -62,7 +62,8 @@
     "infra:probe-leader": "node --env-file-if-exists=.env scripts/infra-probe-leader.ts",
     "infra:backup": "node --env-file-if-exists=.env scripts/backup-db.ts",
     "infra:backup-storage": "node --env-file-if-exists=.env scripts/backup-storage.ts",
-    "infra:restore-drill": "node --env-file-if-exists=.env scripts/restore-drill.ts"
+    "infra:restore-drill": "node --env-file-if-exists=.env scripts/restore-drill.ts",
+    "sms:probe": "node --env-file-if-exists=.env scripts/sms-probe.ts"
   },
   "dependencies": {
     "@hamboom/config": "workspace:*",

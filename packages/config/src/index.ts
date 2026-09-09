@@ -38,6 +38,7 @@ export {
   realtimeEnvSchema,
   redisEnvSchema,
   s3EnvSchema,
+  smsEnvSchema,
   uploadEnvSchema,
 } from "./sections.ts";
 export type {
@@ -52,5 +53,6 @@ export type {
   RealtimeEnv,
   RedisEnv,
   S3Env,
+  SmsEnv,
   UploadEnv,
 } from "./sections.ts";

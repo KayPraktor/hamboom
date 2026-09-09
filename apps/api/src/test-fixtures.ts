@@ -35,6 +35,13 @@ export const TEST_CONFIG: ApiConfig = {
   S3_BUCKET_ASSETS: "hamboom-assets",
   S3_BUCKET_SNAPSHOTS: "hamboom-snapshots",
   UPLOAD_MAX_BYTES: 10 * 1024 * 1024,
+  // ── پیامک (M5 فازِ ۴٫۵) — تست هرگز به sms.ir نمی‌رسد؛ `mock` یعنی همان رفتارِ قبل.
+  SMS_PROVIDER: "mock",
+  SMS_IR_API_KEY: undefined,
+  SMS_IR_TEMPLATE_ID: undefined,
+  SMS_IR_PARAM_NAME: "CODE",
+  SMS_IR_BASE_URL: "https://api.sms.ir",
+  SMS_IR_TIMEOUT_MS: 10_000,
   // ── billing (M4 فاز ۵) — تست هرگز به درگاهِ واقعی نمی‌رسد؛ `buildApp` هم `gateway`
   //    را تزریق‌پذیر گرفته، پس این‌ها فقط برای کاملی تایپ‌اند.
   PAYMENT_PROVIDER: "mock",

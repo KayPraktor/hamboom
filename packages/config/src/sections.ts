@@ -235,6 +235,34 @@ export type UploadEnv = z.infer<typeof uploadEnvSchema>;
  * است — و از آن به بعد گیت مرده است (همان هشدارِ سرِ این فایل). اعتبارسنجیِ واقعی‌شان
  * هنگامِ **ساختِ `ZarinpalGateway`** انجام می‌شود، آن هم فقط وقتی provider واقعاً زرین‌پال باشد.
  */
+/**
+ * ── ★★ پیامک (M5 فازِ ۴٫۵) ────────────────────────────────────────────────
+ *
+ * ⚠️ **شکلِ قالب این‌جا می‌مانَد و وارد لایه‌ی دامنه نمی‌شود.** `SmsProvider` یک پورت
+ * است، دقیقاً مثلِ `PaymentGateway`؛ اگر روزی sms.ir جایش را به کاوه‌نگار بدهد، آنچه
+ * عوض می‌شود **همین چند متغیر** است، نه یک خط از منطقِ OTP.
+ *
+ * ★ `SMS_IR_PARAM_NAME` عمداً متغیر است و ثابت نیست: نامِ پارامتر از **متنِ قالبِ
+ * تاییدشده** می‌آید (`#CODE#` ⇒ `CODE`) و اگر روزی قالبِ تازه‌ای با نامِ دیگری تایید
+ * شود، پیامک می‌رود ولی **جای کد خالی است** — خطایی که هیچ تستی نمی‌گیردش و فقط
+ * گیرنده‌ی واقعی می‌بیندش.
+ *
+ * ⚠️ کلید و شناسه‌ی قالب `optional`اند چون با `SMS_PROVIDER=mock` لازم نیستند؛ ولی با
+ * `smsir` نبودشان **در بوت** می‌شکند (`createSmsIrProvider`) — نه سرِ اولین ورود.
+ */
+export const smsEnvSchema = z.object({
+  SMS_PROVIDER: z.enum(["mock", "smsir"]).default("mock"),
+  SMS_IR_API_KEY: z.string().optional(),
+  /** شناسه‌ی **عددیِ** قالبِ تاییدشده — عنوانِ قالب نیست. */
+  SMS_IR_TEMPLATE_ID: z.coerce.number().int().positive().optional(),
+  /** نامِ پارامتر داخلِ قالب، بدونِ `#` (متنِ قالب: `#CODE#`). */
+  SMS_IR_PARAM_NAME: z.string().min(1).default("CODE"),
+  SMS_IR_BASE_URL: z.url().default("https://api.sms.ir"),
+  /** ⚠️ یک سرویسِ پیامکِ کُند نباید درخواستِ ورود را نگه دارد. */
+  SMS_IR_TIMEOUT_MS: envInt(10_000),
+});
+export type SmsEnv = z.infer<typeof smsEnvSchema>;
+
 export const paymentEnvSchema = z.object({
   PAYMENT_PROVIDER: z.enum(["mock", "zarinpal"]).default("mock"),
   ZARINPAL_MODE: z.enum(["sandbox", "production"]).default("sandbox"),

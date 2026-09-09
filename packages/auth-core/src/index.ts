@@ -37,3 +37,14 @@ export {
   createMemoryOtpStore,
 } from "./otp.ts";
 export type { OtpStore, OtpRecord, SmsProvider, OtpConfig, OtpResult } from "./otp.ts";
+
+// ★★ فرستنده‌ی واقعی (M5 فازِ ۴٫۵) — جفتِ `ZarinpalGateway`ِ billing-core.
+export {
+  createSmsIrProvider,
+  describeFailure,
+  normalizeIranianMobile,
+  sendVerifyCode,
+  SmsIrConfigError,
+  SmsIrError,
+} from "./sms-ir.ts";
+export type { SmsIrConfig, SmsIrSendResult } from "./sms-ir.ts";

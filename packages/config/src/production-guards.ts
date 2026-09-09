@@ -76,6 +76,9 @@ export interface ProductionGuardInput {
   JWT_SECRET?: string;
   DATABASE_URL?: string;
   DATABASE_SSL?: boolean;
+  /** M5 فازِ ۴٫۵ — فقط وقتی `smsir` است، کلید هم سنجیده می‌شود. */
+  SMS_PROVIDER?: string;
+  SMS_IR_API_KEY?: string;
 }
 
 /** آیا این راز بوی پیش‌فرضِ توسعه می‌دهد؟ (بدونِ لو دادنِ خودِ مقدار) */
@@ -151,6 +154,23 @@ export function assertProductionConfig(
         `${name} فقط برای توسعه است و در production نباید تعریف شود ` +
           "(نشانه‌ی یک .envِ کپی‌شده از dev)",
       );
+    }
+  }
+
+  /**
+   * ★ کلیدِ sms.ir — M5 فازِ ۴٫۵.
+   *
+   * ⚠️ همان سناریوی `.env`ِ کپی‌شده از dev، ولی این‌بار پیامدش خاص است: کلیدِ
+   * جای‌نگه‌دار **در بوت نمی‌شکند** (رشته‌ی ناتهی است)، سرور بالا می‌آید، و تازه
+   * اولین کاربرِ واقعی می‌فهمد که هیچ پیامکی نمی‌آید. پس همان‌جایی گرفته می‌شود که
+   * بقیه‌ی رازهای ضعیف گرفته می‌شوند.
+   *
+   * ⊕ فقط با `SMS_PROVIDER=smsir` معنا دارد؛ با `mock` کلید اصلاً خوانده نمی‌شود.
+   */
+  if (input.SMS_PROVIDER === "smsir" && input.SMS_IR_API_KEY !== undefined) {
+    const reason = weakSecretReason(input.SMS_IR_API_KEY);
+    if (reason !== null) {
+      violations.push(`SMS_IR_API_KEY جای‌نگه‌دار به‌نظر می‌رسد — ${reason}`);
     }
   }
 
