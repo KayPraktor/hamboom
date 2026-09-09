@@ -9,7 +9,7 @@
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۲ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۵ تمام**، قدمِ بعد فاز ۶ |
+| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۶ تمام**، قدمِ بعد فاز ۷ |
 | ★ [infra/README.md](infra/README.md) | **چطور استقرار می‌شود** — چیدمان، `docker-compose.prod.yml`، کارهای اپراتور |
 | [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | بایگانیِ M4 (`billing`، تمام‌شده) — مرجعِ تاریخی |
 | ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
@@ -90,6 +90,7 @@ pnpm billing:probe-reconcile # ★★ فاز ۷: ۹ چک — callbackِ گم‌�
 pnpm billing:reconcile       # ★ ابزارِ اپراتور (نه سنجه): همان کدِ پلاگین، دستی
 pnpm infra:probe-lock        # ★★ M5 فاز ۱: ۴ چک — انحصار، مرگِ نشست، تله‌ی اتصالِ استخر
 pnpm infra:probe-metrics     # ★★ M5 فاز ۵: ۳ چک — ضریبِ حافظه با heapِ واقعی + هر دو /metrics زنده
+pnpm infra:probe-leader      # ★★ M5 فاز ۶: ۳ چک — دو نود ⇒ یک رهبر، با هم‌پوشانیِ واقعی
 pnpm infra:check-proxy       # ★★ M5 فاز ۲: مسیرهای api ↔ پروکسیِ dev ↔ nginx — **داخلِ verify هم هست**
 pnpm deps:check              # ★★ M5 فاز ۳٫۶: هر importِ bare اعلام شده؟ — **داخلِ verify هم هست**
 pnpm openapi:check           # ★★ M5 فاز ۳٫۳: docs/api.md + openapi.json کهنه نیستند — **داخلِ verify**
@@ -250,9 +251,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۵ تمام** (۱۴۰۵/۰۶/۱۸).
+- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۶ تمام** (۱۴۰۵/۰۶/۱۸).
   TODO در [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
-  **قدمِ بعد: فاز ۶ (انتخابِ رهبر و درستیِ چندنودی).**
+  **قدمِ بعد: فاز ۷ (دوامِ داده — پشتیبان و مشقِ بازیابی).**
   - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
     **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
     ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).
@@ -396,6 +397,27 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   ★ **الگوی «استثنای صریح»:** `/metrics` دو گیت را قرمز کرد و هر دو حق داشتند. راهِ سوم:
   استثنای نام‌دار با دلیل (`NEVER_PROXIED` · `NOT_IN_PUBLIC_SPEC`) — و **خودِ استثناها
   آزموده می‌شوند**؛ استثنای مرده قرمز می‌شود.
+
+  ### ✅ فاز ۶ (انتخابِ رهبر) — و یک نقص که فقط **هم‌پوشانیِ اجباری** پیدایش کرد
+
+  آشتی‌دهی حالا پیش از هر sweep یک advisory lock می‌گیرد
+  ([`leader-lock.ts`](apps/api/src/plugins/leader-lock.ts))، پس
+  `BILLING_RECONCILE_ENABLED` در `.env.production.example` **روشن** شد. ⚠️ آن قفل برای
+  **اتلاف** است نه درستی — درستی از قفلِ ردیفِ `payments` می‌آید و همان‌جا می‌مانَد.
+
+  ★★ **سنجه با یک `pg_sleep`ِ واقعی داخلِ ناحیه‌ی بحرانی نوشته شد** (درسِ M4: چکِ همزمانی
+  هم‌زمان نیست مگر ثابت شود)، و **دو** خودآزمون دارد: بدونِ قفل هر دو نود کار می‌کنند · و با
+  `held = true`ی عمدی، قرمز شد.
+
+  ★★ **ممیزیِ ۶٫۳:** خواندنِ کد می‌گفت `Idempotency-Key` با دو نود امن است — و درست می‌گفت
+  (یکتاییِ `payments_idem_uq` در **دیتابیس**، نه میان‌افزارِ حافظه‌ای). ⚠️ ولی هم‌پوشانیِ
+  **اجباری** نشان داد بازنده `23505` می‌گیرد ⇒ **۵۰۰** برای کاربرِ دوم. رفع:
+  `createCheckoutIdempotent` یک بار **بیرونِ** تراکنش دوباره تلاش می‌کند (بعد از ۲۳۵۰۵ کلِ
+  تراکنش abort است).
+
+  ⚠️ **دو چیزِ باقی‌مانده شرطِ نودِ دوم‌اند** (جدولِ کامل در [`infra/README`](infra/README.md)):
+  `Idempotency-Key`ِ POSTهای غیرمالی (دو کلیکِ هم‌زمان ⇒ دو بورد) و **سقفِ نرخِ حافظه‌ای**
+  (با N نود، سقفِ موثر N برابر — یعنی `RATE_LIMIT_OTP_MAX=5` با ۳ نود می‌شود ۱۵ پیامک).
 
   ### ✅⏳ وضعیتِ حساب‌ها (۱۴۰۵/۰۶/۱۷)
 

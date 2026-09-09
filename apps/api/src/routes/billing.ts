@@ -16,10 +16,9 @@ import {
   type SubscriptionRow,
 } from "../dto.ts";
 import { HttpError } from "../errors.ts";
-import { withTransaction } from "../plugins/db.ts";
 import { assertUuid, checkoutBody, parseBody, zarinpalCallbackQuery } from "../schemas.ts";
 import {
-  createCheckout,
+  createCheckoutIdempotent,
   LIVE_SUBSCRIPTION_STATUSES,
   settlePayment,
   voidFailedCheckout,
@@ -86,26 +85,26 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
 
     // ★★ فاکتور و ردیفِ pending **قبل از** تماس با درگاه ساخته می‌شوند: اگر درگاه جواب نداد،
     //    یک ردیفِ pending داریم که sweepِ فاز ۷ می‌تواند سراغش برود — نه یک پرداختِ بی‌ردپا.
-    const draft = await withTransaction(deps.pool, async (tx) =>
-      createCheckout(
-        tx,
-        {
-          teamId,
-          userId: sub,
-          planCode: body.planCode,
-          period: body.period,
-          seats: body.seats,
-          couponCode: body.couponCode,
-          vatPercent: deps.vatPercent,
-          gatewayName: deps.gateway.name,
-          gatewayMode: deps.gateway.mode,
-        },
-        // ★★ کلیدِ یکتای **ماندگار** — ایندکسِ `payments_idem_uq`. برخلافِ میان‌افزارِ
-        // حافظه‌ایِ `idempotency.ts`، این از ری‌استارت و نودِ دوم جان به در می‌بَرد (ADR-050).
-        // ⚠️ **حتماً با `teamId` دامنه‌دار می‌شود:** آن ایندکس **سراسری** است، پس کلیدِ خامِ
-        //    کلاینت می‌تواند با کلیدِ تیمِ دیگری تصادف کند و ردیفِ آن تیم را برگرداند.
-        idempotencyKeyFor(teamId, req.headers["idempotency-key"]),
-      ),
+    // ★★ `…Idempotent` و نه `createCheckout`ِ خام: با دو نود، دو درخواستِ هم‌زمانِ یک کلید
+    //    هر دو SELECT را خالی می‌بینند و بازنده `23505` می‌گیرد ⇒ ۵۰۰ی بی‌ربط (M5 گام ۶٫۳).
+    const draft = await createCheckoutIdempotent(
+      deps.pool,
+      {
+        teamId,
+        userId: sub,
+        planCode: body.planCode,
+        period: body.period,
+        seats: body.seats,
+        couponCode: body.couponCode,
+        vatPercent: deps.vatPercent,
+        gatewayName: deps.gateway.name,
+        gatewayMode: deps.gateway.mode,
+      },
+      // ★★ کلیدِ یکتای **ماندگار** — ایندکسِ `payments_idem_uq`. برخلافِ میان‌افزارِ
+      // حافظه‌ایِ `idempotency.ts`، این از ری‌استارت و نودِ دوم جان به در می‌بَرد (ADR-050).
+      // ⚠️ **حتماً با `teamId` دامنه‌دار می‌شود:** آن ایندکس **سراسری** است، پس کلیدِ خامِ
+      //    کلاینت می‌تواند با کلیدِ تیمِ دیگری تصادف کند و ردیفِ آن تیم را برگرداند.
+      idempotencyKeyFor(teamId, req.headers["idempotency-key"]),
     );
 
     let created;

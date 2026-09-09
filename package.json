@@ -58,7 +58,8 @@
     "deps:check": "node scripts/check-workspace-deps.ts --self-test && node scripts/check-workspace-deps.ts",
     "openapi:check": "node scripts/gen-openapi.ts --check",
     "ci:wait": "node --env-file-if-exists=.env scripts/ci-wait-services.mjs",
-    "infra:probe-metrics": "node --expose-gc --env-file-if-exists=.env scripts/infra-probe-metrics.ts"
+    "infra:probe-metrics": "node --expose-gc --env-file-if-exists=.env scripts/infra-probe-metrics.ts",
+    "infra:probe-leader": "node --env-file-if-exists=.env scripts/infra-probe-leader.ts"
   },
   "dependencies": {
     "@hamboom/config": "workspace:*",

@@ -468,6 +468,111 @@ async function main(): Promise<void> {
     }
   }
 
+  // ── ۹: ★★ **دو نود، یک `Idempotency-Key`** — ممیزیِ M5 گام ۶٫۳ ──────────
+  //
+  // ⚠️ میان‌افزارِ `idempotency.ts` **حافظه‌ای و تک‌نودی** است، پس با دو نود اصلاً وارد
+  //    عمل نمی‌شود. سوال این است: آیا لایه‌ی دیتابیس به‌تنهایی کافی است؟
+  //    ★ این‌جا با دو **استخرِ جدا** (شبیه‌سازیِ دو فرایندِ api) و **هم‌زمان** سنجیده می‌شود،
+  //    نه با دو فراخوانیِ پشتِ سرِ هم که مسئله را نامرئی می‌کند (درسِ M4).
+  {
+    const { userId, teamId } = await seedTeam(pool);
+    const nodeB = createDbPool({
+      connectionString: env.DATABASE_URL,
+      ssl: env.DATABASE_SSL,
+      poolMax: 4,
+    });
+    try {
+      const key = `${teamId}:cross-node`;
+      const input = {
+        teamId,
+        userId,
+        planCode,
+        period: "monthly" as const,
+        seats: 3,
+        vatPercent: 10,
+        gatewayName: "mock",
+        gatewayMode: "sandbox" as const,
+      };
+      const attempt = (p: pg.Pool) =>
+        withTransaction(p, async (tx) => createCheckout(tx, input, key)).then(
+          (d) => ({ ok: true as const, id: d.paymentId }),
+          (e: unknown) => ({ ok: false as const, message: String((e as Error).message) }),
+        );
+
+      const [a, b] = await Promise.all([attempt(pool), attempt(nodeB)]);
+      const { rows } = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM payments WHERE idempotency_key = $1",
+        [key],
+      );
+      const created = Number(rows[0]?.n ?? 0);
+      const succeeded = [a, b].filter((r) => r.ok);
+
+      /**
+       * ★★ **و حالا همان کار، این‌بار با هم‌پوشانیِ اجباری.**
+       *
+       * ⚠️ چکِ بالا سبز شد ولی **اثبات نمی‌کند** دو تراکنش هم‌پوشانی داشته‌اند — همان
+       * تله‌ای که در M4 سه بار خورد. `createCheckout` نقطه‌ی تزریقی بینِ `SELECT` و
+       * `INSERT` ندارد، پس **شکلش** این‌جا با SQLِ خام بازسازی می‌شود و یک `pg_sleep`
+       * واقعی وسطش می‌نشیند تا هر دو نود **قبل از** insertِ یکدیگر جست‌وجو کنند.
+       *
+       * این چیزی است که به سوالِ ممیزی جواب می‌دهد: بازنده چه می‌بیند؟
+       */
+      const overlapKey = `${teamId}:cross-node-overlap`;
+      const raceShape = async (p: pg.Pool): Promise<string> => {
+        const c = await p.connect();
+        try {
+          await c.query("BEGIN");
+          const found = await c.query("SELECT id FROM payments WHERE idempotency_key = $1", [
+            overlapKey,
+          ]);
+          // ★ تاخیرِ **واقعی** داخلِ ناحیه‌ی بحرانی — بدونِ این، دو تراکنش هرگز به هم نمی‌رسند.
+          await c.query("SELECT pg_sleep(0.4)");
+          if (found.rows.length > 0) {
+            await c.query("COMMIT");
+            return "replayed";
+          }
+          await c.query(
+            `INSERT INTO payments (id, team_id, initiated_by, gateway, gateway_mode, amount_rial, status, idempotency_key)
+             VALUES (gen_random_uuid(), $1, $2, 'mock', 'sandbox', 1000, 'pending', $3)`,
+            [teamId, userId, overlapKey],
+          );
+          await c.query("COMMIT");
+          return "inserted";
+        } catch (error) {
+          await c.query("ROLLBACK").catch(() => undefined);
+          return `خطا: ${String((error as { code?: string }).code ?? (error as Error).message)}`;
+        } finally {
+          c.release();
+        }
+      };
+      const [ra, rb] = await Promise.all([raceShape(pool), raceShape(nodeB)]);
+      const overlapRows = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM payments WHERE idempotency_key = $1",
+        [overlapKey],
+      );
+
+      results.push({
+        name: "★★ با هم‌پوشانیِ **اجباری**: یک ردیف می‌مانَد، و بازنده خطای یکتایی می‌گیرد",
+        ok: Number(overlapRows.rows[0]?.n ?? 0) === 1,
+        detail: `نودِ ۱ ⇒ ${ra} · نودِ ۲ ⇒ ${rb} · ردیف: ${overlapRows.rows[0]?.n ?? "?"}`,
+      });
+
+      results.push({
+        name: "★★ دو نود با یک Idempotency-Key ⇒ فقط **یک** ردیفِ پرداخت",
+        // ادعا فقط **یکتاییِ ردیف** است. اینکه بازنده چه می‌بیند، پایین جدا گزارش می‌شود.
+        ok: created === 1,
+        detail:
+          `ردیف‌های ساخته‌شده: ${String(created)} · موفق: ${String(succeeded.length)} از ۲` +
+          (succeeded.length === 2 && a.ok && b.ok
+            ? ` · هر دو همان شناسه را گرفتند: ${String(a.id === b.id)}`
+            : ` · بازنده: ${[a, b].find((r) => !r.ok)?.message.slice(0, 90) ?? "—"}`),
+      });
+    } finally {
+      await nodeB.end().catch(() => undefined);
+      await cleanup(pool, teamId, userId);
+    }
+  }
+
   await pool.query("DELETE FROM plans WHERE code = $1", [planCode]).catch(() => undefined);
   await pool.end();
 

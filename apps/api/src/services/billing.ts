@@ -295,6 +295,49 @@ export interface CheckoutDraft {
  *
  * ★★ مبلغ کاملاً سمتِ سرور محاسبه می‌شود (ADR-014). بدنه‌ی درخواست فیلدِ ریالی ندارد.
  */
+/**
+ * ★★ همان `createCheckout`، ولی **امن در برابرِ دو نودِ هم‌زمان** — M5 گام ۶٫۳.
+ *
+ * ── مسئله‌ای که با اندازه‌گیری پیدا شد ────────────────────────────────────
+ *
+ * `createCheckout` اول `SELECT` می‌زند و بعد `INSERT`. برای یک retryِ **پشتِ سرِ هم**
+ * (double-click، تلاشِ دوباره بعد از timeout) کافی است: SELECT ردیفِ قبلی را می‌بیند و
+ * همان پیش‌نویس برمی‌گردد. ولی میان‌افزارِ `idempotency.ts` **حافظه‌ای و تک‌نودی** است، پس
+ * با دو نود دو درخواستِ **هم‌زمان** هر دو SELECT را خالی می‌بینند.
+ *
+ * ⚠️ سنجه‌ی `billing:settle` با یک هم‌پوشانیِ **اجباری** (`pg_sleep` بینِ SELECT و INSERT
+ * روی دو استخرِ جدا) اندازه گرفت: ردیف **یکی** می‌مانَد — یکتاییِ `payments_idem_uq` کار
+ * می‌کند — ولی بازنده **`23505`** می‌گیرد، که به کاربر ۵۰۰ نشان می‌دهد.
+ *
+ * ★ یعنی داده هرگز خراب نمی‌شود؛ فقط یکی از دو کاربرِ **هم‌زمان** خطای بی‌ربط می‌بیند.
+ *
+ * ── چرا retry بیرونِ تراکنش است، نه داخلِ `createCheckout` ────────────────
+ *
+ * ⚠️ بعد از `23505` **کلِ تراکنش abort شده**؛ هر کوئریِ بعدی روی همان `tx` با
+ * «current transaction is aborted» می‌شکند. پس نمی‌شود داخلِ همان تراکنش دوباره خواند —
+ * باید rollback شود و تراکنشِ **تازه‌ای** باز شود، که SELECTش حالا ردیفِ commit‌شده‌ی نودِ
+ * برنده را می‌بیند و `replayed: true` برمی‌گردانَد.
+ *
+ * ⊕ **یک بار** retry می‌شود و نه بیشتر: تنها چیزی که این خطا را می‌سازد، یک برنده‌ی
+ * commit‌شده است — و آن ردیف دیگر جایی نمی‌رود. حلقه‌ی نامحدود فقط یک خطای دیگر را
+ * می‌پوشانَد.
+ */
+export async function createCheckoutIdempotent(
+  pool: pg.Pool,
+  input: CheckoutInput,
+  idempotencyKey: string,
+): Promise<CheckoutDraft> {
+  try {
+    return await withTransaction(pool, async (tx) => createCheckout(tx, input, idempotencyKey));
+  } catch (error) {
+    if ((error as { code?: string }).code !== UNIQUE_VIOLATION) throw error;
+    return withTransaction(pool, async (tx) => createCheckout(tx, input, idempotencyKey));
+  }
+}
+
+/** کدِ خطای نقضِ یکتاییِ Postgres. */
+const UNIQUE_VIOLATION = "23505";
+
 export async function createCheckout(
   tx: Executor,
   input: CheckoutInput,

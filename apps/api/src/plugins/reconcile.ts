@@ -5,6 +5,7 @@ import type pg from "pg";
 import type { ApiConfig } from "../config.ts";
 import type { ReconcileRecorder } from "../metrics.ts";
 import { runReconcile, type ReconcilePolicy } from "../services/reconcile.ts";
+import { withAdvisoryLock } from "./leader-lock.ts";
 
 /**
  * پلاگینِ بازه‌ایِ آشتی‌دهی — [ADR-051](../../../../ARCHITECTURE_DECISIONS.md#adr-051)
@@ -14,11 +15,14 @@ import { runReconcile, type ReconcilePolicy } from "../services/reconcile.ts";
  * کامل، Dockerfile، و مسیرِ استقرارِ تازه می‌خواهد — و کاری که می‌کند دقیقاً همان چیزی است
  * که اسکریپتِ `billing:reconcile` می‌کند. پس همان کد، این‌بار با یک تایمر.
  *
- * ⚠️ **پیش‌فرض خاموش است.** در استقرارِ چندنودی هر نود تایمرِ خودش را دارد و سه نود یعنی
- * سه sweepِ هم‌زمان. **ایمن است** — قفلِ ردیفِ ADR-050 دو تسویه‌ی هم‌زمانِ یک پرداخت را
- * سریالی می‌کند و سنجه‌ی فاز ۷ همین را روی Postgresِ زنده اثبات می‌کند — ولی اتلاف است و
- * سه برابر به درگاه تماس می‌زند. **انتخابِ رهبر کارِ M5 است**، و تا آن‌وقت راهِ درست
- * `pnpm billing:reconcile` از یک cronِ بیرونی است.
+ * ★★ **از M5 گام ۶٫۱ انتخابِ رهبر دارد** ([ADR-060](../../../../ARCHITECTURE_DECISIONS.md#adr-060)):
+ * پیش از هر sweep یک advisory lockِ Postgres گرفته می‌شود و نودی که نگیرد، آن نوبت را رد
+ * می‌کند. پس `BILLING_RECONCILE_ENABLED` می‌تواند در production روشن باشد.
+ *
+ * ⚠️ **ولی آن قفل برای اتلاف است نه درستی.** حتی بدونش هم دو sweepِ هم‌زمان **ایمن**اند —
+ * قفلِ ردیفِ [ADR-050](../../../../ARCHITECTURE_DECISIONS.md#adr-050) دو تسویه‌ی هم‌زمانِ یک
+ * پرداخت را سریالی می‌کند و سنجه‌ی فاز ۷ همین را روی Postgresِ زنده اثبات می‌کند. قفلِ رهبر
+ * فقط جلوی **سه برابر تماس با درگاه** را می‌گیرد.
  */
 
 export interface ReconcileJobDeps {
@@ -66,7 +70,22 @@ export function registerReconcileJob(app: FastifyInstance, deps: ReconcileJobDep
     }
     running = true;
     try {
-      const report = await runReconcile({ pool: deps.pool, gateway: deps.gateway }, policy);
+      /**
+       * ★★ **انتخابِ رهبر** — M5 گام ۶٫۱ ([ADR-060](../../../../ARCHITECTURE_DECISIONS.md#adr-060)).
+       *
+       * هر نود تایمرِ خودش را دارد؛ بدونِ این، سه نود یعنی سه sweepِ هم‌زمان و **سه برابر
+       * تماس با درگاه**. ⚠️ ولی این قفل برای **اتلاف** است نه درستی — درستی از قفلِ ردیفِ
+       * `payments` می‌آید و همان‌جا هم می‌مانَد.
+       */
+      const report = await withAdvisoryLock({ pool: deps.pool }, () =>
+        runReconcile({ pool: deps.pool, gateway: deps.gateway }, policy),
+      );
+      if (report === null) {
+        // ★ سطحِ `debug` عمدی است: در یک استقرارِ سه‌نودی، **هر نوبت** دو نود بازنده‌اند.
+        //   `info` یعنی دو سومِ لاگِ آشتی‌دهی نویزِ «کار نکردم» باشد.
+        app.log.debug("آشتی‌دهی: نودِ دیگری رهبر است — این نوبت رد شد.");
+        return;
+      }
       // ★ پیش از هر شاخه‌ی لاگ ضبط می‌شود: یک اجرای «بدونِ تغییر» هم باید در
       //   `runs_total` دیده شود، وگرنه «آشتی‌دهی اصلاً اجرا شده؟» جواب ندارد.
       deps.recorder?.record(report);
@@ -105,6 +124,6 @@ export function registerReconcileJob(app: FastifyInstance, deps: ReconcileJobDep
   app.log.info(
     `آشتی‌دهیِ خودکار روشن است — هر ${config.BILLING_RECONCILE_INTERVAL_SECONDS} ثانیه ` +
       `(کهنگی ${config.BILLING_PENDING_STALE_MINUTES} دقیقه، انقضا ${config.BILLING_PENDING_EXPIRE_HOURS} ساعت). ` +
-      "⚠️ چندنودی: هر نود نسخه‌ی خودش را اجرا می‌کند (انتخابِ رهبر = M5).",
+      "★ چندنودی: هر نوبت فقط **یک** نود رهبر می‌شود (advisory lock، ADR-060).",
   );
 }
