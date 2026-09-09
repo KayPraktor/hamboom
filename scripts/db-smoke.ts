@@ -69,12 +69,10 @@ async function main(): Promise<void> {
       "تستِ دود",
       "#3366cc",
     ]);
-    await client.query("INSERT INTO teams (id, slug, name, owner_user_id) VALUES ($1, $2, $3, $4)", [
-      teamId,
-      `smoke-${teamId.slice(0, 8)}`,
-      "تیمِ تستِ دود",
-      userId,
-    ]);
+    await client.query(
+      "INSERT INTO teams (id, slug, name, owner_user_id) VALUES ($1, $2, $3, $4)",
+      [teamId, `smoke-${teamId.slice(0, 8)}`, "تیمِ تستِ دود", userId],
+    );
     await client.query("INSERT INTO boards (id, team_id, created_by) VALUES ($1, $2, $3)", [
       boardId,
       teamId,

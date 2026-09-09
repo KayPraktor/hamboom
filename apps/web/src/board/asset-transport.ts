@@ -1,5 +1,9 @@
 import type { AssetTransport } from "@hamboom/canvas-sync";
-import { HB_ALLOWED_IMAGE_MIME, type HbAllowedImageMime, type HbAsset } from "@hamboom/shared-types";
+import {
+  HB_ALLOWED_IMAGE_MIME,
+  type HbAllowedImageMime,
+  type HbAsset,
+} from "@hamboom/shared-types";
 
 import { api } from "../api/client.ts";
 
@@ -46,7 +50,9 @@ export function createApiAssetTransport({
       form.append("file", file);
       const uploadRes = await fetch(presign.url, { method: "POST", body: form });
       if (!uploadRes.ok) {
-        throw new Error(`‏[hamboom] بارگذاریِ فایل به انبار ناموفق بود (${String(uploadRes.status)}).`);
+        throw new Error(
+          `‏[hamboom] بارگذاریِ فایل به انبار ناموفق بود (${String(uploadRes.status)}).`,
+        );
       }
 
       // ۳) commit — سرور بایت را می‌سنجد (sha256/mime/اندازه) و رکورد را نهایی می‌کند.

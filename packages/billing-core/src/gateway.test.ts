@@ -53,11 +53,13 @@ describe("ZarinpalGateway — سه قاعده‌ی اندازه‌گیری‌ش�
     ).toThrow(/۳۶/u);
   });
 
-  it("★ همیشه `currency: \"IRR\"` صریح می‌فرستد (P5 — وگرنه ضریبِ ۱۰)", async () => {
+  it('★ همیشه `currency: "IRR"` صریح می‌فرستد (P5 — وگرنه ضریبِ ۱۰)', async () => {
     let sent: Record<string, unknown> = {};
     const gw = zarinpal((_url, init) => {
       sent = JSON.parse(String((init as RequestInit).body)) as Record<string, unknown>;
-      return Promise.resolve(reply(200, { data: { code: 100, authority: "S".padEnd(36, "0") }, errors: [] }));
+      return Promise.resolve(
+        reply(200, { data: { code: 100, authority: "S".padEnd(36, "0") }, errors: [] }),
+      );
     });
     await gw.createPayment({ amountRial: 15_000, description: "تست", callbackUrl: "http://x/cb" });
     expect(sent.currency).toBe("IRR");
@@ -91,7 +93,10 @@ describe("ZarinpalGateway — سه قاعده‌ی اندازه‌گیری‌ش�
   it("★★ HTTP 422 با `errors`ِ شیء ⇒ «پرداخت نشد»، نه استثنا", async () => {
     const gw = zarinpal(() =>
       Promise.resolve(
-        reply(422, { data: {}, errors: { code: -9, message: "The amount must be at least 1000." } }),
+        reply(422, {
+          data: {},
+          errors: { code: -9, message: "The amount must be at least 1000." },
+        }),
       ),
     );
     const out = await gw.verifyPayment({ authority: "S1", amountRial: 15_000 });
@@ -101,9 +106,13 @@ describe("ZarinpalGateway — سه قاعده‌ی اندازه‌گیری‌ش�
 
   it("★★ HTTP 401 با کدِ `-51` ⇒ «پرداخت نشد» (دقیقاً همان چیزی که probe دید)", async () => {
     const gw = zarinpal(() =>
-      Promise.resolve(reply(401, { data: {}, errors: { code: -51, message: "Session is not valid" } })),
+      Promise.resolve(
+        reply(401, { data: {}, errors: { code: -51, message: "Session is not valid" } }),
+      ),
     );
-    expect((await gw.verifyPayment({ authority: "S1", amountRial: 15_000 })).status).toBe("notPaid");
+    expect((await gw.verifyPayment({ authority: "S1", amountRial: 15_000 })).status).toBe(
+      "notPaid",
+    );
   });
 
   // ★★ قاعده ۳ — قلبِ ADR-050.
@@ -150,14 +159,21 @@ describe("ZarinpalGateway — سه قاعده‌ی اندازه‌گیری‌ش�
   });
 
   it("⚠️ بدنه‌ی غیر-JSON یا بی‌کد هم `gatewayError` است، نه «پرداخت نشد»", async () => {
-    const bad = { status: 502, json: () => Promise.reject(new Error("not json")) } as unknown as Response;
+    const bad = {
+      status: 502,
+      json: () => Promise.reject(new Error("not json")),
+    } as unknown as Response;
     const gw = zarinpal(() => Promise.resolve(bad));
-    expect((await gw.verifyPayment({ authority: "S1", amountRial: 1_000 })).status).toBe("gatewayError");
+    expect((await gw.verifyPayment({ authority: "S1", amountRial: 1_000 })).status).toBe(
+      "gatewayError",
+    );
   });
 
   it("ساختِ پرداختِ ناموفق استثنا می‌دهد (کدِ غیرِ ۱۰۰)", async () => {
     const gw = zarinpal(() =>
-      Promise.resolve(reply(422, { data: {}, errors: { code: -10, message: "Invalid merchant_id." } })),
+      Promise.resolve(
+        reply(422, { data: {}, errors: { code: -10, message: "Invalid merchant_id." } }),
+      ),
     );
     await expect(
       gw.createPayment({ amountRial: 15_000, description: "d", callbackUrl: "http://x/cb" }),
@@ -238,8 +254,10 @@ describe("MockGateway — پیش‌فرضِ توسعه (M4-D5)", () => {
 
   it("`authorityFactory` قابلِ تزریق است (تستِ قطعی)", async () => {
     const gw = mock({ authorityFactory: () => "FIXED".padEnd(36, "0") });
-    expect((await gw.createPayment({ amountRial: 1_000, description: "d", callbackUrl: "http://x/cb" })).authority)
-      .toBe("FIXED".padEnd(36, "0"));
+    expect(
+      (await gw.createPayment({ amountRial: 1_000, description: "d", callbackUrl: "http://x/cb" }))
+        .authority,
+    ).toBe("FIXED".padEnd(36, "0"));
   });
 });
 
@@ -268,7 +286,9 @@ describe("ZarinpalGateway.listUnverified — بازیابیِ پنجره‌ی س
 
   it("★ مبلغِ رشته‌ای هم پذیرفته می‌شود (مثلِ ref_id، شکلش تضمین‌شده نیست)", async () => {
     const gw = zarinpal(() =>
-      Promise.resolve(reply(200, { data: { authorities: [{ authority: "A1", amount: "500000" }] } })),
+      Promise.resolve(
+        reply(200, { data: { authorities: [{ authority: "A1", amount: "500000" }] } }),
+      ),
     );
     await expect(gw.listUnverified()).resolves.toEqual([{ authority: "A1", amountRial: 500_000 }]);
   });

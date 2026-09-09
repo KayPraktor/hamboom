@@ -54,11 +54,17 @@ const { flags, values } = readArgs(process.argv.slice(2));
 
 const policy: ReconcilePolicy = {
   staleAfterMs:
-    positiveNumber(values.get("stale-minutes"), DEFAULT_RECONCILE_POLICY.staleAfterMs / 60_000, "stale-minutes") *
-    60_000,
+    positiveNumber(
+      values.get("stale-minutes"),
+      DEFAULT_RECONCILE_POLICY.staleAfterMs / 60_000,
+      "stale-minutes",
+    ) * 60_000,
   expireAfterMs:
-    positiveNumber(values.get("expire-hours"), DEFAULT_RECONCILE_POLICY.expireAfterMs / 3_600_000, "expire-hours") *
-    3_600_000,
+    positiveNumber(
+      values.get("expire-hours"),
+      DEFAULT_RECONCILE_POLICY.expireAfterMs / 3_600_000,
+      "expire-hours",
+    ) * 3_600_000,
   batchSize: positiveNumber(values.get("batch"), DEFAULT_RECONCILE_POLICY.batchSize, "batch"),
   adoptOrphans: flags.has("adopt"),
   dryRun: flags.has("dry-run"),

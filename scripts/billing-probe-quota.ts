@@ -94,12 +94,7 @@ async function attachPlan(pool: pg.Pool, teamId: string, planCode: string): Prom
  * نمی‌کنند. با یک `pg_sleep` هر دو مجبور می‌شوند داخلِ ناحیه‌ی بحرانی بمانند، و آن‌وقت
  * وجود یا نبودِ قفل تفاوت می‌سازد. (همان درسِ سنجه‌ی تسویه، دوباره.)
  */
-async function addBoard(
-  pool: pg.Pool,
-  teamId: string,
-  userId: string,
-  holdMs = 0,
-): Promise<void> {
+async function addBoard(pool: pg.Pool, teamId: string, userId: string, holdMs = 0): Promise<void> {
   await withTransaction(pool, async (tx) => {
     await assertQuota(tx, teamId, "boards");
     if (holdMs > 0) await tx.query("SELECT pg_sleep($1)", [holdMs / 1000]);
@@ -384,7 +379,9 @@ async function main(): Promise<void> {
     }
   }
 
-  await pool.query("DELETE FROM plans WHERE code IN ('q_small','q_unlimited')").catch(() => undefined);
+  await pool
+    .query("DELETE FROM plans WHERE code IN ('q_small','q_unlimited')")
+    .catch(() => undefined);
   await pool.end();
 
   for (const r of results) console.log(`${r.ok ? "✔" : "✖"} ${r.name}\n    ${r.detail}`);

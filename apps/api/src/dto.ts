@@ -162,8 +162,7 @@ export const STORAGE_BYTES_SQL = `
  * کوئرسِ `int8→number` نمی‌گیردش و **رشته** برمی‌گردد (B-2، اثباتِ گام ۱٫۲).
  */
 /** شمارشِ اعضای تیم — همان زیرپرس‌وجویی که هر چهار SELECTِ تیم لازم دارد. */
-export const MC =
-  "(SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count";
+export const MC = "(SELECT count(*) FROM team_members m WHERE m.team_id = t.id) AS member_count";
 
 export const TEAM_BILLING_COLUMNS = `
          ${PLAN_CODE_SQL} AS plan_code,

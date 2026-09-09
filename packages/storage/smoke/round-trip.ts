@@ -112,14 +112,23 @@ ok(over >= 400, `★ بالای سقف (۵۰۰۰) توسط MinIO رد (${over})`
 const wrongType = await post(new Uint8Array(500).fill(0x41), "image/png");
 ok(wrongType >= 400, `★ نوعِ غلط (image/png) توسط MinIO رد (${wrongType})`);
 const uploaded = await store.headObject(uploadKey);
-ok(uploaded !== null && uploaded.size === 500, `آپلودِ POSTِ درست واقعاً ذخیره شد (${uploaded?.size})`);
+ok(
+  uploaded !== null && uploaded.size === 500,
+  `آپلودِ POSTِ درست واقعاً ذخیره شد (${uploaded?.size})`,
+);
 
 // ۵) delete و قراردادِ «کلیدِ غایب = null، نه خطا»
 console.log("\n۴) delete و قراردادِ null:");
 await store.deleteObject(key);
 ok((await store.getObject(key)) === null, "بعد از deleteObject، getObject → null");
-ok((await store.getObject("smoke/does-not-exist")) === null, "کلیدِ غایب: getObject → null (نه throw)");
-ok((await store.headObject("smoke/does-not-exist")) === null, "کلیدِ غایب: headObject → null (نه throw)");
+ok(
+  (await store.getObject("smoke/does-not-exist")) === null,
+  "کلیدِ غایب: getObject → null (نه throw)",
+);
+ok(
+  (await store.headObject("smoke/does-not-exist")) === null,
+  "کلیدِ غایب: headObject → null (نه throw)",
+);
 
 console.log(`\nخلاصه: ${pass} سبز، ${fail} قرمز.`);
 process.exit(fail === 0 ? 0 : 1);

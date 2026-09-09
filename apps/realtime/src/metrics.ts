@@ -87,7 +87,9 @@ export function createDocSizeCache(ttlMs = DOC_SIZE_TTL_MS, now: () => number = 
 
 /** یک خطِ متریکِ Prometheus (نامِ متریک، توضیح، نوع، مقدار). */
 function metric(name: string, help: string, type: "gauge" | "counter", value: number): string {
-  return [`# HELP ${name} ${help}`, `# TYPE ${name} ${type}`, `${name} ${String(value)}`].join("\n");
+  return [`# HELP ${name} ${help}`, `# TYPE ${name} ${type}`, `${name} ${String(value)}`].join(
+    "\n",
+  );
 }
 
 /**

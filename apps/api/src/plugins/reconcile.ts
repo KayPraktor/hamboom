@@ -101,7 +101,10 @@ export function registerReconcileJob(app: FastifyInstance, deps: ReconcileJobDep
           "آشتی‌دهی چیزی را تغییر داد",
         );
       } else {
-        app.log.debug({ scanned: report.scanned, skipped: report.skipped }, "آشتی‌دهی — بدونِ تغییر");
+        app.log.debug(
+          { scanned: report.scanned, skipped: report.skipped },
+          "آشتی‌دهی — بدونِ تغییر",
+        );
       }
       for (const error of report.errors) app.log.error({ reconcile: error }, "خطای آشتی‌دهی");
     } catch (error) {

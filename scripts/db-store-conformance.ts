@@ -142,7 +142,11 @@ async function testForUpdateLocks(pool: pg.Pool, userId: string): Promise<Result
 
 async function main(): Promise<void> {
   const env = loadEnv(databaseEnvSchema);
-  const pool = createDbPool({ connectionString: env.DATABASE_URL, ssl: env.DATABASE_SSL, poolMax: 20 });
+  const pool = createDbPool({
+    connectionString: env.DATABASE_URL,
+    ssl: env.DATABASE_SSL,
+    poolMax: 20,
+  });
 
   const results: Result[] = [];
   const userId = randomUUID();

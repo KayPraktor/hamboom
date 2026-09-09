@@ -27,8 +27,7 @@ export function percentOfRial(baseRial: number, percent: number): number {
 
 /** تخفیفِ کوپن — یکی از دو شکل، هرگز هر دو. */
 export type CouponEffect =
-  | { kind: "percent"; percentOff: number }
-  | { kind: "amount"; amountOffRial: number };
+  { kind: "percent"; percentOff: number } | { kind: "amount"; amountOffRial: number };
 
 export interface ChargeInput {
   plan: Pick<Plan, "code" | "name" | "priceMonthlyRial" | "priceYearlyRial">;
@@ -79,7 +78,9 @@ export function computeCharge(input: ChargeInput): Charge {
 
   const unit = unitPriceRial(plan, period);
   if (!Number.isSafeInteger(unit) || unit < 0) {
-    throw new InvalidChargeError(`قیمتِ پلنِ «${plan.code}» عددِ ریالِ معتبر نیست: «${String(unit)}».`);
+    throw new InvalidChargeError(
+      `قیمتِ پلنِ «${plan.code}» عددِ ریالِ معتبر نیست: «${String(unit)}».`,
+    );
   }
 
   const subtotalRial = unit * seats;

@@ -220,9 +220,12 @@ async function main(): Promise<void> {
 
       // درگاه یک‌بار verify می‌شود (مثلِ auto-verify یا callbackی که به ما نرسید) ⇒ دفعه‌ی بعد ۱۰۱.
       const amount = Number(
-        (await pool.query<{ amount_rial: number }>("SELECT amount_rial FROM payments WHERE id = $1", [
-          paymentId,
-        ])).rows[0]!.amount_rial,
+        (
+          await pool.query<{ amount_rial: number }>(
+            "SELECT amount_rial FROM payments WHERE id = $1",
+            [paymentId],
+          )
+        ).rows[0]!.amount_rial,
       );
       const first = await gateway.verifyPayment({ authority, amountRial: amount });
       const gatewaySaysAlready = first.status === "paid" && !first.alreadyVerified;
@@ -414,7 +417,10 @@ async function main(): Promise<void> {
         ).rows[0]!.n,
       );
       const ok =
-        !first.replayed && second.replayed && first.paymentId === second.paymentId && invoices === 1;
+        !first.replayed &&
+        second.replayed &&
+        first.paymentId === second.paymentId &&
+        invoices === 1;
       results.push({
         name: "★ همان کلیدِ idempotency ⇒ همان پیش‌نویس برمی‌گردد (نه ۵۰۰ی همیشگی)",
         ok,

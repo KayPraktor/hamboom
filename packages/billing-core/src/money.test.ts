@@ -106,7 +106,9 @@ describe("computeCharge — ریاضیِ ریالِ صحیح (ADR-052)", () => {
   });
 
   it("قیمتِ پلنِ نامعتبر رد می‌شود", () => {
-    expect(() => charge({ plan: { ...PLAN, priceMonthlyRial: 1234.5 } })).toThrow(InvalidChargeError);
+    expect(() => charge({ plan: { ...PLAN, priceMonthlyRial: 1234.5 } })).toThrow(
+      InvalidChargeError,
+    );
   });
 });
 

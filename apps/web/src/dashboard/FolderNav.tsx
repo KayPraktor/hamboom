@@ -3,7 +3,12 @@ import { Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 
 import { useSession } from "../auth/session-context.ts";
-import { useCreateFolder, useDeleteFolder, useFolders, useRenameFolder } from "./folders-queries.ts";
+import {
+  useCreateFolder,
+  useDeleteFolder,
+  useFolders,
+  useRenameFolder,
+} from "./folders-queries.ts";
 import type { Selection } from "./selection.ts";
 
 /**
@@ -11,7 +16,15 @@ import type { Selection } from "./selection.ts";
  * به‌جای ایموجیِ درون‌متن تا در یک ستون تراز شوند (نظمِ سبکِ میرو). فقط تزئینی (`aria-hidden`).
  */
 const IconBoards = (
-  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+  <svg
+    viewBox="0 0 24 24"
+    width="17"
+    height="17"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    aria-hidden="true"
+  >
     <rect x="3" y="3" width="7" height="7" rx="1.5" />
     <rect x="14" y="3" width="7" height="7" rx="1.5" />
     <rect x="3" y="14" width="7" height="7" rx="1.5" />
@@ -19,17 +32,45 @@ const IconBoards = (
   </svg>
 );
 const IconStar = (
-  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+  <svg
+    viewBox="0 0 24 24"
+    width="17"
+    height="17"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
     <path d="M12 3.5l2.5 5.2 5.7.5-4.3 3.8 1.3 5.6L12 15.9 6.8 18.6l1.3-5.6-4.3-3.8 5.7-.5z" />
   </svg>
 );
 const IconTrash = (
-  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <svg
+    viewBox="0 0 24 24"
+    width="17"
+    height="17"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
     <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9L17.5 7" />
   </svg>
 );
 const IconFolder = (
-  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
     <path d="M3.5 7a2 2 0 012-2H9l2 2h7.5a2 2 0 012 2v7.5a2 2 0 01-2 2h-13a2 2 0 01-2-2z" />
   </svg>
 );
@@ -50,7 +91,11 @@ export function FolderNav({
   return (
     <aside className="folder-nav" aria-label="پیمایشِ بوردها">
       <nav className="folder-nav__group">
-        <NavItem icon={IconBoards} active={selection.kind === "all"} onClick={() => onSelect({ kind: "all" })}>
+        <NavItem
+          icon={IconBoards}
+          active={selection.kind === "all"}
+          onClick={() => onSelect({ kind: "all" })}
+        >
           همه‌ی بوردها
         </NavItem>
         <NavItem
@@ -60,7 +105,11 @@ export function FolderNav({
         >
           نشان‌شده‌ها
         </NavItem>
-        <NavItem icon={IconTrash} active={selection.kind === "trash"} onClick={() => onSelect({ kind: "trash" })}>
+        <NavItem
+          icon={IconTrash}
+          active={selection.kind === "trash"}
+          onClick={() => onSelect({ kind: "trash" })}
+        >
           سطلِ بازیافت
         </NavItem>
       </nav>
@@ -144,7 +193,11 @@ function TeamFolders({
   };
 
   const remove = (id: string, name: string): void => {
-    if (!window.confirm(`فولدرِ «${name}» حذف شود؟ بوردهای داخلش پاک نمی‌شوند و به «همه‌ی بوردها» می‌روند.`)) {
+    if (
+      !window.confirm(
+        `فولدرِ «${name}» حذف شود؟ بوردهای داخلش پاک نمی‌شوند و به «همه‌ی بوردها» می‌روند.`,
+      )
+    ) {
       return;
     }
     deleteFolder.mutate(id, {

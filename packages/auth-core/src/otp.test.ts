@@ -39,22 +39,40 @@ describe("OTP", () => {
 
   it("verify کدِ درست → ok، و چالش حذف می‌شود", async () => {
     const store = createMemoryOtpStore();
-    await requestOtp(store, createMockSmsProvider(() => {}), PHONE, cfg({ fixedCode: "111111" }));
+    await requestOtp(
+      store,
+      createMockSmsProvider(() => {}),
+      PHONE,
+      cfg({ fixedCode: "111111" }),
+    );
     expect(await verifyOtp(store, PHONE, "111111", cfg())).toEqual({ ok: true });
     expect(await store.get(PHONE)).toBeNull();
   });
 
   it("verify کدِ غلط → mismatch و attempts++", async () => {
     const store = createMemoryOtpStore();
-    await requestOtp(store, createMockSmsProvider(() => {}), PHONE, cfg({ fixedCode: "111111" }));
-    expect(await verifyOtp(store, PHONE, "999999", cfg())).toEqual({ ok: false, reason: "mismatch" });
+    await requestOtp(
+      store,
+      createMockSmsProvider(() => {}),
+      PHONE,
+      cfg({ fixedCode: "111111" }),
+    );
+    expect(await verifyOtp(store, PHONE, "999999", cfg())).toEqual({
+      ok: false,
+      reason: "mismatch",
+    });
     expect((await store.get(PHONE))?.attempts).toBe(1);
   });
 
   it("★ بعد از maxAttempts → locked (حتی با کدِ درست)", async () => {
     const store = createMemoryOtpStore();
     const c = cfg({ fixedCode: "111111", maxAttempts: 2 });
-    await requestOtp(store, createMockSmsProvider(() => {}), PHONE, c);
+    await requestOtp(
+      store,
+      createMockSmsProvider(() => {}),
+      PHONE,
+      c,
+    );
     await verifyOtp(store, PHONE, "000000", c);
     await verifyOtp(store, PHONE, "000000", c);
     expect(await verifyOtp(store, PHONE, "111111", c)).toEqual({ ok: false, reason: "locked" });
@@ -62,7 +80,12 @@ describe("OTP", () => {
 
   it("verify منقضی → expired", async () => {
     const store = createMemoryOtpStore();
-    await requestOtp(store, createMockSmsProvider(() => {}), PHONE, cfg({ fixedCode: "111111", ttlSeconds: 10 }));
+    await requestOtp(
+      store,
+      createMockSmsProvider(() => {}),
+      PHONE,
+      cfg({ fixedCode: "111111", ttlSeconds: 10 }),
+    );
     expect(await verifyOtp(store, PHONE, "111111", cfg({ clock: () => NOW_MS + 20_000 }))).toEqual({
       ok: false,
       reason: "expired",

@@ -47,9 +47,12 @@ describe("createClient", () => {
       baseUrl: "",
       fetch: (url, init) => {
         calls.push(`${String(init.method)} ${url}`);
-        if (url.endsWith("/auth/refresh")) return Promise.resolve(json(200, { accessToken: "new-tok" }));
+        if (url.endsWith("/auth/refresh"))
+          return Promise.resolve(json(200, { accessToken: "new-tok" }));
         boardHits += 1;
-        return Promise.resolve(boardHits === 1 ? json(401, err("UNAUTHORIZED")) : json(200, { id: "x" }));
+        return Promise.resolve(
+          boardHits === 1 ? json(401, err("UNAUTHORIZED")) : json(200, { id: "x" }),
+        );
       },
     });
     client.setAccessToken("old-tok");
@@ -95,7 +98,9 @@ describe("createClient", () => {
     const client = createClient({
       baseUrl: "",
       fetch: () =>
-        Promise.resolve(json(200, { accessToken: "at-1", isNewUser: false, personalTeamId: "t", user: null })),
+        Promise.resolve(
+          json(200, { accessToken: "at-1", isNewUser: false, personalTeamId: "t", user: null }),
+        ),
     });
     await client.auth.verifyOtp({ phone: "09120000000", code: "123456" });
     expect(client.getAccessToken()).toBe("at-1");
@@ -182,7 +187,9 @@ describe("billing — M4 فاز ۸", () => {
       baseUrl: "",
       fetch: () => Promise.resolve(json(409, err("QUOTA_EXCEEDED"))),
     });
-    await expect(client.billing.checkout("t1", { planCode: "pro", period: "monthly", seats: 1 })).rejects.toMatchObject({
+    await expect(
+      client.billing.checkout("t1", { planCode: "pro", period: "monthly", seats: 1 }),
+    ).rejects.toMatchObject({
       status: 409,
       code: "QUOTA_EXCEEDED",
     });

@@ -21,7 +21,11 @@ export type BoardRole = z.infer<typeof boardRole>;
  * ⚠️ `commenter` عمداً بیرون است: کامنت فاز ۱۰ است و در M2 مثلِ `viewer` fail-closed شد. در
  * `boardRoles` می‌مانَد (قراردادِ سیم)، ولی تخصیص‌ناپذیر است تا «نقشِ بی‌اثر» ساخته نشود.
  */
-export const assignableBoardRoles = ["owner", "editor", "viewer"] as const satisfies readonly BoardRole[];
+export const assignableBoardRoles = [
+  "owner",
+  "editor",
+  "viewer",
+] as const satisfies readonly BoardRole[];
 export const assignableBoardRole = z.enum(assignableBoardRoles);
 export type AssignableBoardRole = z.infer<typeof assignableBoardRole>;
 

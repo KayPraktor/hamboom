@@ -51,7 +51,13 @@ export const sessionStoreCases: StoreCase[] = [
     name: "markUsed → used=true در findِ بعدی",
     run: async (store, sub) => {
       const tokenHash = randomUUID();
-      await store.insert({ tokenHash, familyId: randomUUID(), sub, used: false, expiresAt: nowSec() + 1000 });
+      await store.insert({
+        tokenHash,
+        familyId: randomUUID(),
+        sub,
+        used: false,
+        expiresAt: nowSec() + 1000,
+      });
       await store.markUsed(tokenHash);
       const rec = await store.findByHash(tokenHash);
       assert(rec !== null && rec.used === true, "بعد از markUsed باید used=true باشد");
@@ -77,8 +83,20 @@ export const sessionStoreCases: StoreCase[] = [
       const famB = randomUUID();
       const tA = randomUUID();
       const tB = randomUUID();
-      await store.insert({ tokenHash: tA, familyId: famA, sub, used: false, expiresAt: nowSec() + 1000 });
-      await store.insert({ tokenHash: tB, familyId: famB, sub, used: false, expiresAt: nowSec() + 1000 });
+      await store.insert({
+        tokenHash: tA,
+        familyId: famA,
+        sub,
+        used: false,
+        expiresAt: nowSec() + 1000,
+      });
+      await store.insert({
+        tokenHash: tB,
+        familyId: famB,
+        sub,
+        used: false,
+        expiresAt: nowSec() + 1000,
+      });
       await store.burnFamily(famA);
       assert((await store.findByHash(tA)) === null, "خانواده‌ی A باید سوخته باشد");
       assert((await store.findByHash(tB)) !== null, "خانواده‌ی B باید دست‌نخورده بماند");

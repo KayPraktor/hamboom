@@ -6,11 +6,7 @@ import { useState, type FormEvent } from "react";
 import { errorMessage } from "../api/error-message.ts";
 import { useSession } from "../auth/session-context.ts";
 import { normalizePhone } from "../auth/validate.ts";
-import {
-  ASSIGNABLE_TEAM_ROLES,
-  TEAM_ROLE_FA,
-  type AssignableTeamRole,
-} from "./role-labels.ts";
+import { ASSIGNABLE_TEAM_ROLES, TEAM_ROLE_FA, type AssignableTeamRole } from "./role-labels.ts";
 import {
   useCreateInvite,
   useMembers,
@@ -111,7 +107,9 @@ function MemberRow({
     <li className="member-row">
       <div className="member-row__id">
         <span className="member-row__name">{member.user.displayName}</span>
-        <span className="board-card__meta">عضویت: {formatJalaliShort(new Date(member.joinedAt))}</span>
+        <span className="board-card__meta">
+          عضویت: {formatJalaliShort(new Date(member.joinedAt))}
+        </span>
       </div>
       {editable ? (
         <div className="member-row__controls">

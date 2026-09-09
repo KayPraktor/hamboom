@@ -201,11 +201,7 @@ interface Probe {
   stop(): void;
 }
 
-function probeClient(
-  port: number,
-  boardId: string,
-  token: () => string | Promise<string>,
-): Probe {
+function probeClient(port: number, boardId: string, token: () => string | Promise<string>): Probe {
   const doc = createBoardDoc();
   const events: Event[] = [];
   const state = { seq: 0, opens: 0 };

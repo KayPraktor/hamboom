@@ -71,9 +71,7 @@ export async function withAdvisoryLock<T>(
     if (held) {
       // ⚠️ آزادسازی نباید خطای خودش را به بیرون بدهد: اگر اتصال از قبل مرده باشد،
       //    قفل **از قبل** آزاد شده و انداختنِ خطا فقط شکستِ واقعیِ کار را می‌پوشانَد.
-      await client
-        .query("SELECT pg_advisory_unlock($1)", [key])
-        .catch(() => undefined);
+      await client.query("SELECT pg_advisory_unlock($1)", [key]).catch(() => undefined);
     }
     client.release();
   }

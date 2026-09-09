@@ -68,7 +68,9 @@ describe("refresh — چرخش و تشخیصِ استفاده‌ی مجدد", ()
   it("توکنِ منقضی → expired", async () => {
     const store = createMemorySessionStore();
     const t0 = await startSession(store, "u1", cfg({ ttlSeconds: 10 }));
-    await expect(rotateSession(store, t0, cfg({ clock: () => NOW_MS + 20_000 }))).rejects.toMatchObject({
+    await expect(
+      rotateSession(store, t0, cfg({ clock: () => NOW_MS + 20_000 })),
+    ).rejects.toMatchObject({
       code: "expired",
     });
   });

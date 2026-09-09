@@ -321,7 +321,9 @@ async function main(): Promise<void> {
   );
   for (const row of leftovers.rows) {
     if (row.invoice_id !== null) {
-      await app.db.query("DELETE FROM invoices WHERE id = $1 AND status <> 'paid'", [row.invoice_id]);
+      await app.db.query("DELETE FROM invoices WHERE id = $1 AND status <> 'paid'", [
+        row.invoice_id,
+      ]);
     }
   }
 

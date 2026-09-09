@@ -241,9 +241,10 @@ async function upsertSubscription(
   const period = computePeriod(anchor, intent.period);
 
   if (live !== undefined) {
-    await tx.query("UPDATE subscriptions SET status = 'expired', updated_at = now() WHERE id = $1", [
-      live.id,
-    ]);
+    await tx.query(
+      "UPDATE subscriptions SET status = 'expired', updated_at = now() WHERE id = $1",
+      [live.id],
+    );
   }
 
   const subscriptionId = randomUUID();

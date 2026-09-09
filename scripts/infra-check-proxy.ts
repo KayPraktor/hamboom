@@ -59,15 +59,17 @@ export function renderNginxLocations(prefixes: readonly string[]): string {
     "# هر پیشوند به upstreamِ api می‌رود؛ هر چیزِ دیگری به SPA (بلوکِ `location /`).",
     "",
   ];
-  const blocks = [...prefixes].sort().map((p) =>
-    [
-      `location ${p} {`,
-      "    proxy_pass http://hamboom_api;",
-      "    include /etc/nginx/proxy-common.conf;",
-      "}",
-      "",
-    ].join("\n"),
-  );
+  const blocks = [...prefixes]
+    .sort()
+    .map((p) =>
+      [
+        `location ${p} {`,
+        "    proxy_pass http://hamboom_api;",
+        "    include /etc/nginx/proxy-common.conf;",
+        "}",
+        "",
+      ].join("\n"),
+    );
   return `${header.join("\n")}${blocks.join("\n")}`;
 }
 
@@ -154,7 +156,9 @@ function selfTest(): boolean {
   });
   cases.push({
     name: "★ مسیرِ عمداً مستثنا تخلف شمرده نمی‌شود",
-    ok: checkPrefixesAgainstRoutes(["/auth"], ["GET /auth/x", "GET /metrics"], ["/metrics"]).length === 0,
+    ok:
+      checkPrefixesAgainstRoutes(["/auth"], ["GET /auth/x", "GET /metrics"], ["/metrics"])
+        .length === 0,
   });
   cases.push({
     name: "★★ ولی استثنای **مرده** گرفته می‌شود (مسیرش حذف شده)",
@@ -164,8 +168,9 @@ function selfTest(): boolean {
   });
   cases.push({
     name: "دریفتِ فایلِ nginx گرفته می‌شود",
-    ok: checkNginxFile(renderNginxLocations(["/auth"]), renderNginxLocations(["/auth", "/me"]))
-      .length===1,
+    ok:
+      checkNginxFile(renderNginxLocations(["/auth"]), renderNginxLocations(["/auth", "/me"]))
+        .length === 1,
   });
 
   for (const c of cases) console.log(`${c.ok ? "✔" : "✖"} خودآزمون: ${c.name}`);

@@ -7,7 +7,9 @@ const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0]);
 const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
 // "RIFF" + size(4) + "WEBP"
 const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
-const svgXml = new TextEncoder().encode('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+const svgXml = new TextEncoder().encode(
+  '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+);
 const svgBare = new TextEncoder().encode('   <svg width="10" height="10"></svg>');
 
 describe("sniffMime", () => {

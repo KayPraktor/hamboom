@@ -62,7 +62,9 @@ describe("effectiveBoardRole", () => {
     });
 
     it("لینکِ بی‌توکن → null", () => {
-      expect(effectiveBoardRole(input({ accessMode: "link_view", hasValidLink: false }))).toBeNull();
+      expect(
+        effectiveBoardRole(input({ accessMode: "link_view", hasValidLink: false })),
+      ).toBeNull();
     });
 
     it("★ توکنِ لینک در حالتِ team اثری ندارد → null", () => {
@@ -71,9 +73,9 @@ describe("effectiveBoardRole", () => {
   });
 
   it("★ بیشترین برنده: directRole=viewer + team member (editor) → editor", () => {
-    expect(effectiveBoardRole(input({ accessMode: "team", directRole: "viewer", teamRole: "member" }))).toBe(
-      "editor",
-    );
+    expect(
+      effectiveBoardRole(input({ accessMode: "team", directRole: "viewer", teamRole: "member" })),
+    ).toBe("editor");
   });
 
   it("★ بیشترین برنده: staff + هر چیزِ کم‌تر → owner", () => {

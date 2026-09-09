@@ -54,7 +54,12 @@ const authority: BoardAuthority = {
   },
 };
 const token = (): string =>
-  encodeToken({ sub: "usr_1", boardId: BOARD, role: "editor", exp: Math.floor(Date.now() / 1000) + 3600 });
+  encodeToken({
+    sub: "usr_1",
+    boardId: BOARD,
+    role: "editor",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
 
 let running: RtServer | null = null;
 let joined: RtSession[] = [];

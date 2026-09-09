@@ -30,8 +30,16 @@ describe("Idempotency-Key", () => {
     const { app, calls } = await appWithProbe();
     const key = { "idempotency-key": "abc-123" };
 
-    const r1 = await app.inject({ method: "POST", url: "/__idem_probe", headers: { ...AUTH, ...key } });
-    const r2 = await app.inject({ method: "POST", url: "/__idem_probe", headers: { ...AUTH, ...key } });
+    const r1 = await app.inject({
+      method: "POST",
+      url: "/__idem_probe",
+      headers: { ...AUTH, ...key },
+    });
+    const r2 = await app.inject({
+      method: "POST",
+      url: "/__idem_probe",
+      headers: { ...AUTH, ...key },
+    });
 
     expect(r1.json()).toEqual({ n: 1 });
     expect(r2.json()).toEqual({ n: 1 }); // ★ همان بدنه، نه n:2
@@ -43,8 +51,16 @@ describe("Idempotency-Key", () => {
 
   it("کلیدِ متفاوت → handler دوباره اجرا می‌شود", async () => {
     const { app, calls } = await appWithProbe();
-    await app.inject({ method: "POST", url: "/__idem_probe", headers: { ...AUTH, "idempotency-key": "k1" } });
-    await app.inject({ method: "POST", url: "/__idem_probe", headers: { ...AUTH, "idempotency-key": "k2" } });
+    await app.inject({
+      method: "POST",
+      url: "/__idem_probe",
+      headers: { ...AUTH, "idempotency-key": "k1" },
+    });
+    await app.inject({
+      method: "POST",
+      url: "/__idem_probe",
+      headers: { ...AUTH, "idempotency-key": "k2" },
+    });
     expect(calls()).toBe(2);
     await app.close();
   });

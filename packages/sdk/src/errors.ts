@@ -10,7 +10,13 @@ export class SdkError extends Error {
   readonly requestId: string | undefined;
   readonly details: unknown;
 
-  constructor(status: number, code: string, message: string, requestId?: string, details?: unknown) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    requestId?: string,
+    details?: unknown,
+  ) {
     super(message);
     this.name = "SdkError";
     this.status = status;

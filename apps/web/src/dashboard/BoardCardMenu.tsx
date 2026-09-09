@@ -45,7 +45,9 @@ export function BoardCardMenu({ board, onClose }: { board: BoardSummary; onClose
                 role="menuitemradio"
                 aria-checked={currentFolderId === null}
                 className={
-                  currentFolderId === null ? "card-menu__item card-menu__item--on" : "card-menu__item"
+                  currentFolderId === null
+                    ? "card-menu__item card-menu__item--on"
+                    : "card-menu__item"
                 }
                 disabled={busy}
                 onClick={() => doMove(null)}
@@ -60,7 +62,9 @@ export function BoardCardMenu({ board, onClose }: { board: BoardSummary; onClose
                   role="menuitemradio"
                   aria-checked={currentFolderId === f.id}
                   className={
-                    currentFolderId === f.id ? "card-menu__item card-menu__item--on" : "card-menu__item"
+                    currentFolderId === f.id
+                      ? "card-menu__item card-menu__item--on"
+                      : "card-menu__item"
                   }
                   disabled={busy}
                   onClick={() => doMove(f.id)}

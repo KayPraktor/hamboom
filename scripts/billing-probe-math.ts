@@ -102,12 +102,48 @@ interface Case {
 }
 
 const CASES: Case[] = [
-  { label: "پلنِ ماهانه، یک صندلی، بدونِ VAT", unitPriceRial: 1_990_000, seats: 1, coupon: null, vatPercent: 0 },
-  { label: "پلنِ ماهانه، ۷ صندلی، VAT ۱۰٪", unitPriceRial: 1_990_000, seats: 7, coupon: null, vatPercent: 10 },
-  { label: "★ کوپنِ ۳۳٪ — نسبتِ غیرصحیح", unitPriceRial: 1_990_000, seats: 3, coupon: { percentOff: 33 }, vatPercent: 10 },
-  { label: "★ مبلغی که VAT آن دقیقاً x٫۵ می‌شود", unitPriceRial: 1_000_005, seats: 1, coupon: null, vatPercent: 10 },
-  { label: "کوپنِ مبلغی بزرگ‌تر از خودِ مبلغ", unitPriceRial: 500_000, seats: 1, coupon: { amountOffRial: 900_000 }, vatPercent: 10 },
-  { label: "پلنِ سالانه، ۵۰ صندلی", unitPriceRial: 19_900_000, seats: 50, coupon: { percentOff: 15 }, vatPercent: 10 },
+  {
+    label: "پلنِ ماهانه، یک صندلی، بدونِ VAT",
+    unitPriceRial: 1_990_000,
+    seats: 1,
+    coupon: null,
+    vatPercent: 0,
+  },
+  {
+    label: "پلنِ ماهانه، ۷ صندلی، VAT ۱۰٪",
+    unitPriceRial: 1_990_000,
+    seats: 7,
+    coupon: null,
+    vatPercent: 10,
+  },
+  {
+    label: "★ کوپنِ ۳۳٪ — نسبتِ غیرصحیح",
+    unitPriceRial: 1_990_000,
+    seats: 3,
+    coupon: { percentOff: 33 },
+    vatPercent: 10,
+  },
+  {
+    label: "★ مبلغی که VAT آن دقیقاً x٫۵ می‌شود",
+    unitPriceRial: 1_000_005,
+    seats: 1,
+    coupon: null,
+    vatPercent: 10,
+  },
+  {
+    label: "کوپنِ مبلغی بزرگ‌تر از خودِ مبلغ",
+    unitPriceRial: 500_000,
+    seats: 1,
+    coupon: { amountOffRial: 900_000 },
+    vatPercent: 10,
+  },
+  {
+    label: "پلنِ سالانه، ۵۰ صندلی",
+    unitPriceRial: 19_900_000,
+    seats: 50,
+    coupon: { percentOff: 15 },
+    vatPercent: 10,
+  },
 ];
 
 function checkInvariant(): CheckResult[] {
@@ -150,7 +186,8 @@ function checkTwoPathDrift(): CheckResult {
   for (const c of CASES) {
     const one = computeAmounts(c.unitPriceRial, c.seats, c.coupon, c.vatPercent).totalRial;
     const two = gatewayAmountSecondPath(c.unitPriceRial, c.seats, c.coupon, c.vatPercent);
-    if (one !== two) drifts.push(`${c.label}: تابعِ واحد ${one} ولی مسیرِ دوم ${two} (اختلاف ${one - two})`);
+    if (one !== two)
+      drifts.push(`${c.label}: تابعِ واحد ${one} ولی مسیرِ دوم ${two} (اختلاف ${one - two})`);
   }
   return {
     name: "۱٫۵ خودآزمون — مسیرِ دومِ محاسبه واقعاً اختلاف می‌سازد",

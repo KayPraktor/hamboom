@@ -11,7 +11,10 @@ interface ErrBody {
 
 describe("buildApp", () => {
   it("healthz → ۲۰۰ {status:ok} (بدونِ نیاز به db)", async () => {
-    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const app = await buildApp({
+      config: TEST_CONFIG,
+      db: fakeDb(() => Promise.resolve({ rows: [] })),
+    });
     const res = await app.inject({ method: "GET", url: "/healthz" });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ status: "ok" });
@@ -36,7 +39,10 @@ describe("buildApp", () => {
   });
 
   it("★ خطای ناشناخته → ۵۰۰ INTERNALِ یکسان، با requestId، **بدونِ لو**", async () => {
-    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const app = await buildApp({
+      config: TEST_CONFIG,
+      db: fakeDb(() => Promise.resolve({ rows: [] })),
+    });
     app.get("/boom", () => {
       throw new Error("جزئیاتِ داخلیِ محرمانه");
     });
@@ -50,7 +56,10 @@ describe("buildApp", () => {
   });
 
   it("HttpError → کد/وضعیتِ نگاشته‌شده", async () => {
-    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const app = await buildApp({
+      config: TEST_CONFIG,
+      db: fakeDb(() => Promise.resolve({ rows: [] })),
+    });
     app.get("/nope", () => {
       throw new HttpError(404, "BOARD_NOT_FOUND", "بورد نیست");
     });
@@ -61,7 +70,10 @@ describe("buildApp", () => {
   });
 
   it("مسیرِ ناموجود → ۴۰۴ NOT_FOUNDِ یکسان", async () => {
-    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const app = await buildApp({
+      config: TEST_CONFIG,
+      db: fakeDb(() => Promise.resolve({ rows: [] })),
+    });
     const res = await app.inject({ method: "GET", url: "/does-not-exist" });
     expect(res.statusCode).toBe(404);
     expect((res.json() as ErrBody).error.code).toBe("NOT_FOUND");
@@ -80,14 +92,20 @@ describe("GET /boards/:id/snapshot — گاردها", () => {
     `Bearer ${await signAccessToken(SECRET, sub, 900)}`;
 
   it("بدونِ توکن → ۴۰۱ (guard قبل از هر کوئری)", async () => {
-    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const app = await buildApp({
+      config: TEST_CONFIG,
+      db: fakeDb(() => Promise.resolve({ rows: [] })),
+    });
     const res = await app.inject({ method: "GET", url: `/boards/${VALID_UUID}/snapshot` });
     expect(res.statusCode).toBe(401);
     await app.close();
   });
 
   it("★ شناسه‌ی بدشکل (یافته‌ی M2 #۱) → ۴۰۰ BOARD_ID_MALFORMED، نه FORBIDDENِ گنگ", async () => {
-    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const app = await buildApp({
+      config: TEST_CONFIG,
+      db: fakeDb(() => Promise.resolve({ rows: [] })),
+    });
     const res = await app.inject({
       method: "GET",
       url: "/boards/not-a-uuid/snapshot",
@@ -110,14 +128,24 @@ describe("asset endpoints — گاردها", () => {
     `Bearer ${await signAccessToken(SECRET, sub, 900)}`;
 
   it("presign بدونِ توکن → ۴۰۱", async () => {
-    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
-    const res = await app.inject({ method: "POST", url: `/boards/${UID}/assets/presign`, payload: {} });
+    const app = await buildApp({
+      config: TEST_CONFIG,
+      db: fakeDb(() => Promise.resolve({ rows: [] })),
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/boards/${UID}/assets/presign`,
+      payload: {},
+    });
     expect(res.statusCode).toBe(401);
     await app.close();
   });
 
   it("★ presign با boardId بدشکل → ۴۰۰ BOARD_ID_MALFORMED (قبل از parse بدنه)", async () => {
-    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const app = await buildApp({
+      config: TEST_CONFIG,
+      db: fakeDb(() => Promise.resolve({ rows: [] })),
+    });
     const res = await app.inject({
       method: "POST",
       url: "/boards/not-a-uuid/assets/presign",
@@ -130,7 +158,10 @@ describe("asset endpoints — گاردها", () => {
   });
 
   it("GET /assets/بدشکل → ۴۰۴ NOT_FOUND (بدونِ لوِ وجود)", async () => {
-    const app = await buildApp({ config: TEST_CONFIG, db: fakeDb(() => Promise.resolve({ rows: [] })) });
+    const app = await buildApp({
+      config: TEST_CONFIG,
+      db: fakeDb(() => Promise.resolve({ rows: [] })),
+    });
     const res = await app.inject({
       method: "GET",
       url: "/assets/not-a-uuid",

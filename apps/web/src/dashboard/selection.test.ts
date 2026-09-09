@@ -43,6 +43,8 @@ describe("isTrashView", () => {
   it("فقط برای kind='trash' درست است", () => {
     expect(isTrashView({ kind: "trash" })).toBe(true);
     expect(isTrashView({ kind: "all" })).toBe(false);
-    expect(isTrashView({ kind: "folder", folderId: "f", folderName: "n", teamId: "t" })).toBe(false);
+    expect(isTrashView({ kind: "folder", folderId: "f", folderName: "n", teamId: "t" })).toBe(
+      false,
+    );
   });
 });

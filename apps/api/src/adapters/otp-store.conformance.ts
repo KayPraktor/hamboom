@@ -47,7 +47,12 @@ export const otpStoreCases: OtpCase[] = [
     name: "incrementAttempts → attempts یکی بیشتر می‌شود",
     run: async (store) => {
       const phone = uniquePhone();
-      await store.set(phone, { codeHash: "h", attempts: 0, expiresAt: nowSec() + 120, createdAt: nowSec() });
+      await store.set(phone, {
+        codeHash: "h",
+        attempts: 0,
+        expiresAt: nowSec() + 120,
+        createdAt: nowSec(),
+      });
       await store.incrementAttempts(phone);
       const got = await store.get(phone);
       assert(got !== null && got.attempts === 1, "attempts باید ۱ شود");
@@ -57,7 +62,12 @@ export const otpStoreCases: OtpCase[] = [
     name: "delete → get دیگر null می‌دهد",
     run: async (store) => {
       const phone = uniquePhone();
-      await store.set(phone, { codeHash: "h", attempts: 0, expiresAt: nowSec() + 120, createdAt: nowSec() });
+      await store.set(phone, {
+        codeHash: "h",
+        attempts: 0,
+        expiresAt: nowSec() + 120,
+        createdAt: nowSec(),
+      });
       await store.delete(phone);
       assert((await store.get(phone)) === null, "بعد از delete باید null");
     },
@@ -66,8 +76,18 @@ export const otpStoreCases: OtpCase[] = [
     name: "set جایگزین می‌کند — get آخرین را می‌دهد",
     run: async (store) => {
       const phone = uniquePhone();
-      await store.set(phone, { codeHash: "old", attempts: 3, expiresAt: nowSec() + 120, createdAt: nowSec() });
-      await store.set(phone, { codeHash: "new", attempts: 0, expiresAt: nowSec() + 120, createdAt: nowSec() + 1 });
+      await store.set(phone, {
+        codeHash: "old",
+        attempts: 3,
+        expiresAt: nowSec() + 120,
+        createdAt: nowSec(),
+      });
+      await store.set(phone, {
+        codeHash: "new",
+        attempts: 0,
+        expiresAt: nowSec() + 120,
+        createdAt: nowSec() + 1,
+      });
       const got = await store.get(phone);
       assert(got !== null && got.codeHash === "new", "get باید آخرین چالش را بدهد");
       assert(got!.attempts === 0, "attemptsِ چالشِ نو");

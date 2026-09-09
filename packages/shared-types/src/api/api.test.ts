@@ -111,7 +111,10 @@ describe("قراردادِ DTO — معتبر می‌گذرد، نامعتبر �
       folderId: null,
     });
     // خواندنی می‌تواند commenter باشد (بازتابِ داده‌ی ذخیره‌شده)
-    expect(boardMember.safeParse({ user: PUBLIC, role: "commenter", addedBy: null, addedAt: DATE }).success).toBe(true);
+    expect(
+      boardMember.safeParse({ user: PUBLIC, role: "commenter", addedBy: null, addedAt: DATE })
+        .success,
+    ).toBe(true);
     // accessModeِ نامعتبر رد می‌شود
     expect(board.safeParse({ ...b, accessMode: "link_comment" }).success).toBe(false);
   });
@@ -119,7 +122,9 @@ describe("قراردادِ DTO — معتبر می‌گذرد، نامعتبر �
   it("apiError: قالب و کدِ نامعتبر", () => {
     const e = { error: { code: "BOARD_NOT_FOUND", message: "بورد پیدا نشد.", requestId: "01J" } };
     expect(apiError.parse(e)).toEqual(e);
-    expect(apiError.safeParse({ error: { code: "NOPE", message: "x", requestId: "y" } }).success).toBe(false);
+    expect(
+      apiError.safeParse({ error: { code: "NOPE", message: "x", requestId: "y" } }).success,
+    ).toBe(false);
   });
 });
 
@@ -132,7 +137,9 @@ describe("قیدهای مرزیِ نقش — گام ۲٫۲", () => {
     expect(assignableBoardRoles).toEqual(["owner", "editor", "viewer"]);
     expect(assignableBoardRoles as readonly string[]).not.toContain("commenter");
     // ناوردا: هر نقشِ قابلِ‌تخصیص حتماً یک boardRole است (تایپش با satisfies قفل است؛ این هم runtime)
-    expect(assignableBoardRoles.every((r) => (boardRoles as readonly string[]).includes(r))).toBe(true);
+    expect(assignableBoardRoles.every((r) => (boardRoles as readonly string[]).includes(r))).toBe(
+      true,
+    );
   });
 
   it("boardAccessModes شاملِ link_comment نیست (تا فاز ۱۰)", () => {
@@ -175,7 +182,9 @@ describe("DTOها/بدنه‌های گام ۶ (sdk مصرف‌کننده)", () =
   });
 
   it("putAccessBody: accessMode از boardAccessMode؛ link_comment رد", () => {
-    expect(putAccessBody.safeParse({ accessMode: "link_edit", regenerate: true }).success).toBe(true);
+    expect(putAccessBody.safeParse({ accessMode: "link_edit", regenerate: true }).success).toBe(
+      true,
+    );
     expect(putAccessBody.safeParse({ accessMode: "link_comment" }).success).toBe(false);
   });
 });
@@ -205,7 +214,12 @@ describe("قراردادِ billing — فاز ۲ی M4", () => {
     currentPeriodEnd: DATE,
     cancelAtPeriodEnd: false,
   };
-  const LINE = { title: "پلنِ حرفه‌ای — ماهانه", qty: 7, unitPriceRial: 1_990_000, totalRial: 13_930_000 };
+  const LINE = {
+    title: "پلنِ حرفه‌ای — ماهانه",
+    qty: 7,
+    unitPriceRial: 1_990_000,
+    totalRial: 13_930_000,
+  };
   const INVOICE = {
     id: ID,
     number: "HB-1405-000123",
@@ -266,7 +280,14 @@ describe("قراردادِ billing — فاز ۲ی M4", () => {
 
   it("★ enumهای وضعیت — پینِ append-only، و تفکیکِ `none` (M4-D2a)", () => {
     expect(subscriptionStatuses).toEqual(["trialing", "active", "past_due", "canceled", "expired"]);
-    expect(teamSubscriptionStatuses).toEqual(["none", "trialing", "active", "past_due", "canceled", "expired"]);
+    expect(teamSubscriptionStatuses).toEqual([
+      "none",
+      "trialing",
+      "active",
+      "past_due",
+      "canceled",
+      "expired",
+    ]);
     expect(billingPeriods).toEqual(["monthly", "yearly"]);
     expect(invoiceStatuses).toEqual(["draft", "open", "paid", "void", "refunded"]);
     // ★ `none` وضعیتِ تیم است، نه وضعیتِ یک اشتراکِ واقعی

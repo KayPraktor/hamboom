@@ -1,4 +1,9 @@
-import type { ObjectHead, ObjectStore, PresignUploadOptions, PresignedUpload } from "./object-store.ts";
+import type {
+  ObjectHead,
+  ObjectStore,
+  PresignUploadOptions,
+  PresignedUpload,
+} from "./object-store.ts";
 
 /**
  * `ObjectStore`ِ حافظه‌ای — برای تستِ **مصرف‌کننده‌ها** (مثلِ `StorageSnapshotStore`)، نه ادعای دوام.
@@ -44,13 +49,17 @@ export function createMemoryObjectStore(): ObjectStore {
 
     presignGet() {
       return Promise.reject(
-        new Error("createMemoryObjectStore: presignGet پشتیبانی نمی‌شود — انبارِ حافظه‌ای URLِ واقعی ندارد"),
+        new Error(
+          "createMemoryObjectStore: presignGet پشتیبانی نمی‌شود — انبارِ حافظه‌ای URLِ واقعی ندارد",
+        ),
       );
     },
 
     presignUpload(_opts: PresignUploadOptions): Promise<PresignedUpload> {
       return Promise.reject(
-        new Error("createMemoryObjectStore: presignUpload پشتیبانی نمی‌شود — انبارِ حافظه‌ای URLِ واقعی ندارد"),
+        new Error(
+          "createMemoryObjectStore: presignUpload پشتیبانی نمی‌شود — انبارِ حافظه‌ای URLِ واقعی ندارد",
+        ),
       );
     },
   };

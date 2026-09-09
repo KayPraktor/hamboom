@@ -62,7 +62,11 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
   // ── درخواستِ OTP — ★ همیشه ۲۰۰ (ضدِ enumeration)، با محدودیتِ نرخِ سخت‌تر ──
   app.post(
     "/auth/otp/request",
-    { config: { rateLimit: { max: deps.otpRateLimit.max, timeWindow: deps.otpRateLimit.timeWindow } } },
+    {
+      config: {
+        rateLimit: { max: deps.otpRateLimit.max, timeWindow: deps.otpRateLimit.timeWindow },
+      },
+    },
     async (req) => {
       const { phone } = parseBody(otpRequestBody, req.body);
       await requestOtp(createPgOtpStore(deps.pool), deps.sms, phone, deps.otpConfig);
@@ -132,7 +136,11 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
           if (error.code === "reuse") {
             await client.query("COMMIT"); // سوزاندنِ خانواده باید بماند
             reply.clearCookie(REFRESH_COOKIE, { path: "/auth" });
-            throw new HttpError(401, "TOKEN_REUSED", "استفاده‌ی مجدد شناسایی شد؛ کلِ نشست باطل شد.");
+            throw new HttpError(
+              401,
+              "TOKEN_REUSED",
+              "استفاده‌ی مجدد شناسایی شد؛ کلِ نشست باطل شد.",
+            );
           }
           await client.query("ROLLBACK");
           throw new HttpError(401, "UNAUTHORIZED", "refresh نامعتبر یا منقضی است.");

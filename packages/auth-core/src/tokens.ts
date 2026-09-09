@@ -17,12 +17,7 @@ import { SignJWT, errors, jwtVerify } from "jose";
  */
 
 export type TokenErrorCode =
-  | "malformed"
-  | "signature"
-  | "expired"
-  | "shape"
-  | "exp_too_far"
-  | "wrong_board";
+  "malformed" | "signature" | "expired" | "shape" | "exp_too_far" | "wrong_board";
 
 /** خطای توکن — کدِ نمادین دارد، ولی پیامش علتِ دقیق را به کلاینت **لو نمی‌دهد**. */
 export class TokenError extends Error {

@@ -124,17 +124,42 @@ function drawTrail(
 // آیکونِ کوچکِ واریانت‌ها — SVGِ خطی، `currentColor` (با تمِ روشن/تیره هماهنگ).
 const shapeIcon: Readonly<Record<HbShapeKind, ReactNode>> = {
   rectangle: (
-    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
       <rect x="3" y="5" width="14" height="10" rx="1.5" />
     </svg>
   ),
   ellipse: (
-    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
       <ellipse cx="10" cy="10" rx="7" ry="5" />
     </svg>
   ),
   diamond: (
-    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M10 3 L17 10 L10 17 L3 10 Z" />
     </svg>
   ),
@@ -142,12 +167,31 @@ const shapeIcon: Readonly<Record<HbShapeKind, ReactNode>> = {
 
 const connectorIcon: Readonly<Record<ConnectorKind, ReactNode>> = {
   arrow: (
-    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M4 10 H15 M11 6 L15 10 L11 14" />
     </svg>
   ),
   line: (
-    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
       <path d="M4 16 L16 4" />
     </svg>
   ),
@@ -595,7 +639,8 @@ export function BoardPage() {
   // حذف → سطلِ بازیافت (فقط owner؛ api گیت می‌کند)، سپس بازگشت به داشبورد.
   const deleteBoard = useCallback(() => {
     const title = board.data?.title ?? "این بورد";
-    if (!window.confirm(`«${title}» به سطلِ بازیافت منتقل شود؟ از داشبورد قابلِ بازیابی است.`)) return;
+    if (!window.confirm(`«${title}» به سطلِ بازیافت منتقل شود؟ از داشبورد قابلِ بازیابی است.`))
+      return;
     trashBoard.mutate(boardId, { onSuccess: () => void navigate({ to: "/dashboard" }) });
   }, [board.data?.title, boardId, trashBoard, navigate]);
 

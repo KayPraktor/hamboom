@@ -68,7 +68,12 @@ export interface MemoryBoardAccessReader extends BoardAccessReader {
 /** نقش → ورودیِ خامِ `effectiveBoardRole` (بوردِ خصوصی؛ owner از `isBoardOwner`، بقیه از `directRole`). */
 function roleToInput(role: BoardRole | null): BoardAccessInput | null {
   if (role === null) return null;
-  const base = { isStaff: false, accessMode: "private" as const, teamRole: null, hasValidLink: false };
+  const base = {
+    isStaff: false,
+    accessMode: "private" as const,
+    teamRole: null,
+    hasValidLink: false,
+  };
   return role === "owner"
     ? { ...base, isBoardOwner: true, directRole: null }
     : { ...base, isBoardOwner: false, directRole: role };

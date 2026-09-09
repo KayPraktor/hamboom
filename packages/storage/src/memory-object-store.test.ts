@@ -23,7 +23,11 @@ describe("MemoryObjectStore", () => {
   it("headObject اندازه و نوع را می‌دهد", async () => {
     const store = createMemoryObjectStore();
     await store.putObject("k", new Uint8Array([1, 2, 3]), { contentType: "text/plain" });
-    expect(await store.headObject("k")).toEqual({ size: 3, contentType: "text/plain", etag: undefined });
+    expect(await store.headObject("k")).toEqual({
+      size: 3,
+      contentType: "text/plain",
+      etag: undefined,
+    });
   });
 
   it("delete idempotent است و listPrefix مرتب‌شده و prefix-محور", async () => {

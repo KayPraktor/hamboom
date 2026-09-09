@@ -21,7 +21,9 @@ describe("createCheckoutIdempotent", () => {
           return Promise.resolve(
             attempt === 1
               ? { rows: [] }
-              : { rows: [{ id: "pay-1", invoice_id: "inv-1", amount_rial: 1000, number: "۱۴۰۵-۱" }] },
+              : {
+                  rows: [{ id: "pay-1", invoice_id: "inv-1", amount_rial: 1000, number: "۱۴۰۵-۱" }],
+                },
           );
         }
         if (typeof sql === "string" && sql.startsWith("BEGIN")) attempt += 1;

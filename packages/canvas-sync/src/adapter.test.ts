@@ -666,7 +666,11 @@ describe("یافته‌ی ۲ — مهرِ schemaVersion تنبل", () => {
     boardRoots(doc).meta.observe(() => {
       metaWritten = true;
     });
-    outbound.emitElementChanges({ upserted: [element("stk_1")], deleted: [], origin: "local-user" });
+    outbound.emitElementChanges({
+      upserted: [element("stk_1")],
+      deleted: [],
+      origin: "local-user",
+    });
 
     expect(getSchemaVersion(doc)).toBe(SCHEMA_VERSION);
     expect(metaWritten).toBe(true);
@@ -682,7 +686,11 @@ describe("یافته‌ی ۲ — مهرِ schemaVersion تنبل", () => {
     boardRoots(doc).meta.observe(() => {
       metaWritten = true;
     });
-    outbound.emitElementChanges({ upserted: [element("stk_2")], deleted: [], origin: "local-user" });
+    outbound.emitElementChanges({
+      upserted: [element("stk_2")],
+      deleted: [],
+      origin: "local-user",
+    });
 
     expect(metaWritten).toBe(false); // نسخه از قبل هست → مهرِ اضافی نه
     expect(getSchemaVersion(doc)).toBe(SCHEMA_VERSION);

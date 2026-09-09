@@ -561,9 +561,7 @@ async function benchLatency(pool: pg.Pool, port: number, label: string): Promise
   //   با سندِ خالی وصل می‌شوند و همه‌چیز را از سرور می‌گیرند — مثلِ کاربرِ واقعی.
   const clients: BenchClient[] = [];
   for (let index = 0; index < CLIENTS; index += 1) {
-    clients.push(
-      await connect(port, boardId, token, index === 0 ? createBoardDoc() : new Y.Doc()),
-    );
+    clients.push(await connect(port, boardId, token, index === 0 ? createBoardDoc() : new Y.Doc()));
   }
   await new Promise((done) => setTimeout(done, 500));
   process.stdout.write(`  · ${clients.length} اتصالِ باز\n`);
@@ -674,7 +672,11 @@ async function main(): Promise<void> {
   let child: ChildProcess | null = null;
   try {
     const big = await benchBigBoard(harness);
-    const sameProcess = await benchLatency(harness.pool, harness.server.port, "سرور در همین فرایند");
+    const sameProcess = await benchLatency(
+      harness.pool,
+      harness.server.port,
+      "سرور در همین فرایند",
+    );
 
     // ★ همان سنجه، این‌بار با سرورِ **جدا** — تفاوتش می‌گوید چقدر از عدد کارِ
     //   سرور بوده و چقدرش رقابتِ ۵۰ کلاینت بر سرِ یک حلقه‌ی رویداد.

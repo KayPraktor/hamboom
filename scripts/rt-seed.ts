@@ -27,26 +27,37 @@ export async function seedBoard(pool: pg.Pool): Promise<SeededBoard> {
   const ownerId = randomUUID();
   const teamId = randomUUID();
   const boardId = randomUUID();
-  await pool.query("INSERT INTO users (id, display_name, presence_color) VALUES ($1, 'seed-owner', '#4c8bf5')", [ownerId]);
-  await pool.query("INSERT INTO teams (id, slug, name, owner_user_id) VALUES ($1, $2, 'seed', $3)", [
+  await pool.query(
+    "INSERT INTO users (id, display_name, presence_color) VALUES ($1, 'seed-owner', '#4c8bf5')",
+    [ownerId],
+  );
+  await pool.query(
+    "INSERT INTO teams (id, slug, name, owner_user_id) VALUES ($1, $2, 'seed', $3)",
+    [teamId, `seed-${teamId.slice(0, 8)}`, ownerId],
+  );
+  await pool.query("INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'owner')", [
     teamId,
-    `seed-${teamId.slice(0, 8)}`,
     ownerId,
   ]);
-  await pool.query("INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'owner')", [teamId, ownerId]);
-  await pool.query("INSERT INTO boards (id, team_id, created_by, access_mode) VALUES ($1, $2, $3, 'private')", [
-    boardId,
-    teamId,
-    ownerId,
-  ]);
+  await pool.query(
+    "INSERT INTO boards (id, team_id, created_by, access_mode) VALUES ($1, $2, $3, 'private')",
+    [boardId, teamId, ownerId],
+  );
   return { boardId, teamId, ownerId };
 }
 
 /** یک کاربرِ نو + `board_member` با نقش می‌سازد؛ `userId` را می‌دهد (برای توکن). */
 export async function addMember(pool: pg.Pool, boardId: string, role: BoardRole): Promise<string> {
   const userId = randomUUID();
-  await pool.query("INSERT INTO users (id, display_name, presence_color) VALUES ($1, 'seed-member', '#f59e0b')", [userId]);
-  await pool.query("INSERT INTO board_members (board_id, user_id, role) VALUES ($1, $2, $3)", [boardId, userId, role]);
+  await pool.query(
+    "INSERT INTO users (id, display_name, presence_color) VALUES ($1, 'seed-member', '#f59e0b')",
+    [userId],
+  );
+  await pool.query("INSERT INTO board_members (board_id, user_id, role) VALUES ($1, $2, $3)", [
+    boardId,
+    userId,
+    role,
+  ]);
   return userId;
 }
 

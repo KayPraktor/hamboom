@@ -41,8 +41,8 @@ const tryLock = async (c: pg.Client | pg.PoolClient, key: number): Promise<boole
     .locked;
 
 const unlock = async (c: pg.Client | pg.PoolClient, key: number): Promise<boolean> =>
-  (await c.query<{ released: boolean }>("SELECT pg_advisory_unlock($1) AS released", [key])).rows[0]!
-    .released;
+  (await c.query<{ released: boolean }>("SELECT pg_advisory_unlock($1) AS released", [key]))
+    .rows[0]!.released;
 
 async function main(): Promise<void> {
   const env = loadEnv(databaseEnvSchema);
@@ -87,7 +87,8 @@ async function main(): Promise<void> {
 
   // ── ۳: ★★ مرگِ نشست ⇒ آزادسازیِ خودکار ─────────────────────────────
   {
-    const name = "★★ مرگِ نشستِ صاحبِ قفل ⇒ قفل **خودکار** آزاد می‌شود (نودِ مرده سیستم را نمی‌خواباند)";
+    const name =
+      "★★ مرگِ نشستِ صاحبِ قفل ⇒ قفل **خودکار** آزاد می‌شود (نودِ مرده سیستم را نمی‌خواباند)";
     const owner = new pg.Client(conn);
     const other = new pg.Client(conn);
     try {

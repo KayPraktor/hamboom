@@ -107,7 +107,9 @@ function PlanCard({ plan, period }: { plan: Plan; period: "monthly" | "yearly" }
         ) : (
           <>
             <span className="plan-card__amount">{formatToman(rial)}</span>
-            <span className="plan-card__per">/ {period === "monthly" ? "ماه" : "سال"} برای هر عضو</span>
+            <span className="plan-card__per">
+              / {period === "monthly" ? "ماه" : "سال"} برای هر عضو
+            </span>
           </>
         )}
       </p>

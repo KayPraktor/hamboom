@@ -296,7 +296,11 @@ async function main(): Promise<void> {
   // نقش از خواننده‌ی حافظه‌ایِ auth-core؛ توکن با همان رازِ authority امضا می‌شود.
   const reader = createMemoryBoardAccessReader();
   reader.set(sub, boardId, "editor");
-  const token = await signRtToken(SECRET, { sub, boardId, role: "editor" }, AUTHORITY_MAX_TTL_SECONDS);
+  const token = await signRtToken(
+    SECRET,
+    { sub, boardId, role: "editor" },
+    AUTHORITY_MAX_TTL_SECONDS,
+  );
 
   process.stdout.write(`▶ بورد: ${boardId}\n`);
 

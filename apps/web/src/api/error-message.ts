@@ -5,7 +5,5 @@ import { SdkError } from "@hamboom/sdk";
  * هر چیزِ دیگر (قطعِ شبکه و…) یک پیامِ عمومی می‌گیرد.
  */
 export function errorMessage(error: unknown): string {
-  return error instanceof SdkError
-    ? error.message
-    : "ارتباط با سرور برقرار نشد. دوباره تلاش کنید.";
+  return error instanceof SdkError ? error.message : "ارتباط با سرور برقرار نشد. دوباره تلاش کنید.";
 }

@@ -63,7 +63,8 @@ export function registerAssetRoutes(app: FastifyInstance, deps: AssetRouteDeps):
     try {
       resp = await deps.assets.presign(body, { teamId, boardId, uploadedBy: sub });
     } catch (e) {
-      if (e instanceof AssetValidationError) throw new HttpError(400, "VALIDATION_ERROR", e.message);
+      if (e instanceof AssetValidationError)
+        throw new HttpError(400, "VALIDATION_ERROR", e.message);
       throw e;
     }
 
@@ -182,10 +183,13 @@ export function registerAssetRoutes(app: FastifyInstance, deps: AssetRouteDeps):
     const { fileId } = req.params as { fileId: string };
     if (!UUID_RE.test(fileId)) throw new HttpError(404, "NOT_FOUND", "فایل یافت نشد.");
 
-    const f = await deps.pool.query<{ board_id: string | null; storage_key: string; status: string }>(
-      "SELECT board_id, storage_key, status FROM files WHERE id = $1 AND deleted_at IS NULL",
-      [fileId],
-    );
+    const f = await deps.pool.query<{
+      board_id: string | null;
+      storage_key: string;
+      status: string;
+    }>("SELECT board_id, storage_key, status FROM files WHERE id = $1 AND deleted_at IS NULL", [
+      fileId,
+    ]);
     if (f.rows.length === 0 || f.rows[0]!.status !== "ready" || f.rows[0]!.board_id === null) {
       throw new HttpError(404, "NOT_FOUND", "فایل یافت نشد.");
     }

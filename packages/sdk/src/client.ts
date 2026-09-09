@@ -129,7 +129,8 @@ export function createClient(options: ClientOptions) {
   function raw(method: string, path: string, opts: Opts): Promise<Response> {
     const headers: Record<string, string> = {};
     if (opts.body !== undefined) headers["content-type"] = "application/json";
-    if (accessToken !== null && opts.noAuth !== true) headers.authorization = `Bearer ${accessToken}`;
+    if (accessToken !== null && opts.noAuth !== true)
+      headers.authorization = `Bearer ${accessToken}`;
     if (opts.idempotencyKey !== undefined) headers["idempotency-key"] = opts.idempotencyKey;
     return fetchImpl(buildUrl(path, opts.query), {
       method,
@@ -243,8 +244,13 @@ export function createClient(options: ClientOptions) {
       createInvite: (
         id: string,
         body: CreateInviteBody,
-      ): Promise<{ inviteId: string; channel: string; destination: string; role: string; token?: string }> =>
-        request("POST", `/teams/${id}/invites`, { body }),
+      ): Promise<{
+        inviteId: string;
+        channel: string;
+        destination: string;
+        role: string;
+        token?: string;
+      }> => request("POST", `/teams/${id}/invites`, { body }),
       acceptInvite: (token: string): Promise<{ teamId: string; role: TeamRole }> =>
         request("POST", `/invites/${encodeURIComponent(token)}/accept`),
     },
@@ -291,8 +297,11 @@ export function createClient(options: ClientOptions) {
         request("PUT", `/boards/${id}/access`, { body }),
       addMember: (id: string, body: AddBoardMemberBody): Promise<RoleAck> =>
         request("POST", `/boards/${id}/members`, { body }),
-      setMemberRole: (id: string, userId: string, body: PatchBoardMemberRoleBody): Promise<RoleAck> =>
-        request("PATCH", `/boards/${id}/members/${userId}`, { body }),
+      setMemberRole: (
+        id: string,
+        userId: string,
+        body: PatchBoardMemberRoleBody,
+      ): Promise<RoleAck> => request("PATCH", `/boards/${id}/members/${userId}`, { body }),
       removeMember: (id: string, userId: string): Promise<void> =>
         request("DELETE", `/boards/${id}/members/${userId}`),
     },
@@ -307,8 +316,7 @@ export function createClient(options: ClientOptions) {
      */
     billing: {
       /** ★ فهرستِ پلن‌ها **عمومی** است (صفحه‌ی قیمت). تنها precedentش `auth.*` است. */
-      plans: (): Promise<{ plans: Plan[] }> =>
-        request("GET", "/billing/plans", { noAuth: true }),
+      plans: (): Promise<{ plans: Plan[] }> => request("GET", "/billing/plans", { noAuth: true }),
 
       /**
        * شروعِ خرید → `redirectUrl`ی که مرورگر **باید** به آن برود.

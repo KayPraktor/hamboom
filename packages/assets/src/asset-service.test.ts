@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 
 import type { AssetPresignRequest } from "@hamboom/shared-types";
-import { createMemoryObjectStore, type ObjectStore, type PresignUploadOptions } from "@hamboom/storage";
+import {
+  createMemoryObjectStore,
+  type ObjectStore,
+  type PresignUploadOptions,
+} from "@hamboom/storage";
 import { describe, expect, it } from "vitest";
 
 import { AssetValidationError, createAssetService, type PresignContext } from "./asset-service.ts";
@@ -122,7 +126,11 @@ describe("createAssetService — presign و resolve", () => {
 
   it("کلید، fileId و آرگومان‌های presignUpload درست‌اند", async () => {
     const { store, captured } = spyStore();
-    const svc = createAssetService({ objectStore: store, maxBytes: 1000, newFileId: () => "f_fixed" });
+    const svc = createAssetService({
+      objectStore: store,
+      maxBytes: 1000,
+      newFileId: () => "f_fixed",
+    });
     const res = await svc.presign(
       { mimeType: "image/png", sizeBytes: 500, sha256: "a".repeat(64) },
       { teamId: "t1", boardId: "b1", uploadedBy: "u1" },

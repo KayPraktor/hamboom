@@ -63,13 +63,23 @@ export function BoardMenu({
           <>
             <div className="card-menu__divider" />
             <p className="card-menu__label">ویرایش</p>
-            <button type="button" role="menuitem" className="card-menu__item board-menu__item" onClick={onUndo}>
+            <button
+              type="button"
+              role="menuitem"
+              className="card-menu__item board-menu__item"
+              onClick={onUndo}
+            >
               <span className="board-menu__icon" aria-hidden="true">
                 ↶
               </span>
               واگرد
             </button>
-            <button type="button" role="menuitem" className="card-menu__item board-menu__item" onClick={onRedo}>
+            <button
+              type="button"
+              role="menuitem"
+              className="card-menu__item board-menu__item"
+              onClick={onRedo}
+            >
               <span className="board-menu__icon" aria-hidden="true">
                 ↷
               </span>

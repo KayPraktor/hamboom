@@ -15,11 +15,7 @@ import { loadApiConfig, secretBytes, type ApiConfig } from "./config.ts";
 import { registerErrorHandler } from "./errors.ts";
 import { registerIdempotency } from "./idempotency.ts";
 import { loggerOptions } from "./logger.ts";
-import {
-  createReconcileRecorder,
-  createStalePendingCounter,
-  renderApiMetrics,
-} from "./metrics.ts";
+import { createReconcileRecorder, createStalePendingCounter, renderApiMetrics } from "./metrics.ts";
 import { createDbPool } from "./plugins/db.ts";
 import { createPaymentGateway } from "./plugins/payment.ts";
 import { registerReconcileJob } from "./plugins/reconcile.ts";

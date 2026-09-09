@@ -270,15 +270,36 @@ async function checkInvoiceArithmetic(c: pg.Client): Promise<CheckResult> {
 
     // درست: ۱۰۰۰ − ۱۰۰ + ۹۰ = ۹۹۰
     const good = !(await rejects(c, INVOICE_SQL, [
-      randomUUID(), team, nextNumber(), 1000, 100, 90, 990, "open",
+      randomUUID(),
+      team,
+      nextNumber(),
+      1000,
+      100,
+      90,
+      990,
+      "open",
     ]));
     // ★ یک ریال اختلاف — دقیقاً همان چیزی که «مسیرِ دومِ محاسبه» می‌سازد.
     const offByOne = await rejects(c, INVOICE_SQL, [
-      randomUUID(), team, nextNumber(), 1000, 100, 90, 991, "open",
+      randomUUID(),
+      team,
+      nextNumber(),
+      1000,
+      100,
+      90,
+      991,
+      "open",
     ]);
     // تخفیفِ بزرگ‌تر از مبلغ ⇒ همان چیزی که probeِ گام ۱٫۵ مبلغِ منفی‌اش را دید.
     const overDiscount = await rejects(c, INVOICE_SQL, [
-      randomUUID(), team, nextNumber(), 1000, 5000, 0, -4000, "open",
+      randomUUID(),
+      team,
+      nextNumber(),
+      1000,
+      5000,
+      0,
+      -4000,
+      "open",
     ]);
 
     const ok = good && offByOne && overDiscount;
@@ -342,7 +363,9 @@ async function checkFinancialRecordsSurvive(c: pg.Client): Promise<CheckResult> 
     const team = await insertTeam(c, user);
     await c.query(INVOICE_SQL, [randomUUID(), team, nextNumber(), 1000, 0, 0, 1000, "open"]);
     // فاکتورِ `paid` باید `paid_at` داشته باشد (constraintِ ۰۰۰۴) — پس با هم ست می‌شوند.
-    await c.query("UPDATE invoices SET status = 'paid', paid_at = now() WHERE team_id = $1", [team]);
+    await c.query("UPDATE invoices SET status = 'paid', paid_at = now() WHERE team_id = $1", [
+      team,
+    ]);
 
     const teamBlocked = await rejects(c, "DELETE FROM teams WHERE id = $1", [team]);
     const userBlocked = await rejects(c, "DELETE FROM users WHERE id = $1", [user]);
@@ -367,7 +390,14 @@ async function checkPaidAtCoupling(c: pg.Client): Promise<CheckResult> {
     const user = await insertUser(c);
     const team = await insertTeam(c, user);
     const paidWithoutDate = await rejects(c, INVOICE_SQL, [
-      randomUUID(), team, nextNumber(), 1000, 0, 0, 1000, "paid",
+      randomUUID(),
+      team,
+      nextNumber(),
+      1000,
+      0,
+      0,
+      1000,
+      "paid",
     ]);
     return {
       name: "billing — فاکتورِ `paid` بدونِ `paid_at` رد می‌شود",
@@ -443,7 +473,6 @@ async function checkPlanSeed(c: pg.Client): Promise<CheckResult> {
       : `انتظار: فقط personal غیرفعال. واقعی: ${JSON.stringify(rows)}`,
   };
 }
-
 
 async function main(): Promise<void> {
   const env = loadEnv(databaseEnvSchema);

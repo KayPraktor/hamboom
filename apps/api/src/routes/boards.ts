@@ -228,7 +228,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
   app.patch("/boards/:id", { preHandler: deps.requireAuth }, async (req) => {
     const sub = requireSub(req);
     const { id } = req.params as { id: string };
-    if (!UUID_RE.test(id)) throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
+    if (!UUID_RE.test(id))
+      throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
     const role = await requireBoardRole(deps.pool, sub, id, "editor");
     const { title, folderId } = parseBody(patchBoardBody, req.body);
 
@@ -268,7 +269,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
   app.delete("/boards/:id", { preHandler: deps.requireAuth }, async (req, reply) => {
     const sub = requireSub(req);
     const { id } = req.params as { id: string };
-    if (!UUID_RE.test(id)) throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
+    if (!UUID_RE.test(id))
+      throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
     await requireBoardRole(deps.pool, sub, id, "owner");
     await deps.pool.query("UPDATE boards SET deleted_at = now() WHERE id = $1", [id]);
     return reply.code(204).send();
@@ -278,7 +280,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
   app.post("/boards/:id/restore", { preHandler: deps.requireAuth }, async (req) => {
     const sub = requireSub(req);
     const { id } = req.params as { id: string };
-    if (!UUID_RE.test(id)) throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
+    if (!UUID_RE.test(id))
+      throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
     await assertDeletedBoardOwner(deps.pool, sub, id);
     // ★★ **بازیابی هم یک «ساخت» است.** یافته‌ی بازبینیِ فاز ۶: تیمی که به پلنِ کوچک‌تر تنزل
     //    کرده می‌توانست ده‌ها بوردِ سطلِ بازیافت را یکی‌یکی برگردانَد و از سقف رد شود — و چون
@@ -301,7 +304,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
   app.post("/boards/:id/duplicate", { preHandler: deps.requireAuth }, async (req) => {
     const sub = requireSub(req);
     const { id } = req.params as { id: string };
-    if (!UUID_RE.test(id)) throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
+    if (!UUID_RE.test(id))
+      throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
     await requireBoardRole(deps.pool, sub, id, "editor");
     // ★★ **تکثیر مسیرِ دومِ ساخت است** و تا امروز نه تراکنش داشت نه گیت — و بدتر، فقط نقشِ
     //    **بورد** را می‌سنجید: کسی که با لینکِ `link_edit` به بورد رسیده (بدونِ اینکه هرگز
@@ -328,7 +332,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
   app.post("/boards/:id/favorite", { preHandler: deps.requireAuth }, async (req) => {
     const sub = requireSub(req);
     const { id } = req.params as { id: string };
-    if (!UUID_RE.test(id)) throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
+    if (!UUID_RE.test(id))
+      throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
     await requireBoardRole(deps.pool, sub, id, "viewer");
     await deps.pool.query(
       "INSERT INTO board_favorites (user_id, board_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
@@ -340,7 +345,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
   app.delete("/boards/:id/favorite", { preHandler: deps.requireAuth }, async (req) => {
     const sub = requireSub(req);
     const { id } = req.params as { id: string };
-    if (!UUID_RE.test(id)) throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
+    if (!UUID_RE.test(id))
+      throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
     await requireBoardRole(deps.pool, sub, id, "viewer");
     await deps.pool.query("DELETE FROM board_favorites WHERE user_id = $1 AND board_id = $2", [
       sub,
@@ -365,7 +371,11 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     if (role === null) throw new HttpError(403, "FORBIDDEN", "به این بورد دسترسی ندارید.");
 
     // ★ signRtToken تنها امضاکننده است؛ `exp` را خودش از ثانیه می‌سازد (قفلِ exp، ADR-011).
-    const token = await signRtToken(deps.secret, { sub, boardId: id, role }, deps.rtTokenTtlSeconds);
+    const token = await signRtToken(
+      deps.secret,
+      { sub, boardId: id, role },
+      deps.rtTokenTtlSeconds,
+    );
     return { token, expiresIn: deps.rtTokenTtlSeconds };
   });
 }

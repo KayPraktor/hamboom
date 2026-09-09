@@ -81,7 +81,11 @@ export function registerBoardAccessRoutes(app: FastifyInstance, deps: BoardAcces
     );
 
     // ★ linkToken فقط همین‌بار برمی‌گردد (hash ذخیره می‌شود)؛ برای اشتراک باید کپی شود.
-    return { accessMode, linkActive: newHash !== null, ...(linkToken !== undefined ? { linkToken } : {}) };
+    return {
+      accessMode,
+      linkActive: newHash !== null,
+      ...(linkToken !== undefined ? { linkToken } : {}),
+    };
   });
 
   // ── مهمان لینک را resolve می‌کند → گرنتِ ماندگار (DP-4) ──────────────
@@ -143,21 +147,26 @@ export function registerBoardAccessRoutes(app: FastifyInstance, deps: BoardAcces
       "UPDATE board_members SET role = $1 WHERE board_id = $2 AND user_id = $3",
       [role, id, userId],
     );
-    if (upd.rowCount === 0) throw new HttpError(404, "USER_NOT_FOUND", "این کاربر عضوِ مستقیمِ بورد نیست.");
+    if (upd.rowCount === 0)
+      throw new HttpError(404, "USER_NOT_FOUND", "این کاربر عضوِ مستقیمِ بورد نیست.");
     return { userId, role };
   });
 
   // ── حذفِ عضوِ مستقیم (owner) ─────────────────────────────────────────
-  app.delete("/boards/:id/members/:userId", { preHandler: deps.requireAuth }, async (req, reply) => {
-    const sub = requireSub(req);
-    const { id, userId } = req.params as { id: string; userId: string };
-    assertUuid(id, "شناسه‌ی بورد");
-    assertUuid(userId, "شناسه‌ی کاربر");
-    await requireBoardRole(deps.pool, sub, id, "owner");
-    await deps.pool.query("DELETE FROM board_members WHERE board_id = $1 AND user_id = $2", [
-      id,
-      userId,
-    ]);
-    return reply.code(204).send();
-  });
+  app.delete(
+    "/boards/:id/members/:userId",
+    { preHandler: deps.requireAuth },
+    async (req, reply) => {
+      const sub = requireSub(req);
+      const { id, userId } = req.params as { id: string; userId: string };
+      assertUuid(id, "شناسه‌ی بورد");
+      assertUuid(userId, "شناسه‌ی کاربر");
+      await requireBoardRole(deps.pool, sub, id, "owner");
+      await deps.pool.query("DELETE FROM board_members WHERE board_id = $1 AND user_id = $2", [
+        id,
+        userId,
+      ]);
+      return reply.code(204).send();
+    },
+  );
 }

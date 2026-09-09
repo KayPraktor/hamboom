@@ -837,8 +837,9 @@ export function createRoomManager({
 
     sample() {
       return [...rooms.values()].map((room) => {
-        const docBytes = docSizes.get(room.boardId, () =>
-          Y.encodeStateAsUpdate(room.doc).byteLength,
+        const docBytes = docSizes.get(
+          room.boardId,
+          () => Y.encodeStateAsUpdate(room.doc).byteLength,
         );
         return {
           boardId: room.boardId,

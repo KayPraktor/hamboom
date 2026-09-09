@@ -54,7 +54,12 @@ describe("createRealtimeAuthority — نگاشتِ TokenError → کدِ پرو�
 
   it("توکنِ منقضی → TOKEN_EXPIRED", async () => {
     // exp را با ساعتِ قدیمی می‌سازیم؛ verify با ساعتِ واقعی منقضی می‌بیند.
-    const token = await signRtToken(SECRET, { sub: "u1", boardId: "b1", role: "editor" }, TTL, () => 1_000_000);
+    const token = await signRtToken(
+      SECRET,
+      { sub: "u1", boardId: "b1", role: "editor" },
+      TTL,
+      () => 1_000_000,
+    );
     await expect(authority().verify(token, "b1")).rejects.toMatchObject({
       code: AUTH_ERROR_CODES.expired,
     });

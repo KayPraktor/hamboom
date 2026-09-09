@@ -57,7 +57,11 @@ export function createRealtimeAuthority(config: RealtimeAuthorityConfig): BoardA
  */
 function mapTokenError(error: TokenError): AuthError {
   if (error.code === "expired") {
-    return new AuthError(AUTH_ERROR_CODES.expired, "نشست منقضی شده؛ صفحه را تازه کنید.", error.code);
+    return new AuthError(
+      AUTH_ERROR_CODES.expired,
+      "نشست منقضی شده؛ صفحه را تازه کنید.",
+      error.code,
+    );
   }
   if (error.code === "wrong_board") {
     return new AuthError(AUTH_ERROR_CODES.forbidden, "به این بورد دسترسی ندارید.", error.code);

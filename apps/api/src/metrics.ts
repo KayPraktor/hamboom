@@ -130,7 +130,9 @@ export interface ApiMetricsInput {
 }
 
 function metric(name: string, help: string, type: "gauge" | "counter", value: number): string {
-  return [`# HELP ${name} ${help}`, `# TYPE ${name} ${type}`, `${name} ${String(value)}`].join("\n");
+  return [`# HELP ${name} ${help}`, `# TYPE ${name} ${type}`, `${name} ${String(value)}`].join(
+    "\n",
+  );
 }
 
 export function renderApiMetrics(input: ApiMetricsInput): string {
@@ -159,9 +161,19 @@ export function renderApiMetrics(input: ApiMetricsInput): string {
         "counter",
         reconcile.activated,
       ),
-      metric("hamboom_api_reconcile_expired_total", "ردیف‌های باطل‌شده", "counter", reconcile.expired),
+      metric(
+        "hamboom_api_reconcile_expired_total",
+        "ردیف‌های باطل‌شده",
+        "counter",
+        reconcile.expired,
+      ),
       metric("hamboom_api_reconcile_orphans_total", "ردیف‌های یتیم", "counter", reconcile.orphans),
-      metric("hamboom_api_reconcile_adopted_total", "یتیم‌های فرزندخوانده", "counter", reconcile.adopted),
+      metric(
+        "hamboom_api_reconcile_adopted_total",
+        "یتیم‌های فرزندخوانده",
+        "counter",
+        reconcile.adopted,
+      ),
       metric(
         "hamboom_api_reconcile_subscriptions_ended_total",
         "اشتراک‌های پایان‌یافته",

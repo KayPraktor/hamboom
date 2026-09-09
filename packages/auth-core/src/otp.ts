@@ -113,8 +113,7 @@ export async function requestOtp(
 }
 
 export type OtpResult =
-  | { ok: true }
-  | { ok: false; reason: "no_challenge" | "expired" | "locked" | "mismatch" };
+  { ok: true } | { ok: false; reason: "no_challenge" | "expired" | "locked" | "mismatch" };
 
 /** اعتبارسنجیِ OTP — تطبیقِ زمان‌ثابت، سقفِ تلاش، انقضا. موفق → چالش حذف می‌شود. */
 export async function verifyOtp(

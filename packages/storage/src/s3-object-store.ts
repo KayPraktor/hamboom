@@ -18,7 +18,12 @@ import {
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-import type { ObjectHead, ObjectStore, PresignUploadOptions, PresignedUpload } from "./object-store.ts";
+import type {
+  ObjectHead,
+  ObjectStore,
+  PresignUploadOptions,
+  PresignedUpload,
+} from "./object-store.ts";
 
 /** پیکربندیِ یک `ObjectStore` — مقید به **یک** باکت. مصرف‌کننده از `s3EnvSchema` می‌سازد. */
 export interface S3StorageConfig {
@@ -46,7 +51,12 @@ export function createS3ObjectStore(config: S3StorageConfig): ObjectStore {
   return {
     async putObject(key, body, opts) {
       await client.send(
-        new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: opts?.contentType }),
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: body,
+          ContentType: opts?.contentType,
+        }),
       );
     },
 
@@ -123,7 +133,9 @@ export function createS3ObjectStore(config: S3StorageConfig): ObjectStore {
  */
 function isNotFound(e: unknown): boolean {
   const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
-  return err.name === "NoSuchKey" || err.name === "NotFound" || err.$metadata?.httpStatusCode === 404;
+  return (
+    err.name === "NoSuchKey" || err.name === "NotFound" || err.$metadata?.httpStatusCode === 404
+  );
 }
 
 /**

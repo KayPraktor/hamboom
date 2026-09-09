@@ -54,16 +54,15 @@ export function registerFolderRoutes(app: FastifyInstance, deps: FolderRouteDeps
         "SELECT 1 FROM folders WHERE id = $1 AND team_id = $2 AND deleted_at IS NULL",
         [parentId, teamId],
       );
-      if (p.rows.length === 0) throw new HttpError(400, "VALIDATION_ERROR", "فولدرِ والد نامعتبر است.");
+      if (p.rows.length === 0)
+        throw new HttpError(400, "VALIDATION_ERROR", "فولدرِ والد نامعتبر است.");
     }
 
     const id = randomUUID();
-    await deps.pool.query("INSERT INTO folders (id, team_id, parent_id, name) VALUES ($1, $2, $3, $4)", [
-      id,
-      teamId,
-      parentId ?? null,
-      name,
-    ]);
+    await deps.pool.query(
+      "INSERT INTO folders (id, team_id, parent_id, name) VALUES ($1, $2, $3, $4)",
+      [id, teamId, parentId ?? null, name],
+    );
     const { rows } = await deps.pool.query<FolderRow>(
       `SELECT ${FOLDER_COLUMNS} FROM folders WHERE id = $1`,
       [id],

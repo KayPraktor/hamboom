@@ -60,7 +60,11 @@ async function waitReady(): Promise<void> {
 }
 
 /** آپلودِ خام با fetch روی یک presigned PUT URL؛ فقط status را برمی‌گرداند. */
-async function put(url: string, body: Uint8Array, headers: Record<string, string>): Promise<number> {
+async function put(
+  url: string,
+  body: Uint8Array,
+  headers: Record<string, string>,
+): Promise<number> {
   const res = await fetch(url, { method: "PUT", body, headers });
   if (!res.ok) await res.text().catch(() => "");
   return res.status;
@@ -74,17 +78,30 @@ console.log("MinIO آماده است؛ باکتِ probe ساخته شد.\n");
 console.log("۱) رفت‌وبرگشتِ باینری (put → get):");
 const bytes = new Uint8Array([0x00, 0xff, 0x80, 0x01, 0x7f, 0xfe]);
 await s3.send(
-  new PutObjectCommand({ Bucket: BUCKET, Key: "rt/bin", Body: bytes, ContentType: "application/octet-stream" }),
+  new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: "rt/bin",
+    Body: bytes,
+    ContentType: "application/octet-stream",
+  }),
 );
 const got = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: "rt/bin" }));
 const back = new Uint8Array(await got.Body!.transformToByteArray());
-ok(back.length === bytes.length && back.every((b, i) => b === bytes[i]), "بایت‌ها بیت‌به‌بیت سالم برگشتند");
+ok(
+  back.length === bytes.length && back.every((b, i) => b === bytes[i]),
+  "بایت‌ها بیت‌به‌بیت سالم برگشتند",
+);
 const head = await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: "rt/bin" }));
-ok(head.ContentLength === bytes.length, `headObject اندازه‌ی واقعی را می‌دهد (${head.ContentLength})`);
+ok(
+  head.ContentLength === bytes.length,
+  `headObject اندازه‌ی واقعی را می‌دهد (${head.ContentLength})`,
+);
 
 // ── ۲) presignGet ──
 console.log("\n۲) presignGet (دانلودِ مستقیم):");
-const getUrl = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: "rt/bin" }), { expiresIn: 900 });
+const getUrl = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: "rt/bin" }), {
+  expiresIn: 900,
+});
 const dl = await fetch(getUrl);
 ok(dl.ok, `presignGet دانلود شد (status ${dl.status})`);
 
@@ -93,19 +110,40 @@ console.log("\n۳) presigned PUT با `Content-Length`/`Content-Type`ِ امضا
 const good = new Uint8Array(10).fill(0x41); // دقیقاً ۱۰ بایت
 const putUrl = await getSignedUrl(
   s3,
-  new PutObjectCommand({ Bucket: BUCKET, Key: "rt/put-limited", ContentLength: good.length, ContentType: "text/plain" }),
+  new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: "rt/put-limited",
+    ContentLength: good.length,
+    ContentType: "text/plain",
+  }),
   { expiresIn: 900, signableHeaders: new Set(["content-length", "content-type"]) },
 );
-const putGood = await put(putUrl, good, { "content-type": "text/plain", "content-length": String(good.length) });
-ok(putGood >= 200 && putGood < 300, `آپلودِ درست (۱۰ بایت، text/plain) پذیرفته شد (status ${putGood})`);
+const putGood = await put(putUrl, good, {
+  "content-type": "text/plain",
+  "content-length": String(good.length),
+});
+ok(
+  putGood >= 200 && putGood < 300,
+  `آپلودِ درست (۱۰ بایت، text/plain) پذیرفته شد (status ${putGood})`,
+);
 // همان امضا، ولی بدنه‌ی بزرگ‌تر و نوعِ غلط — آیا MinIO ردشان می‌کند؟ (یافته، نه pass/fail)
 const big = new Uint8Array(2000).fill(0x42);
-const putBig = await put(putUrl, big, { "content-type": "text/plain", "content-length": String(big.length) });
-const putWrongType = await put(putUrl, good, { "content-type": "image/png", "content-length": String(good.length) });
+const putBig = await put(putUrl, big, {
+  "content-type": "text/plain",
+  "content-length": String(big.length),
+});
+const putWrongType = await put(putUrl, good, {
+  "content-type": "image/png",
+  "content-length": String(good.length),
+});
 const putSizeEnforced = putBig >= 400;
 const putTypeEnforced = putWrongType >= 400;
-console.log(`     · ۲۰۰۰ بایت روی همان امضا → status ${putBig}   ⇒ ${putSizeEnforced ? "رد" : "پذیرفته"} (تغییرِ هدرِ امضاشده امضا را می‌شکند)`);
-console.log(`     · Content-Typeِ غلط روی همان امضا → status ${putWrongType}   ⇒ ${putTypeEnforced ? "رد" : "پذیرفته"}`);
+console.log(
+  `     · ۲۰۰۰ بایت روی همان امضا → status ${putBig}   ⇒ ${putSizeEnforced ? "رد" : "پذیرفته"} (تغییرِ هدرِ امضاشده امضا را می‌شکند)`,
+);
+console.log(
+  `     · Content-Typeِ غلط روی همان امضا → status ${putWrongType}   ⇒ ${putTypeEnforced ? "رد" : "پذیرفته"}`,
+);
 // ★ سوالِ کلیدی: آن ۴۰۳ «سقفِ اندازه» است یا فقط «امضا شکست»؟ اگر content-length را **اصلاً امضا نکنیم**،
 //   آیا کلاینت هر اندازه‌ای می‌فرستد؟ این دقیقاً همان «دورزدنی‌بودن»ِ ادعاشده است.
 const putUnsignedUrl = await getSignedUrl(
@@ -120,7 +158,9 @@ console.log(
 );
 
 // ── ۴) ★ presigned POST با content-length-range + eq Content-Type — مکانیزمِ مالک، هر دو حالت ──
-console.log("\n۴) ★ presigned POST (`content-length-range` + `eq $Content-Type`) — روی خودِ MinIO:");
+console.log(
+  "\n۴) ★ presigned POST (`content-length-range` + `eq $Content-Type`) — روی خودِ MinIO:",
+);
 const MAX = 1024; // سقفِ ۱کیلوبایت برای این probe
 const { url: postUrl, fields } = await createPresignedPost(s3, {
   Bucket: BUCKET,
@@ -150,13 +190,19 @@ async function postUpload(bodyBytes: Uint8Array, contentTypeOverride?: string): 
 
 // ۴a) زیرِ سقف + نوعِ درست → باید پذیرفته شود
 const postUnder = await postUpload(new Uint8Array(500).fill(0x41));
-ok(postUnder >= 200 && postUnder < 300, `زیرِ سقف (۵۰۰ ≤ ${MAX} بایت، text/plain) پذیرفته شد (status ${postUnder})`);
+ok(
+  postUnder >= 200 && postUnder < 300,
+  `زیرِ سقف (۵۰۰ ≤ ${MAX} بایت، text/plain) پذیرفته شد (status ${postUnder})`,
+);
 // ۴b) ★ بالای سقف → باید توسط خودِ MinIO رد شود
 const postOver = await postUpload(new Uint8Array(5000).fill(0x42));
 ok(postOver >= 400, `★ بالای سقف (۵۰۰۰ > ${MAX} بایت) توسط خودِ MinIO رد شد (status ${postOver})`);
 // ۴c) ★ نوعِ ناهمخوان → باید توسط خودِ MinIO رد شود
 const postWrongType = await postUpload(new Uint8Array(500).fill(0x41), "image/png");
-ok(postWrongType >= 400, `★ نوعِ ناهمخوان (image/png ≠ text/plain) رد شد (status ${postWrongType})`);
+ok(
+  postWrongType >= 400,
+  `★ نوعِ ناهمخوان (image/png ≠ text/plain) رد شد (status ${postWrongType})`,
+);
 
 // ── یافته‌ها (برای گام ۳٫۱/۳٫۳ و PROGRESS §OD-2) ──
 console.log("\n── یافته‌ها ──");

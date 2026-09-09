@@ -40,7 +40,11 @@ function fakePng(size: number): Uint8Array {
 const sha = (b: Uint8Array): string => createHash("sha256").update(b).digest("hex");
 
 /** آپلودِ multipart/form-data روی presigned POST؛ `file` آخرین فیلد. */
-async function post(url: string, fields: Record<string, string>, body: Uint8Array): Promise<number> {
+async function post(
+  url: string,
+  fields: Record<string, string>,
+  body: Uint8Array,
+): Promise<number> {
   const form = new FormData();
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
   form.append("file", new Blob([body]), "f");
@@ -71,8 +75,14 @@ const ctx = { teamId: "t1", boardId: "b1", uploadedBy: "u1" };
 console.log("۱) presign → آپلودِ POSTِ واقعی:");
 const png = fakePng(200);
 const declaredSha = sha(png);
-const presigned = await svc.presign({ mimeType: "image/png", sizeBytes: png.length, sha256: declaredSha }, ctx);
-ok(Boolean(presigned.fileId && presigned.url && presigned.fields.key), "presign داد {fileId, url, fields}");
+const presigned = await svc.presign(
+  { mimeType: "image/png", sizeBytes: png.length, sha256: declaredSha },
+  ctx,
+);
+ok(
+  Boolean(presigned.fileId && presigned.url && presigned.fields.key),
+  "presign داد {fileId, url, fields}",
+);
 const key = presigned.fields.key;
 const upStatus = await post(presigned.url, presigned.fields, png);
 ok(upStatus >= 200 && upStatus < 300, `آپلودِ POST پذیرفته شد (${upStatus})`);
@@ -84,7 +94,9 @@ const verified = await svc.validateUploaded({
   declared: { mimeType: "image/png", sizeBytes: png.length, sha256: declaredSha },
 });
 ok(
-  verified.sha256 === declaredSha && verified.mime === "image/png" && verified.sizeBytes === png.length,
+  verified.sha256 === declaredSha &&
+    verified.mime === "image/png" &&
+    verified.sizeBytes === png.length,
   "بایت‌های واقعی تایید شدند",
 );
 
@@ -102,7 +114,10 @@ try {
 ok(threw, "★ sha256ِ اعلامیِ غلط رد شد (سرور خودش حساب کرد)");
 
 // آپلودِ بزرگ‌تر از declared روی همان presign — خودِ MinIO باید ردش کند.
-const tight = await svc.presign({ mimeType: "image/png", sizeBytes: 100, sha256: sha(fakePng(100)) }, ctx);
+const tight = await svc.presign(
+  { mimeType: "image/png", sizeBytes: 100, sha256: sha(fakePng(100)) },
+  ctx,
+);
 const overStatus = await post(tight.url, tight.fields, fakePng(5000));
 ok(overStatus >= 400, `★ آپلودِ بزرگ‌تر از declared را MinIO رد کرد (${overStatus})`);
 
@@ -111,7 +126,10 @@ console.log("\n۴) resolve → دانلود:");
 const url = await svc.resolve(key);
 const dl = await fetch(url);
 const back = new Uint8Array(await dl.arrayBuffer());
-ok(dl.ok && back.length === png.length && back.every((b, i) => b === png[i]), `دانلودِ بیت‌به‌بیت (${dl.status})`);
+ok(
+  dl.ok && back.length === png.length && back.every((b, i) => b === png[i]),
+  `دانلودِ بیت‌به‌بیت (${dl.status})`,
+);
 
 console.log(`\nخلاصه: ${pass} سبز، ${fail} قرمز.`);
 process.exit(fail === 0 ? 0 : 1);

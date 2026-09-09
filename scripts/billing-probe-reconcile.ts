@@ -182,8 +182,10 @@ async function agePayment(pool: pg.Pool, paymentId: string, minutes: number): Pr
  * شدند — بی‌آنکه چیزی در محصول خراب باشد. یک چک باید **ادعای خودش** را بسنجد، نه وضعیتِ
  * کلِ دیتابیس؛ در production همیشه ردیف‌های دیگری هست.
  */
-const decisionFor = (report: { decisions: { paymentId: string; action: string; reason: string }[] }, paymentId: string) =>
-  report.decisions.find((d) => d.paymentId === paymentId);
+const decisionFor = (
+  report: { decisions: { paymentId: string; action: string; reason: string }[] },
+  paymentId: string,
+) => report.decisions.find((d) => d.paymentId === paymentId);
 
 const statusOf = async (pool: pg.Pool, paymentId: string): Promise<string> =>
   (await pool.query<{ status: string }>("SELECT status FROM payments WHERE id = $1", [paymentId]))
@@ -347,9 +349,8 @@ await pool.end();
       const out = `${run.stdout ?? ""}${run.stderr ?? ""}`;
       const sawString = out.includes("TYPE:string");
       const refused = out.includes("RESULT:REFUSED");
-      const goodType = typeof (
-        await pool.query<{ probe: unknown }>("SELECT 1000::bigint AS probe")
-      ).rows[0]!.probe;
+      const goodType = typeof (await pool.query<{ probe: unknown }>("SELECT 1000::bigint AS probe"))
+        .rows[0]!.probe;
 
       const ok = sawString && refused && goodType === "number";
       record(
@@ -581,7 +582,8 @@ await pool.end();
         await statusFor(canceled.teamId),
         await statusFor(alive.teamId),
       ];
-      const ok = a === "expired" && b === "canceled" && c === "active" && report.subscriptionsEnded >= 2;
+      const ok =
+        a === "expired" && b === "canceled" && c === "active" && report.subscriptionsEnded >= 2;
       record(
         name,
         ok,

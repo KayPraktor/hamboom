@@ -1,6 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { AssetPresignRequest, AssetPresignResponse, HbAllowedImageMime } from "@hamboom/shared-types";
+import type {
+  AssetPresignRequest,
+  AssetPresignResponse,
+  HbAllowedImageMime,
+} from "@hamboom/shared-types";
 import { HB_ALLOWED_IMAGE_MIME } from "@hamboom/shared-types";
 import type { ObjectStore } from "@hamboom/storage";
 
@@ -90,7 +94,9 @@ export function createAssetService(config: AssetServiceConfig): AssetService {
         throw new AssetValidationError(`نوعِ فایل مجاز نیست: ${req.mimeType}`);
       }
       if (req.sizeBytes > config.maxBytes) {
-        throw new AssetValidationError(`اندازه بزرگ‌تر از سقف است: ${req.sizeBytes} > ${config.maxBytes}`);
+        throw new AssetValidationError(
+          `اندازه بزرگ‌تر از سقف است: ${req.sizeBytes} > ${config.maxBytes}`,
+        );
       }
 
       const fileId = newFileId();
@@ -117,7 +123,9 @@ export function createAssetService(config: AssetServiceConfig): AssetService {
         throw new AssetValidationError(`فایلِ آپلودشده بزرگ‌تر از سقف است: ${head.size}`);
       }
       if (head.size !== declared.sizeBytes) {
-        throw new AssetValidationError(`اندازه‌ی واقعی با اعلام نمی‌خواند: ${head.size} ≠ ${declared.sizeBytes}`);
+        throw new AssetValidationError(
+          `اندازه‌ی واقعی با اعلام نمی‌خواند: ${head.size} ≠ ${declared.sizeBytes}`,
+        );
       }
 
       // ۲) بایت‌های واقعی برای sha256 و sniff.
@@ -133,10 +141,14 @@ export function createAssetService(config: AssetServiceConfig): AssetService {
       // ۳) نوعِ واقعی از magic-bytes — نه Content-Typeِ اعلامی.
       const actualMime = sniffMime(bytes);
       if (actualMime === null || !allowed.includes(actualMime)) {
-        throw new AssetValidationError(`نوعِ واقعیِ بایت‌ها مجاز نیست: ${actualMime ?? "ناشناخته"}`);
+        throw new AssetValidationError(
+          `نوعِ واقعیِ بایت‌ها مجاز نیست: ${actualMime ?? "ناشناخته"}`,
+        );
       }
       if (actualMime !== declared.mimeType) {
-        throw new AssetValidationError(`نوعِ واقعی با اعلام نمی‌خواند: ${actualMime} ≠ ${declared.mimeType}`);
+        throw new AssetValidationError(
+          `نوعِ واقعی با اعلام نمی‌خواند: ${actualMime} ≠ ${declared.mimeType}`,
+        );
       }
 
       return { mime: actualMime, sizeBytes: head.size, sha256: actualSha };

@@ -76,12 +76,12 @@ describe("planSweep — نردبانِ تصمیم (ADR-056)", () => {
   });
 
   it("آستانه‌ی منفی رد می‌شود", () => {
-    expect(() =>
-      planSweep([], { now: NOW, staleAfterMs: -1, expireAfterMs: 10 * MINUTE }),
-    ).toThrow(RangeError);
-    expect(() =>
-      planSweep([], { now: NOW, staleAfterMs: 1, expireAfterMs: -10 }),
-    ).toThrow(RangeError);
+    expect(() => planSweep([], { now: NOW, staleAfterMs: -1, expireAfterMs: 10 * MINUTE })).toThrow(
+      RangeError,
+    );
+    expect(() => planSweep([], { now: NOW, staleAfterMs: 1, expireAfterMs: -10 })).toThrow(
+      RangeError,
+    );
   });
 
   it("فهرستِ خالی ⇒ تصمیمِ خالی", () => {

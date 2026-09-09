@@ -78,7 +78,9 @@ describe("rt-token — sign/verify", () => {
       .setSubject("u1")
       .setExpirationTime(nowSec + TTL)
       .sign(secret);
-    await expect(verifyRtToken(secret, t, "b1", TTL, clock)).rejects.toMatchObject({ code: "shape" });
+    await expect(verifyRtToken(secret, t, "b1", TTL, clock)).rejects.toMatchObject({
+      code: "shape",
+    });
   });
 });
 

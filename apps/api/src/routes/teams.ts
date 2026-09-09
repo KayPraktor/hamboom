@@ -186,11 +186,22 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
     await deps.pool.query(
       `INSERT INTO team_invites (id, team_id, channel, destination, role, token_hash, invited_by, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, now() + ($8 || ' seconds')::interval)`,
-      [inviteId, id, channel, destination, role, sha256hex(token), sub, String(deps.inviteTtlSeconds)],
+      [
+        inviteId,
+        id,
+        channel,
+        destination,
+        role,
+        sha256hex(token),
+        sub,
+        String(deps.inviteTtlSeconds),
+      ],
     );
 
     // dev: توکن در لاگ + بدنه (curl)؛ production: پیامک/ایمیلِ واقعی (فاز بعد).
-    req.log.warn(`[invite mock — فقط dev] تیمِ ${id} → ${destination} (${role}): توکنِ دعوت ${token}`);
+    req.log.warn(
+      `[invite mock — فقط dev] تیمِ ${id} → ${destination} (${role}): توکنِ دعوت ${token}`,
+    );
     return {
       inviteId,
       channel,
@@ -230,10 +241,10 @@ export function registerTeamRoutes(app: FastifyInstance, deps: TeamRouteDeps): v
          ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
         [invite.team_id, sub, invite.role],
       );
-      await tx.query("UPDATE team_invites SET accepted_at = now(), accepted_by = $1 WHERE id = $2", [
-        sub,
-        invite.id,
-      ]);
+      await tx.query(
+        "UPDATE team_invites SET accepted_at = now(), accepted_by = $1 WHERE id = $2",
+        [sub, invite.id],
+      );
       return { teamId: invite.team_id, role: invite.role };
     });
   });
