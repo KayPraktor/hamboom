@@ -47,7 +47,10 @@ HttpOnly مسیرِ `/auth` دارد و `baseUrl`ِ sdk خالی است. api ر�
 # ۱. فایلِ محیط را بساز
 cp .env.production.example .env.production   # و همه‌ی «‼️»ها را عوض کن
 
-# ۲. ساختِ ایمیج‌ها (یا pullِ ایمیجِ CI — گامِ ۳٫۵)
+# ۲. ایمیج‌ها — از ماشینِ توسعه فرستاده می‌شوند (ADR-063)، نه از رجیستری
+#    روی ماشینِ توسعه:  pnpm infra:ship -- --build --tag=$(git rev-parse --short HEAD) --to=root@<IP>
+#    و بعد IMAGE_TAG را در .env.production همان بگذار.
+#    ⊕ یا اگر ترجیح می‌دهی همان‌جا build شود:
 docker compose -f infra/docker/docker-compose.prod.yml --env-file .env.production build
 
 # ۳. بالا آوردن — migration خودکار پیش از api اجرا می‌شود
@@ -114,6 +117,31 @@ $C --profile ops run --rm restore-drill
 (به‌همراهِ کمکی‌هایشان). بقیه ابزارِ dev/CI اند و وابستگی‌هایشان در نصبِ `--prod` نیستند.
 ★ فهرست در `PRODUCTION_SCRIPTS`ِ [`check-workspace-deps.ts`](../scripts/check-workspace-deps.ts)
 است و گیتِ `deps` جداافتادنش از Dockerfile را قرمز می‌کند.
+
+---
+
+## رساندنِ ایمیج به VM — [ADR-063](../ARCHITECTURE_DECISIONS.md#adr-063)
+
+★ **بدونِ رجیستری.** CI ایمیج‌ها را **می‌سازد و گیت می‌شود، ولی push نمی‌کند**؛ انتقال یک
+آرشیوِ `docker save` است که روی ssh بارگذاری می‌شود:
+
+```bash
+pnpm infra:ship                                   # تمرینِ محلی (بدونِ ssh)
+pnpm infra:ship -- --build --tag=$(git rev-parse --short HEAD) --to=root@<IP>
+pnpm infra:ship -- --self-test                    # دو شکستنِ عمدی
+pnpm infra:ship -- --to=root@<IP> --base          # + postgres/redis، اگر VM به Docker Hub نمی‌رسد
+```
+
+**اندازه‌گیریِ واقعی:** هر سه ایمیج با `docker save` **۱۸۵MB** می‌شوند و api تنها
+**۱۱۹MB** — نه ۱٫۲GBی که `docker images` نشان می‌دهد (آن عدد لایه‌های مشترک را چند بار
+می‌شمارد). با این اعداد رجیستری فقط چند دقیقه صرفه‌جویی می‌کند و در عوض **دو** وابستگیِ
+شبکه‌ای می‌آورد که هیچ‌کدام در کنترلِ ما نیستند.
+
+★ **انتقال در مقصد راستی‌آزمایی می‌شود:** بعد از `docker load`، هر تگ `inspect` می‌شود و
+شناسه‌اش با مبدأ سنجیده می‌شود — وگرنه یک بارگذاریِ ناقص یا یک ایمیجِ هم‌نامِ **قدیمی** در
+مقصد، «موفق» دیده می‌شود.
+
+⚠️ اسکریپت `IMAGE_TAG` را چاپ می‌کند؛ همان را در `.env.production` بگذار. حدس‌زدنش ممنوع.
 
 ---
 

@@ -98,6 +98,8 @@ pnpm infra:restore-drill     # ★★★ M5 فاز ۷: **گیتِ اصلی** —
 #   -- --key=… --keep --prune=N
 pnpm sms:probe -- --to=09XXXXXXXXX   # ★★ M5 فازِ ۴٫۵: یک پیامکِ **واقعی** (بدنه‌ی خام را چاپ می‌کند)
 #   -- --dry-run   بدنه‌ی درخواست را می‌سازد و چیزی نمی‌فرستد
+pnpm infra:ship              # ★★ M5-D10/ADR-063: docker save → ssh → راستی‌آزمایی در مقصد
+#   -- --to=user@host   انتقالِ واقعی · --self-test   دو شکستنِ عمدی · --build --tag=… · --base
 pnpm infra:check-proxy       # ★★ M5 فاز ۲: مسیرهای api ↔ پروکسیِ dev ↔ nginx — **داخلِ verify هم هست**
 pnpm deps:check              # ★★ M5 فاز ۳٫۶: هر importِ bare اعلام شده؟ — **داخلِ verify هم هست**
 pnpm openapi:check           # ★★ M5 فاز ۳٫۳: docs/api.md + openapi.json کهنه نیستند — **داخلِ verify**
@@ -337,8 +339,12 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
   **CI هست و اجرا شده** ([`ci.yml`](.github/workflows/ci.yml) · [`images.yml`](.github/workflows/images.yml)):
   `pnpm verify` **۲m۱۵s** · jobِ سرویس‌ها **۲m۰۰s** (هر ۱۸ مرحله) · buildِ ایمیج **۱m۰۴s**.
-  ⚠️ **ایمیج‌ها هیچ‌جا push نمی‌شوند** — **M5-D10** (مقصدِ رجیستری) به یک probe از **VMِ
-  آروان** بسته است: از کجا می‌تواند pull کند؟
+  ✅ **ایمیج‌ها هیچ‌جا push نمی‌شوند — و این حالا یک تصمیم است، نه یک ابهام**
+  ([ADR-063](ARCHITECTURE_DECISIONS.md#adr-063), M5-D10): انتقال با
+  [`infra:ship`](scripts/ship-images.ts) یعنی `docker save` روی ssh. ★ استدلالِ قبلی روی
+  عددِ **غلطِ** ۱٫۲GB بنا بود (که `docker images` می‌گفت)؛ `docker save`ِ واقعی برای هر سه
+  **۱۸۵MB** است و برای api تنها **۱۱۹MB** — پس رجیستری فقط چند دقیقه صرفه‌جویی می‌کرد و
+  دو وابستگیِ شبکه‌ایِ خارج از کنترلِ ما می‌آورد.
 
   **دو تصمیمِ ساختاری:** jobِ سرویس‌ها از `docker-compose.yml`ِ **خودِ ریپو** استفاده می‌کند
   نه `services:`ِ گیت‌هاب (P3) · و `.env` از `.env.example` ساخته می‌شود ⇒ **`.env.example`
@@ -457,7 +463,7 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
   ⚠️ **دو چیزِ ثبت‌شده (نه پنهان):** پورتِ `ObjectStore` stream ندارد ⇒ هر شیء کامل در
   حافظه (هشدار بالای ۵۱۲MB؛ تغییرش کارِ M6) · و buildِ ایمیجِ api حالا به
-  `apt.postgresql.org` نیاز دارد (کلاینتِ ۱۶؛ bookworm فقط ۱۵ دارد) ⇒ مثلِ M5-D10 باید از
+  `apt.postgresql.org` نیاز دارد (کلاینتِ ۱۶؛ bookworm فقط ۱۵ دارد) ⇒ باید از
   VMِ آروان probe شود. ایمیج: **۴۷۰MB → ۵۶۲MB**.
 
 ### ✅ پیامک: سیم‌کشی شد (۱۴۰۵/۰۶/۱۸) — و گیتِ launch باز شد
