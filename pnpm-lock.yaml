@@ -11,6 +11,9 @@ importers:
       '@hamboom/config':
         specifier: workspace:*
         version: link:packages/config
+      '@hamboom/storage':
+        specifier: workspace:*
+        version: link:packages/storage
       pg:
         specifier: ^8.13.1
         version: 8.22.0
@@ -33,9 +36,6 @@ importers:
       '@hamboom/realtime':
         specifier: workspace:*
         version: link:apps/realtime
-      '@hamboom/storage':
-        specifier: workspace:*
-        version: link:packages/storage
       '@hamboom/tsconfig':
         specifier: workspace:*
         version: link:packages/tsconfig

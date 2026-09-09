@@ -131,6 +131,26 @@ export const s3EnvSchema = z.object({
 export type S3Env = z.infer<typeof s3EnvSchema>;
 
 /**
+ * ── ★★ باکتِ پشتیبان (M5 فاز ۷، تصمیمِ M5-D7) ────────────────────────────
+ *
+ * ⚠️ **عمداً بخشِ جداست، نه فیلدی داخلِ `s3EnvSchema`.** دو دلیل، و هر دو عملی‌اند:
+ *
+ * ۱. **کمترین دسترسیِ لازم** — `apps/api` و `apps/realtime` هرگز به باکتِ پشتیبان
+ *    کاری ندارند. اگر این فیلد داخلِ `s3EnvSchema` بود، هر دو سرور مجبور بودند اسمش
+ *    را بدانند و مقدارش را داشته باشند؛ همان کاری که فاز ۴ برای configِ آشتی‌دهی
+ *    **برعکسش** را کرد.
+ * ۲. **یک دامنه‌ی خرابی برای داده و پشتیبانش یعنی هیچ پشتیبانی** (M5-D7). جدابودنِ
+ *    باکت باید در خودِ تایپ دیده شود، نه فقط در یک عدد پیکربندی.
+ *
+ * مصرف‌کننده: فقط `scripts/backup-db.ts`، `scripts/backup-storage.ts` و
+ * `scripts/restore-drill.ts`.
+ */
+export const backupEnvSchema = z.object({
+  S3_BUCKET_BACKUPS: z.string().min(1).default("hamboom-backups"),
+});
+export type BackupEnv = z.infer<typeof backupEnvSchema>;
+
+/**
  * ── احراز هویتِ M3 (`apps/api` فاز ۵) ───────────────────────────────────
  *
  * ★ رازِ HS256 (PLAN §۴): auth-core آن را **param** می‌گیرد، از `process.env` نمی‌خواند. حداقلِ ۳۲
@@ -158,7 +178,10 @@ export const otpEnvSchema = z.object({
   OTP_MAX_ATTEMPTS: envInt(5),
   OTP_COOLDOWN_SECONDS: envInt(60),
   /** کدِ ثابتِ dev (اختیاری) — فقط وقتی `APP_ENV=local`. وگرنه تصادفی. */
-  OTP_DEV_FIXED_CODE: z.string().regex(/^\d{6}$/, "باید ۶ رقم باشد").optional(),
+  OTP_DEV_FIXED_CODE: z
+    .string()
+    .regex(/^\d{6}$/, "باید ۶ رقم باشد")
+    .optional(),
 });
 export type OtpEnv = z.infer<typeof otpEnvSchema>;
 

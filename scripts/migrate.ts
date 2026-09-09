@@ -47,6 +47,15 @@ const MIGRATION_DIRS = [
   join(REPO_ROOT, "apps", "api", "migrations"),
 ];
 
+/**
+ * کلیدِ advisory lockِ اجرای migration — M5 گام ۷٫۳.
+ *
+ * ⚠️ **ثابت و مستند**، مثلِ `RECONCILE_LOCK_KEY` (که `811_451_001` است). کلیدِ
+ * هش‌شده از یک رشته یعنی دو نسخه‌ی کد که رشته‌شان یک حرف فرق دارد، دو قفلِ متفاوت
+ * بگیرند و هر دو هم‌زمان اجرا شوند — یعنی دقیقاً همان چیزی که قفل قرار بود نگیرد.
+ */
+const MIGRATE_LOCK_KEY = 811_451_002;
+
 function sha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
@@ -131,6 +140,31 @@ async function main(): Promise<void> {
   }
 
   try {
+    /**
+     * ★★ قفلِ اجرای هم‌زمان — M5 گام ۷٫۳.
+     *
+     * ⚠️ تا امروز هیچ چیزی جلوی **دو** `migrate`ِ هم‌زمان را نمی‌گرفت. با یک سرویسِ
+     * یک‌بارمصرفِ compose عملاً یکی بود، ولی «عملاً» ضمانت نیست: یک `docker compose up`
+     * هم‌زمان با یک اجرای دستی، دو نشست می‌ساخت که هر دو `applied` را خالی می‌دیدند و
+     * هر دو همان فایل را اجرا می‌کردند. نتیجه‌اش خطای «relation already exists» است —
+     * که **بی‌خطر** است ولی استقرار را می‌اندازد و شبیهِ فاجعه به‌نظر می‌رسد.
+     *
+     * ★ قفل به **نشست** بسته است و با `client.end()` خودکار آزاد می‌شود؛ پس یک migrateِ
+     *   کشته‌شده دفعه‌ی بعد را قفل نمی‌کند (همان خاصیتی که `infra:probe-lock` در فاز ۱
+     *   روی Postgresِ زنده اثبات کرد).
+     * ⚠️ `lock_timeout` عمدی است: انتظارِ **بی‌پایان** پشتِ یک migrateِ گیرکرده، از
+     *   شکستِ صریح بدتر است — استقرار بی‌صدا معلق می‌مانَد.
+     */
+    await client.query("SET lock_timeout = '60s'");
+    try {
+      await client.query("SELECT pg_advisory_lock($1)", [MIGRATE_LOCK_KEY]);
+    } catch (error) {
+      throw new Error(
+        "‏[hamboom] قفلِ migration بعد از ۶۰ ثانیه گرفته نشد — یعنی یک migrateِ دیگر " +
+          `در حالِ اجراست یا گیر کرده. اجرای هم‌زمان انجام نشد. (${String(error)})`,
+      );
+    }
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         name       text        PRIMARY KEY,

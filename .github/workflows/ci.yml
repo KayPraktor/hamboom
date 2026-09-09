@@ -103,6 +103,15 @@ jobs:
       - name: advisory lock (ADR-060)
         run: pnpm infra:probe-lock
 
+      # ★★ M5 فاز ۷ — دوامِ داده. عمداً **داخلِ** CI: مشقِ بازیابی‌ای که فقط دستی
+      #    اجرا شود، همان گیتی است که هیچ‌وقت اجرا نمی‌شود (درسِ `lint:css` و
+      #    `db:smoke`ی ماه‌ها-قرمز). این‌جا هر push یک پشتیبانِ واقعی می‌سازد و
+      #    **برش می‌گرداند**.
+      - name: پشتیبانِ دیتابیس + آینه‌ی Object Storage
+        run: pnpm infra:backup && pnpm infra:backup-storage
+      - name: ★★ مشقِ بازیابی + خودآزمونش
+        run: pnpm infra:restore-drill && pnpm infra:restore-drill -- --self-test
+
       # ⚠️ این هفت **skip نمی‌شوند** (CLAUDE.md): هرکدام باگی گرفتند که همه‌ی تست‌های
       #    واحدِ سبز از رویش رد شده بودند. `rt:bench` عمداً نیست — دلیلش در جدولِ بالا.
       - name: هفت سنجه‌ی realtime

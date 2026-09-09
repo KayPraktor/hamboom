@@ -1,8 +1,8 @@
 # `infra/` — استقرارِ هم‌بوم
 
-> **وضعیت: M5 فاز ۰ تا ۵ تمام است** — ایمیج، CI، سخت‌سازیِ راز، و رصدپذیری.
-> پشتیبان (فاز ۷) و TLS/لبه (فاز ۹) هنوز نیامده‌اند. runbookِ کامل
-> کارِ گامِ ۱۰٫۱ است؛ این فایل امروز فقط «چطور بالا می‌آید» را می‌گوید.
+> **وضعیت: M5 فاز ۰ تا ۷ تمام است** — ایمیج، CI، سخت‌سازیِ راز، رصدپذیری، انتخابِ
+> رهبر، و **دوامِ داده**. TLS/لبه (فاز ۹) هنوز نیامده. runbookِ کامل کارِ گامِ ۱۰٫۱
+> است؛ این فایل امروز «چطور بالا می‌آید» را می‌گوید.
 
 | مسیر | چیست |
 |---|---|
@@ -12,6 +12,7 @@
 | [`nginx/`](nginx/) | reverse proxy — ⚠️ `api-locations.conf` **تولیدشده** است |
 | [`sql/`](sql/) | EXTENSIONهای اولیه + migrationهای مشترکِ realtime |
 | ★ [`docs/observability.md`](../docs/observability.md) | `/metrics`، آستانه‌های هشدار، و `/healthz` در برابرِ `/readyz` |
+| ★★ [`docs/backup-restore.md`](../docs/backup-restore.md) | پشتیبان، **مشقِ بازیابی**، و داستانِ migration در استقرار |
 
 ---
 
@@ -95,10 +96,23 @@ $C run --rm migrate
 # آشتی‌دهیِ پرداخت — از cronِ خودِ VM
 $C --profile ops run --rm reconcile
 $C --profile ops run --rm reconcile node scripts/billing-reconcile.ts --dry-run
+
+# ★★ دوامِ داده (فاز ۷) — شبانه، و مشق **هفتگی**
+$C --profile ops run --rm backup -- --prune=14
+$C --profile ops run --rm backup-storage
+$C --profile ops run --rm restore-drill
 ```
 
-⚠️ **فقط دو ورودی از `scripts/` در ایمیج پشتیبانی می‌شوند** — `migrate.ts` و
-`billing-reconcile.ts`. بقیه ابزارِ dev/CI اند و وابستگی‌هایشان در نصبِ `--prod` نیستند.
+★★ **مشقِ بازیابی تزئینی نیست:** یک پشتیبانِ بازیابی‌نشده پشتیبان نیست. روی یک دیتابیسِ
+موقت برمی‌گرداند و پنج ادعا را می‌سنجد — از جمله **شمارشِ ردیف**، که تنها چکی است که
+پشتیبانِ «schema سالم، داده غایب» را می‌گیرد. جزئیات در
+[`docs/backup-restore.md`](../docs/backup-restore.md).
+
+⚠️ **فقط این ورودی‌ها از `scripts/` در ایمیج پشتیبانی می‌شوند** — `migrate.ts`،
+`billing-reconcile.ts`، `backup-db.ts`، `backup-storage.ts` و `restore-drill.ts`
+(به‌همراهِ کمکی‌هایشان). بقیه ابزارِ dev/CI اند و وابستگی‌هایشان در نصبِ `--prod` نیستند.
+★ فهرست در `PRODUCTION_SCRIPTS`ِ [`check-workspace-deps.ts`](../scripts/check-workspace-deps.ts)
+است و گیتِ `deps` جداافتادنش از Dockerfile را قرمز می‌کند.
 
 ---
 
@@ -143,5 +157,4 @@ pnpm infra:check-proxy -- --write   # بازتولید بعد از افزودن�
 | چه چیزی | کجا |
 |---|---|
 | TLS و سقفِ نرخِ لبه | فاز ۹ — تصمیمِ «گواهی از آروان یا ACME» عمداً باز است |
-| پشتیبان و مشقِ بازیابی | فاز ۷ |
 | ⚠️⚠️ **فرستنده‌ی واقعیِ پیامک** | ⛔ بلاک‌کننده‌ی launch — از فاز ۴، `APP_ENV=production` بدونِ آن **بالا نمی‌آید**. انتخابِ سرویس تصمیمِ مالک است |

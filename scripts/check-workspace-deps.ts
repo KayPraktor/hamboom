@@ -48,7 +48,21 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
  * یکی است. اگر روزی ورودیِ سومی اضافه شد، **هر دو** باید عوض شوند — و ادعای «ب» تنها
  * چیزی است که فراموش‌شدنش را قرمز می‌کند.
  */
-const PRODUCTION_SCRIPTS = ["scripts/migrate.ts", "scripts/billing-reconcile.ts"];
+const PRODUCTION_SCRIPTS = [
+  "scripts/migrate.ts",
+  "scripts/billing-reconcile.ts",
+  // ★ M5 فاز ۷ — پشتیبان و **مشقِ بازیابی** روی خودِ VM اجرا می‌شوند، وگرنه فقط
+  //   مکانیزم اثبات می‌شود نه پشتیبانِ واقعی.
+  "scripts/backup-db.ts",
+  "scripts/backup-storage.ts",
+  "scripts/restore-drill.ts",
+  // فایل‌های کمکی که همان‌جا بارگذاری می‌شوند (importِ نسبی، ولی importهای bareشان
+  // در همان نصبِ `--prod` resolve می‌شوند).
+  "scripts/backup-common.ts",
+  "scripts/pg-tools.ts",
+  // ⚠️ مشقِ بازیابی این را **spawn** می‌کند؛ پس این هم داخلِ ایمیج اجرا می‌شود.
+  "scripts/db-fk-test.ts",
+];
 
 const BUILTINS = new Set([...builtinModules, ...builtinModules.map((m) => `node:${m}`)]);
 const SOURCE_EXT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
@@ -190,10 +204,7 @@ export function checkDeclared(
 }
 
 /** ادعای ب — importهای اسکریپت‌های production در برابرِ `dependencies`ِ ریشه. */
-export function checkProductionScope(
-  manifest: Manifest,
-  used: Map<string, string[]>,
-): Problem[] {
+export function checkProductionScope(manifest: Manifest, used: Map<string, string[]>): Problem[] {
   const prod = new Set(Object.keys(manifest.dependencies ?? {}));
   return [...used.entries()]
     .filter(([pkg]) => !prod.has(pkg))
@@ -236,8 +247,11 @@ function selfTest(): boolean {
   cases.push({
     name: "وابستگیِ اعلام‌نشده گرفته می‌شود (نقصِ فاز ۱)",
     ok:
-      checkDeclared("t", { name: "@hamboom/realtime", dependencies: { ws: "*" } }, use("@hamboom/config"))
-        .length === 1,
+      checkDeclared(
+        "t",
+        { name: "@hamboom/realtime", dependencies: { ws: "*" } },
+        use("@hamboom/config"),
+      ).length === 1,
   });
   cases.push({
     name: "اعلامِ dev کافی است (منفیِ کاذب ندارد)",
@@ -257,7 +271,8 @@ function selfTest(): boolean {
   });
   cases.push({
     name: "زیرمسیر به نامِ پکیج تبدیل می‌شود",
-    ok: packageOf("@hamboom/config/x") === "@hamboom/config" && packageOf("fastify/y") === "fastify",
+    ok:
+      packageOf("@hamboom/config/x") === "@hamboom/config" && packageOf("fastify/y") === "fastify",
   });
   cases.push({
     name: "builtin و مسیرِ نسبی نادیده گرفته می‌شوند",

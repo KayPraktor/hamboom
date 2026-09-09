@@ -90,6 +90,29 @@ x-reconcile-env: &reconcile-env
   BILLING_RECONCILE_BATCH: ${BILLING_RECONCILE_BATCH:-50}
   BILLING_ADOPT_ORPHANS: ${BILLING_ADOPT_ORPHANS:-false}
 
+# ★ envِ باریکِ کارهای **پشتیبان** — M5 فاز ۷.
+#
+# ⚠️ مثلِ آشتی‌دهی، این کانتینر `JWT_SECRET` را **نمی‌بیند**: کارش دیتابیس و Object
+# Storage است و بس. ⊕ ولی برخلافِ آشتی‌دهی، کلیدهای S3 را **لازم** دارد — و باکتِ
+# پشتیبان عمداً سومی است (M5-D7: یک دامنه‌ی خرابی برای داده و پشتیبانش یعنی هیچ
+# پشتیبانی).
+x-backup-env: &backup-env
+  NODE_ENV: production
+  APP_ENV: ${APP_ENV}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: ${DATABASE_URL}
+  DATABASE_SSL: ${DATABASE_SSL:-false}
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
+  S3_ENDPOINT: ${S3_ENDPOINT}
+  S3_REGION: ${S3_REGION}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+  S3_PRESIGN_TTL_SECONDS: ${S3_PRESIGN_TTL_SECONDS:-900}
+  S3_BUCKET_ASSETS: ${S3_BUCKET_ASSETS}
+  S3_BUCKET_SNAPSHOTS: ${S3_BUCKET_SNAPSHOTS}
+  S3_BUCKET_BACKUPS: ${S3_BUCKET_BACKUPS}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -253,6 +276,54 @@ services:
       postgres:
         condition: service_healthy
     environment: *reconcile-env
+
+  # ── ★★ دوامِ داده (M5 فاز ۷) — سه کانتینرِ یک‌بارمصرفِ همان ایمیجِ api ─────
+  #
+  #   $C --profile ops run --rm backup -- --prune=14   # شبانه، از cronِ VM
+  #   $C --profile ops run --rm backup-storage         # شبانه
+  #   $C --profile ops run --rm restore-drill          # ★ هفتگی — **گیتِ واقعی**
+  #
+  # ⚠️ سومی تزئینی نیست: **یک پشتیبانِ بازیابی‌نشده پشتیبان نیست.** روی یک دیتابیسِ
+  #    موقتِ `<db>_restore_drill` بازیابی می‌کند (به دیتابیسِ اصلی دست نمی‌زند) و در
+  #    پایان پاکش می‌کند.
+  backup:
+    profiles: ["ops"]
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    command: ["node", "scripts/backup-db.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *backup-env
+
+  backup-storage:
+    profiles: ["ops"]
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    command: ["node", "scripts/backup-storage.ts"]
+    environment: *backup-env
+
+  restore-drill:
+    profiles: ["ops"]
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    command: ["node", "scripts/restore-drill.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *backup-env
 
 volumes:
   pgdata:

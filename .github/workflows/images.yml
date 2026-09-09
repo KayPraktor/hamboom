@@ -81,6 +81,24 @@ jobs:
           assert_refused "رازِ ضعیف در production" \
             ProductionConfigError change_me_dev_only_jwt_secret_at_least_32_chars_long
 
+      # ★★ M5 فاز ۷: پشتیبان و مشقِ بازیابی **داخلِ همین ایمیج** اجرا می‌شوند
+      #    (ADR-062: بدونِ ایمیجِ دوم). jobِ `services` منطقشان را می‌سنجد، ولی آن‌جا
+      #    ابزار ممکن است از PATHِ runner بیاید — پس این‌جا صریح ادعا می‌شود که
+      #    خودِ ایمیج کلاینتِ **هم‌نسخه‌ی** سرور را دارد.
+      - name: کلاینتِ Postgres در ایمیجِ api، هم‌نسخه‌ی سرورِ compose
+        run: |
+          set -euo pipefail
+          server=$(grep -oE 'postgres:[0-9]+' infra/docker/docker-compose.prod.yml | head -1 | cut -d: -f2)
+          echo "سرورِ compose: $server"
+          for tool in pg_dump pg_restore psql; do
+            got=$(docker run --rm --entrypoint "$tool" hamboom/api:ci --version)
+            echo "$got"
+            case "$got" in
+              *" $server."*) ;;
+              *) echo "✖ $tool با سرورِ $server هم‌نسخه نیست"; exit 1 ;;
+            esac
+          done
+
       - name: حجمِ ایمیج‌ها
         run: |
           {

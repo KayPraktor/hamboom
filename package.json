@@ -59,10 +59,14 @@
     "openapi:check": "node scripts/gen-openapi.ts --check",
     "ci:wait": "node --env-file-if-exists=.env scripts/ci-wait-services.mjs",
     "infra:probe-metrics": "node --expose-gc --env-file-if-exists=.env scripts/infra-probe-metrics.ts",
-    "infra:probe-leader": "node --env-file-if-exists=.env scripts/infra-probe-leader.ts"
+    "infra:probe-leader": "node --env-file-if-exists=.env scripts/infra-probe-leader.ts",
+    "infra:backup": "node --env-file-if-exists=.env scripts/backup-db.ts",
+    "infra:backup-storage": "node --env-file-if-exists=.env scripts/backup-storage.ts",
+    "infra:restore-drill": "node --env-file-if-exists=.env scripts/restore-drill.ts"
   },
   "dependencies": {
     "@hamboom/config": "workspace:*",
+    "@hamboom/storage": "workspace:*",
     "pg": "^8.13.1"
   },
   "devDependencies": {
@@ -72,7 +76,6 @@
     "@hamboom/canvas-sync": "workspace:*",
     "@hamboom/eslint-config": "workspace:*",
     "@hamboom/realtime": "workspace:*",
-    "@hamboom/storage": "workspace:*",
     "@hamboom/tsconfig": "workspace:*",
     "@hamboom/ydoc-schema": "workspace:*",
     "@types/node": "^22.10.0",
