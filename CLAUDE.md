@@ -9,10 +9,12 @@
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۴ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۸ تمام و تاییدشده، فاز ۹ ساخته‌شده** (۹٫۱ رفعش منتظرِ تاییدِ M2)، ⏳ منتظرِ تاییدِ فاز ۹ |
-| ★ [infra/README.md](infra/README.md) | **چطور استقرار می‌شود** — چیدمان، `docker-compose.prod.yml`، کارهای اپراتور |
+| ★ [docs/m6-handoff.md](docs/m6-handoff.md) | **نقطه‌ی ورودِ M6** — هفت چیزِ بی‌صدا‌شکننده، گپِ بازیابیِ Object Storage، تصمیم‌های باز، درس‌های روشیِ M5 |
+| ★★ [infra/RUNBOOK.md](infra/RUNBOOK.md) | **دفترچه‌ی اپراتور** — روزِ صفر، استقرارِ نو، rollback، بازیابی، «چه کنم اگر…»، cron |
+| [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | بایگانیِ M5 (`infra`، **تمام‌شده** ۱۴۰۵/۰۶/۱۹) — مرجعِ تاریخی |
+| ★ [infra/README.md](infra/README.md) | **چطور چیده شده و بالا می‌آید** — `docker-compose.prod.yml`، TLS، پروکسیِ تولیدشده، شرطِ نودِ دوم |
 | [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | بایگانیِ M4 (`billing`، تمام‌شده) — مرجعِ تاریخی |
-| ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
+| [docs/m5-handoff.md](docs/m5-handoff.md) | بایگانی — نقطه‌ی ورودِ M5 (آشتی‌دهیِ تک‌نود، سه ابهامِ زرین‌پال، درس‌های M4) |
 | [docs/m4-handoff.md](docs/m4-handoff.md) | بایگانی — نقطه‌ی ورودِ M4 (مدلِ billing و درس‌های M3) |
 | [TODO-M3-backend-api.md](TODO-M3-backend-api.md) · [PROGRESS-M3-backend-api.md](PROGRESS-M3-backend-api.md) · [docs/m3-handoff.md](docs/m3-handoff.md) | بایگانیِ M3 (`backend-api`، تمام‌شده) — مرجعِ تاریخی |
 | [TODO.md](TODO.md) · [PROGRESS.md](PROGRESS.md) | بایگانیِ M2 (`realtime-sync`، تمام‌شده) — مرجعِ تاریخی |
@@ -71,7 +73,7 @@ pnpm rt:permission    # گام ۴٫۵: viewer مستقیم update می‌فرس�
 pnpm rt:presence      # گام ۴٫۶: هزار ephemeral → صفر ردیف · قطعِ ناگهانی → مکان‌نما پاک
 pnpm rt:cluster       # گام ۴٫۷: دو پروسه‌ی واقعی روی یک Redis → بدونِ ردیفِ تکراری
 pnpm rt:shutdown      # گام ۴٫۸: خاموشیِ مودبانه → کدِ ۱۰۰۱ + snapshot + هیچ updateِ گم‌شده
-pnpm rt:reconnect     # گام ۵٫۱: قطعِ سرور → فاصله‌های اندازه‌گیری‌شده + jitter → بازگشت بدونِ رفرش
+pnpm rt:reconnect     # گام ۵٫۱ + M5 گام ۹٫۱: قطعِ سرور → backoff+jitter → بازگشت · نشستِ نیم‌باز و دست‌دادنِ معلق (رله‌ی سیاه‌چاله) → کلاینت می‌فهمد و برمی‌گردد
 pnpm rt:bench         # گام ۶٫۳: بوردِ ۵۰۰۰ عنصری + ۵۰ کلاینت → docs/realtime-baseline.md
 #   RT_BENCH_ELEMENTS / RT_BENCH_CLIENTS برای کنترلِ مقیاس (عددِ حافظه باید خطی باشد)
 
@@ -272,9 +274,10 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۸ + ۴٫۵ تمام و تاییدشده (M5-D9 = ۳۰ روز)، فاز ۹ ساخته شده** (۱۴۰۵/۰۶/۱۹).
-  TODO در [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
-  **⏳ منتظرِ تاییدِ فاز ۹؛ قدمِ بعد فاز ۱۰ (تحویل).** گام ۹٫۱ یک رفعِ **M2** دارد که تاییدِ مالک می‌خواهد.
+- **★★ M5 (`infra`) تمام و تحویل شد** (۱۴۰۵/۰۶/۱۹) — فاز ۰ تا ۱۰ + ۴٫۵. TODO در
+  [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
+  **ورودیِ M6:** [`docs/m6-handoff.md`](docs/m6-handoff.md) · **دفترچه‌ی اپراتور:** [`infra/RUNBOOK.md`](infra/RUNBOOK.md).
+  ⏳ **هیچ‌چیز هنوز روی VMِ آروان اجرا نشده** — اولین استقرارِ واقعی منتظرِ زرین‌پال است و RUNBOOK را بازنویسی می‌کند.
   - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
     **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
     ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).
@@ -521,11 +524,14 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   از همان مولدِ گیتِ پروکسی. همه روی استکِ واقعی اثبات شد (۳۰۱ · HSTS · TLS ۱٫۰ رد · wss ⇒
   ۱۰۰۸ · ۳۶ تا ۴۲۹ی nginx در رگبار) و سه حالتش در `images.yml` است.
 
-  ★★ **گام ۹٫۱ اندازه گرفت، رفع نکرد:** ترابریِ کلاینت نه مهلتِ اتصال دارد نه نگهبانِ سکوت.
-  با رله‌ی سیاه‌چاله در `rt:reconnect`: سرور مسیرِ مرده را در **۳۹۵۸ms** (دو تیک) می‌بندد ✅،
-  ولی کلاینت بعد از **۱۵s** هنوز `open`/`connecting` است — هیچ قابِ بستنی نمی‌رسد، پس backoff
-  هرگز شروع نمی‌شود. رفعش فایلِ **M2** است (`canvas-sync` + `apps/realtime`) ⇒ تاییدِ مالک؛
-  پیشنهادش در TODO. تا آن روز دو خطِ ⚠️ی سنجه گزارش‌اند، نه شکست.
+  ★★ **گام ۹٫۱ — اندازه گرفت، بعد رفع کرد (تاییدِ مالک، دو فایلِ M2):** ترابریِ کلاینت نه مهلتِ
+  اتصال داشت نه نگهبانِ سکوت. با رله‌ی سیاه‌چاله در `rt:reconnect`: سرور مسیرِ مرده را در
+  **۳۹۵۸ms** می‌بست ✅، کلاینت بعد از ۱۵s هنوز `open`/`connecting` بود — هیچ قابِ بستنی
+  نمی‌رسد. رفع: اتاق در هر تیکِ heartbeat `HB_ROOM_INFO` را با **آخرین وضعیتِ راست‌گویانه**
+  تکرار می‌کند (نه «saved»ِ بی‌پشتوانه — ADR-009)، و ترابری `silenceTimeoutMs` (۷۵s = ۳× heartbeat)
+  و `connectTimeoutMs` (۱۰s) دارد که به همان مسیرِ backoff می‌ریزند. بعد از رفع: نیم‌باز در
+  **۵۴۴۴ms**، دست‌دادنِ معلق در **۳۰۱۱ms**، و بازگشت بدونِ رفرش. ⚠️ **جفت‌شدگی:**
+  `silence > 2 × RT_HEARTBEAT_INTERVAL_MS` — سنجه روی پیش‌فرض‌های واقعیِ دو پکیج assert می‌کند.
 
   ✅ **P2 گیت شد** ([`check-p2.ts`](scripts/check-p2.ts)، گیت‌ها ۱۳ → ۱۵): ۲۴۱ فایلِ runtime،
   صفر میزبانِ خارجی جز زرین‌پال و sms.ir؛ استثنای مرده قرمز. و روی **باندلِ واقعی** در
@@ -562,10 +568,19 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   فهرستِ خریدِ آروان و سه سوالی که باید از پشتیبانیِ زرین‌پال پرسیده شود در
   [`TODO-M5-infra.md`](TODO-M5-infra.md).
 
-  ### ⏳ چیزهای بازِ بیرونی — هیچ‌کدام فاز ۱۰ را بلاک نمی‌کنند
+  ### ✅ فاز ۱۰ (تحویل) — و چهار خطِ سند که هرگز کار نکرده بود
 
-  **زرین‌پال** (تنها بلاک‌کننده‌ی `APP_ENV=production`) · **رفعِ ۹٫۱** (دو فایلِ M2 — تاییدِ مالک)
-  · **قالبِ تولیدیِ sms.ir** (قالبِ فعلی «پیامِ تست» است) · **PLAN Q4: حقیقی یا حقوقی؟**
+  [`infra/RUNBOOK.md`](infra/RUNBOOK.md) و [`docs/m6-handoff.md`](docs/m6-handoff.md)، هر دو با
+  یک بازبینیِ خصمانه‌ی جدا (هر بخش یک بازبینِ مستقل + دو منتقدِ کاملیت). ★ حینِ نوشتنِ runbook:
+  `run --rm backup -- --prune=14` از فاز ۷ در سه سند و یک کامنتِ compose بود و **هرگز کار
+  نمی‌کرد** — ایمیجِ پایه‌ی node آرگومانِ «-»دار را اسمِ فایل می‌گیرد (`Cannot find module`).
+  فرمِ درست همیشه `node scripts/<اسکریپت> <پرچم>` است. ⚠️⚠️ و یک گپِ جدی که RUNBOOK صادقانه
+  ثبت می‌کند: **بازیابیِ Object Storage اسکریپت ندارد**، و بعد از فشرده‌سازی محتوای بورد تا
+  `seq_upto` فقط در snapshot است — پشتیبانِ دیتابیس به‌تنهایی بوردِ کامل را برنمی‌گرداند (M6).
+
+  ### ⏳ چیزهای بازِ بیرونی — هیچ‌کدام M6 را بلاک نمی‌کنند
+
+  **زرین‌پال** (تنها بلاک‌کننده‌ی `APP_ENV=production`) · **قالبِ تولیدیِ sms.ir** (قالبِ فعلی «پیامِ تست» است) · **PLAN Q4: حقیقی یا حقوقی؟**
   (نوعِ حسابِ زرین‌پال) · **`RATE_LIMIT_OTP_MAX`ِ تولیدی** (۵/دقیقه/IP زیرِ CGNAT تنگ است) ·
   متنِ «۳۰ روز» در نمای سطلِ `apps/web` (M3) · منبعِ گواهی (آروان/certbot — روزِ استقرار) ·
   **VPS** — آگاهانه موکول شد؛ اولین استقرارِ واقعی به‌هرحال منتظرِ زرین‌پال است.

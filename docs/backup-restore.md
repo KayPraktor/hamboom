@@ -182,7 +182,10 @@ dumpِ production را گرفته ولی در واقع از کانتینرِ ل�
 C="docker compose -f infra/docker/docker-compose.prod.yml --env-file .env.production"
 
 # شبانه (cronِ خودِ VM)
-$C --profile ops run --rm backup -- --prune=14
+$C --profile ops run --rm backup node scripts/backup-db.ts --prune=14
+# ⚠️ نه `run --rm backup -- --prune=14`: ایمیجِ پایه‌ی node آرگومانی را که با «-» شروع شود
+#    به `node` می‌دهد و `--prune=14` را اسم فایل می‌گیرد (اثبات: «Cannot find module»).
+#    فرمِ درست همیشه `node scripts/<اسکریپت> <پرچم‌ها>` است — همان‌طور که sweep/purge نوشته‌اند.
 $C --profile ops run --rm backup-storage
 
 # ★★ هفتگی — این تزئینی نیست
@@ -200,9 +203,11 @@ $C --profile ops run --rm restore-drill
 $C stop api realtime
 
 # ۲. کدام پشتیبان؟ (مشق همیشه آخرین را می‌گیرد؛ برای قدیمی‌تر --key بده)
-$C --profile ops run --rm restore-drill -- --key=pg/hamboom-<زمان>.dump --keep
+$C --profile ops run --rm restore-drill node scripts/restore-drill.ts --key=pg/hamboom-<زمان>.dump --keep
 
-# ۳. اگر مشق سبز بود، همان فایل روی دیتابیسِ اصلی — و تازه بعدش api
+# ۳. اگر مشق سبز بود: **جابه‌جاییِ نام** — دیتابیسِ مشق (--keep) همان نسخه‌ی راستی‌آزمایی‌شده است
+$C exec postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "ALTER DATABASE hamboom RENAME TO hamboom_broken_'$(date +%Y%m%d%H%M)'; ALTER DATABASE hamboom_restore_drill RENAME TO hamboom;"'
+$C up -d api realtime        # ✅ همین چهار گام روی استکِ productionِ لوکال اجرا شد (infra/RUNBOOK.md §۴)
 ```
 
 ★ ترتیب عمدی است: **اول مشق روی یک دیتابیسِ دورریختنی، بعد دیتابیسِ اصلی.** بازیابیِ

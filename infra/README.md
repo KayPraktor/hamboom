@@ -1,12 +1,13 @@
 # `infra/` — استقرارِ هم‌بوم
 
-> **وضعیت: M5 فاز ۰ تا ۹ ساخته شده** — ایمیج، CI، سخت‌سازیِ راز، رصدپذیری، انتخابِ
-> رهبر، **دوامِ داده**، **نگهداشت**، و **لبه‌ی TLS + سقفِ نرخ** (فاز ۹؛ گام ۹٫۱ یک رفعِ M2
-> منتظرِ تاییدِ مالک دارد). runbookِ کامل کارِ گامِ ۱۰٫۱ است؛ این فایل امروز «چطور بالا
-> می‌آید» را می‌گوید.
+> **وضعیت: M5 تحویل شد (فاز ۰ تا ۱۰)** — ایمیج، CI، سخت‌سازیِ راز، رصدپذیری، انتخابِ
+> رهبر، **دوامِ داده**، **نگهداشت**، **لبه‌ی TLS + سقفِ نرخ**، و نیمه‌ی کلاینتِ ADR-006.
+> این فایل «چطور چیده شده و بالا می‌آید» را می‌گوید؛ **رویه‌ها** (استقرار، rollback، بازیابی،
+> «چه کنم اگر…») در [`RUNBOOK.md`](RUNBOOK.md). ⏳ هیچ‌کدام هنوز روی VMِ آروان اجرا نشده.
 
 | مسیر | چیست |
 |---|---|
+| ★★ [`RUNBOOK.md`](RUNBOOK.md) | **دفترچه‌ی اپراتور** — روزِ صفر، استقرارِ نو، rollback، بازیابی، «چه کنم اگر…»، cron |
 | [`docker/docker-compose.yml`](docker/docker-compose.yml) | استکِ **توسعه** — فقط زیرساخت (postgres, redis, minio) |
 | [`docker/docker-compose.prod.yml`](docker/docker-compose.prod.yml) | استکِ **production/staging** — زیرساخت + هر سه اپ |
 | [`docker/api.Dockerfile`](docker/api.Dockerfile) · [`realtime`](docker/realtime.Dockerfile) · [`web`](docker/web.Dockerfile) | ایمیج‌ها |
@@ -107,7 +108,7 @@ $C --profile ops run --rm reconcile
 $C --profile ops run --rm reconcile node scripts/billing-reconcile.ts --dry-run
 
 # ★★ دوامِ داده (فاز ۷) — شبانه، و مشق **هفتگی**
-$C --profile ops run --rm backup -- --prune=14
+$C --profile ops run --rm backup node scripts/backup-db.ts --prune=14
 $C --profile ops run --rm backup-storage
 $C --profile ops run --rm restore-drill
 
@@ -180,7 +181,9 @@ pnpm infra:ship -- --to=root@<IP> --base          # + postgres/redis، اگر VM
 # الف) گواهی از پنلِ آروان: دو فایل را دانلود کن و همین‌جا بگذار
 cp ~/Downloads/fullchain.pem ~/Downloads/privkey.pem infra/docker/tls/
 
-# ب) certbot روی خودِ VM (HTTP-01 از webrootِ همین nginx، روی ۸۰ پیش از ریدایرکت)
+# ب) certbot روی خودِ VM (HTTP-01 از webrootِ همین nginx، روی ۸۰)
+#    ★ روزِ صفر: هنوز گواهی نیست ⇒ web با APP_ENV=staging بالا بیاور (حالتِ http؛ production
+#      بدونِ گواهی اصلاً بالا نمی‌آید) — مسیرِ /.well-known/acme-challenge/ در هر دو حالت هست.
 apt install certbot
 certbot certonly --webroot -w "$(pwd)/infra/docker/acme" -d hamboom.ir -d www.hamboom.ir
 #   ⚠️ live/ را مستقیم mount نکن — symlink است و داخلِ کانتینر می‌شکند. کپی کن:
@@ -247,5 +250,5 @@ pnpm infra:check-proxy -- --write   # بازتولید بعد از افزودن�
 | انتخابِ منبعِ گواهی (آروان یا certbot) | روزِ استقرار — nginx به هر دو بی‌اعتناست (ADR-064)؛ فقط دو فایل |
 | CDN جلوی WebSocket | باید از VM اندازه گرفته شود؛ پیشنهاد: WS مستقیم روی VM، CDN فقط جلوی فایلِ ایستا |
 | CSP | بومِ Excalidraw استایلِ inline/workerِ blob: دارد — فقط با E2E در مرورگر تنظیم می‌شود |
-| نگهبانِ سکوت و مهلتِ اتصال در **کلاینتِ** WS | گام ۹٫۱ اندازه گرفت که هر دو بی‌کران‌اند؛ رفعش در `packages/canvas-sync` (M2) منتظرِ تاییدِ مالک است |
+| بازیابیِ Object Storage | `backup-storage` آینه‌ی یک‌طرفه است؛ برگرداندنش اسکریپت ندارد — **M6** ([`m6-handoff`](../docs/m6-handoff.md)) |
 

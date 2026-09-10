@@ -325,7 +325,7 @@ services:
 
   # ── ★★ دوامِ داده (M5 فاز ۷) — سه کانتینرِ یک‌بارمصرفِ همان ایمیجِ api ─────
   #
-  #   $C --profile ops run --rm backup -- --prune=14   # شبانه، از cronِ VM
+  #   $C --profile ops run --rm backup node scripts/backup-db.ts --prune=14   # شبانه، از cronِ VM
   #   $C --profile ops run --rm backup-storage         # شبانه
   #   $C --profile ops run --rm restore-drill          # ★ هفتگی — **گیتِ واقعی**
   #
