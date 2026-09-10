@@ -8,8 +8,8 @@
 | فایل | چه چیزی دارد |
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
-| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۲ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۶ تمام**، قدمِ بعد فاز ۷ |
+| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۳ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
+| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۸ تمام** (۸٫۱ منتظرِ عددِ M5-D9)، قدمِ بعد **فاز ۹** |
 | ★ [infra/README.md](infra/README.md) | **چطور استقرار می‌شود** — چیدمان، `docker-compose.prod.yml`، کارهای اپراتور |
 | [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | بایگانیِ M4 (`billing`، تمام‌شده) — مرجعِ تاریخی |
 | ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
@@ -271,13 +271,13 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۷ + ۴٫۵ تمام، فاز ۸ ◑** (۱۴۰۵/۰۶/۱۸).
+- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۸ + ۴٫۵ تمام و تاییدشده** (۱۴۰۵/۰۶/۱۹؛ فقط عددِ M5-D9 برای گام ۸٫۱ مانده).
   TODO در [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
   **قدمِ بعد: فاز ۹ (سخت‌سازیِ ایران).** فاز ۸ ساخته شد؛ فقط عددِ M5-D9 مانده.
   - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
     **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
     ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).
-  - **نُه تصمیمِ مرزی → پنج ADR (تاییدِ مالک ۱۴۰۵/۰۶/۱۷):**
+  - **نُه تصمیمِ مرزی → شش ADR (پنج تاییدِ مالک ۱۴۰۵/۰۶/۱۷، ششمی ۱۴۰۵/۰۶/۱۸):**
     [ADR-058](ARCHITECTURE_DECISIONS.md#adr-058) (ایمیج **سورس** می‌برد؛ type-strippingِ Node 24
     می‌مانَد — چون هیچ پکیجی build ندارد و همه `src/*.ts` را export می‌کنند) ·
     [ADR-059](ARCHITECTURE_DECISIONS.md#adr-059) (**Compose روی VM، نه K8s** — انحرافِ ثبت‌شده از
@@ -285,7 +285,8 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
     **اتلاف** است نه درستی؛ درستی از قفلِ ردیف می‌آید) ·
     [ADR-061](ARCHITECTURE_DECISIONS.md#adr-061) (رصدپذیریِ حداقلی، ولی **گیجِ حافظه‌ی اتاق
     اجباری**) · [ADR-062](ARCHITECTURE_DECISIONS.md#adr-062) (بدونِ `apps/worker` — کارِ دوره‌ای
-    = اسکریپتِ یک‌بارمصرف).
+    = اسکریپتِ یک‌بارمصرف) · [ADR-063](ARCHITECTURE_DECISIONS.md#adr-063) (انتقالِ ایمیج با
+    `docker save` روی ssh؛ رجیستری بهینه‌سازی است نه پیش‌نیاز — M5-D10 بسته شد).
 
   ### ★★ سه یافته‌ی فاز ۰ که نقشه را شکل دادند
 
@@ -470,7 +471,7 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   `apt.postgresql.org` نیاز دارد (کلاینتِ ۱۶؛ bookworm فقط ۱۵ دارد) ⇒ باید از
   VMِ آروان probe شود. ایمیج: **۴۷۰MB → ۵۶۲MB**.
 
-### ◑ فاز ۸ (نگهداشت) — و نشتی‌ای که همان اجرای اول اندازه گرفت
+  ### ◑ فاز ۸ (نگهداشت، تاییدِ مالک ۱۴۰۵/۰۶/۱۹) — و نشتی‌ای که همان اجرای اول اندازه گرفت
 
   **[`sweep-orphans`](scripts/sweep-orphans.ts) در اولین اجرا ۱۳ بلابِ یتیم (۳٫۷MB)
   پیدا کرد** — همان نشتیِ ثبت‌شده از M3 (حذفِ بورد ردیف را می‌بَرد، بلاب را نه).
@@ -527,10 +528,12 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   فهرستِ خریدِ آروان و سه سوالی که باید از پشتیبانیِ زرین‌پال پرسیده شود در
   [`TODO-M5-infra.md`](TODO-M5-infra.md).
 
-  ### ⏳ دو چیزِ بازِ دیگر
+  ### ⏳ چیزهای بازِ بیرونی — هیچ‌کدام فاز ۹ را بلاک نمی‌کنند
 
-  **M5-D9** (عددهای نگهداشتِ داده — فقط فاز ۸) · **PLAN Q4: حقیقی یا حقوقی؟** (نوعِ حسابِ
-  زرین‌پال به آن بسته است).
+  **زرین‌پال** (تنها بلاک‌کننده‌ی `APP_ENV=production`) · **M5-D9** (عددِ روزهای سطل —
+  سازوکارِ `infra:purge` ساخته شده و بدونِ آن عمداً بالا نمی‌آید) · **قالبِ تولیدیِ sms.ir**
+  (قالبِ فعلی «پیامِ تست» است) · **PLAN Q4: حقیقی یا حقوقی؟** (نوعِ حسابِ زرین‌پال) ·
+  **VPS** — آگاهانه موکول شد؛ اولین استقرارِ واقعی به‌هرحال منتظرِ زرین‌پال است.
 
 - **★★ M4 (`billing`) تمام و تحویل شد** (۱۴۰۵/۰۶/۱۵) — فاز ۰ تا ۱۰. TODO در
   [`TODO-M4-billing.md`](TODO-M4-billing.md)، دفترِ کار در [`PROGRESS-M4-billing.md`](PROGRESS-M4-billing.md).
