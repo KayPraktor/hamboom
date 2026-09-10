@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import net from "node:net";
 
 import {
   createMemoryBoardAccessReader,
@@ -65,6 +66,26 @@ import { addMember, cleanupSeed, seedBoard } from "./rt-seed.ts";
  * اینجا **ادعا نمی‌شود**. دست‌دادنِ sync دقیقاً همان چیزی است که آداپتور
  * می‌زند و پایین بازنویسی شده.
  *
+ * ── ★★ افزوده‌ی M5 گام ۹٫۱ — دو قطعی که هرگز `close` نمی‌دهند ───────────
+ *
+ * سناریوهای ۱ تا ۴ همه یک چیز مشترک دارند: سرور یا شبکه **قابِ بستن** می‌فرستد و
+ * ماشینِ حالتِ ترابری از همان‌جا شروع می‌کند. ریسکِ ثبت‌شده‌ی PLAN §۱۰ («پایداریِ
+ * WebSocket روی شبکه‌ی ایران») ولی دقیقاً دو حالتی است که **هیچ قابی نمی‌رسد**:
+ *
+ * | # | حالت | چه چیزی روی سیم است |
+ * |---|---|---|
+ * | ۵ | **نشستِ نیم‌باز** — مسیر وسطِ کار می‌میرد (NAT، تعویضِ شبکه، DPI) | TCP «باز»، صفر بایت، نه `close` نه خطا |
+ * | ۶ | **دست‌دادنِ معلق** — TCP وصل می‌شود ولی upgrade هرگز جواب نمی‌گیرد | همان، از قبل از `open` |
+ *
+ * هر دو با یک رله‌ی TCPِ **سیاه‌چاله** ساخته می‌شوند: رله وسطِ کلاینت و سرور
+ * می‌نشیند، و در حالتِ تاریک هیچ بایتی رد نمی‌کند ولی **هیچ سوکتی را هم نمی‌بندد**.
+ * از دیدِ هر دو طرف اتصال «هست». این همان چیزی است که ADR-006 نیمه‌ی سرورش را
+ * ساخت (ping → `terminate`) و اینجا هر دو نیمه **اندازه** گرفته می‌شود: سرور چند
+ * ثانیه بعد می‌فهمد، و کلاینت چند ثانیه بعد.
+ *
+ * ⚠️ heartbeatِ نودِ این دو سناریو ۲ ثانیه است (نه ۲۵) تا سنجه در چند ثانیه تمام
+ * شود؛ نسبت‌ها همان نسبت‌های تولید است.
+ *
  * اجرا:
  *   pnpm db:up && pnpm db:migrate
  *   pnpm rt:reconnect
@@ -110,6 +131,7 @@ async function startNode(
   },
   port: number,
   reader: MemoryBoardAccessReader,
+  heartbeatMs?: number,
 ): Promise<Node> {
   const nodeId = randomUUID();
   const pool = createPgPool({ connectionString: env.DATABASE_URL, ssl: env.DATABASE_SSL });
@@ -155,6 +177,7 @@ async function startNode(
     }),
     appEnv: "local",
     port,
+    heartbeatMs,
     onJoin: (session) => rooms.join(session),
   });
 
@@ -179,6 +202,75 @@ async function startNode(
       await release();
     },
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// ★★ رله‌ی سیاه‌چاله (گام ۹٫۱)
+// ─────────────────────────────────────────────────────────────
+
+interface Relay {
+  port: number;
+  /** از این لحظه هیچ بایتی رد نمی‌شود — ولی هیچ سوکتی هم بسته نمی‌شود. */
+  darken(): void;
+  /** کِی سرور سوکتِ خودش را بست (فقط در حالتِ تاریک ثبت می‌شود). */
+  upstreamClosedAt(): number | null;
+  close(): Promise<void>;
+}
+
+/**
+ * ⚠️ در حالتِ تاریک، بسته‌شدنِ یک طرف به طرفِ دیگر **منتقل نمی‌شود** — این عمدی است
+ * و کلِ نکته همین است: کلاینتی که پشتِ NATِ مرده نشسته، از مرگِ سرور هیچ خبری
+ * نمی‌گیرد. اگر رله بسته‌شدن را منتقل می‌کرد، همان سناریوی ۱۰۰۶ بود که قبلاً سبز است.
+ */
+async function createRelay(targetPort: number, darkFromStart = false): Promise<Relay> {
+  let dark = darkFromStart;
+  let upstreamClosedAt: number | null = null;
+  const sockets = new Set<net.Socket>();
+
+  const server = net.createServer((down) => {
+    const up = net.connect(targetPort, "127.0.0.1");
+    sockets.add(down);
+    sockets.add(up);
+    down.on("data", (chunk: Buffer) => {
+      if (!dark) up.write(chunk);
+    });
+    up.on("data", (chunk: Buffer) => {
+      if (!dark) down.write(chunk);
+    });
+    up.on("close", () => {
+      if (dark) {
+        upstreamClosedAt ??= Date.now();
+        return;
+      }
+      down.destroy();
+    });
+    down.on("close", () => {
+      if (!dark) up.destroy();
+    });
+    up.on("error", () => undefined);
+    down.on("error", () => undefined);
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+
+  return {
+    port,
+    darken: () => {
+      dark = true;
+    },
+    upstreamClosedAt: () => upstreamClosedAt,
+    close: async () => {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
+}
+
+/** اولین رویدادِ وضعیت بعد از لحظه‌ی `since` که «باز» نیست — یعنی ترابری فهمید. */
+function firstNonOpenAfter(probe: Probe, since: number): Event | undefined {
+  return probe.events.find((event) => event.at >= since && event.status.phase !== "open");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -508,8 +600,82 @@ async function main(): Promise<void> {
     `✔ ردِ ۱۰۰۸ متوقف شد و دیگر تلاش نکرد (کد: ${stopped?.phase === "stopped" ? stopped.code : "?"})\n`,
   );
 
+  // ── ۵) ★★ نشستِ نیم‌باز: هر دو نیمه‌ی ADR-006 را **اندازه بگیر** ────
+  //
+  // heartbeat ۲ ثانیه ⇒ سرور باید حداکثر در ۲ تیک (۴s) بفهمد. کلاینت قابِ بستن
+  // نمی‌گیرد، پس هرچه می‌فهمد باید از **خودش** باشد.
+  const HALF_OPEN_HEARTBEAT_MS = 2_000;
+  const CLIENT_WINDOW_MS = 15_000;
+  const third = await startNode(env, 0, reader, HALF_OPEN_HEARTBEAT_MS);
+  const relay = await createRelay(third.server.port);
+
+  const behindNat = probeClient(relay.port, boardId, freshToken);
+  await behindNat.waitFor(() => behindNat.opens() === 1, "کلاینتِ پشتِ رله وصل نشد");
+  behindNat.gesture("stk_before_dark");
+  await behindNat.waitFor(() => behindNat.seq() >= 1, "ژست از پشتِ رله تایید نشد");
+
+  const darkAt = Date.now();
+  relay.darken();
+  await behindNat
+    .waitFor(() => relay.upstreamClosedAt() !== null, "سرور سوکتِ نیم‌باز را نبست", 12_000)
+    .catch(() => undefined);
+  const serverClosedAt = relay.upstreamClosedAt();
+  if (serverClosedAt === null) {
+    fail(
+      `سرور در ${String(12_000)}ms سوکتِ نیم‌باز را نبست (heartbeat=${String(HALF_OPEN_HEARTBEAT_MS)}). ` +
+        "نیمه‌ی سرورِ ADR-006 کار نمی‌کند. گام قبول نیست.",
+    );
+  }
+  const serverDetectMs = serverClosedAt - darkAt;
+  const serverCeilingMs = 2 * HALF_OPEN_HEARTBEAT_MS + 1_500;
+  if (serverDetectMs > serverCeilingMs) {
+    fail(
+      `سرور ${String(serverDetectMs)}ms بعد فهمید — بیش از دو تیکِ heartbeat (${String(serverCeilingMs)}ms). گام قبول نیست.`,
+    );
+  }
+  process.stdout.write(
+    `✔ نشستِ نیم‌باز: سرور در ${String(serverDetectMs)}ms فهمید (heartbeat ${String(HALF_OPEN_HEARTBEAT_MS)}ms، سقف ${String(serverCeilingMs)}ms)\n`,
+  );
+
+  await settle(Math.max(0, CLIENT_WINDOW_MS - (Date.now() - darkAt)));
+  const clientNoticed = firstNonOpenAfter(behindNat, darkAt);
+  if (clientNoticed) {
+    process.stdout.write(
+      `✔ نشستِ نیم‌باز: کلاینت در ${String(clientNoticed.at - darkAt)}ms فهمید (${clientNoticed.status.phase})\n`,
+    );
+  } else {
+    // ★★ یافته‌ی گام ۹٫۱ — ادعا نمی‌شود، **اندازه‌گیری** می‌شود. تا رفعش تایید نشود
+    //    (فایل‌های M2)، این خط گزارش است نه شکست؛ با رفع، به `fail` تبدیل می‌شود.
+    process.stdout.write(
+      `⚠️ نشستِ نیم‌باز: کلاینت در ${String(CLIENT_WINDOW_MS)}ms (${String(
+        CLIENT_WINDOW_MS / HALF_OPEN_HEARTBEAT_MS,
+      )}× heartbeat) **هنوز «باز»** است — هیچ قابِ بستنی نرسیده و ترابری نگهبانِ سکوت ندارد\n`,
+    );
+  }
+
+  // ── ۶) ★★ دست‌دادنِ معلق: TCP وصل، upgrade بی‌جواب ───────────────
+  const stalled = await createRelay(third.server.port, true);
+  const stuck = probeClient(stalled.port, boardId, freshToken);
+  const stuckAt = Date.now();
+  await settle(CLIENT_WINDOW_MS);
+  const gaveUp = stuck.events.find(
+    (event) => event.at >= stuckAt && event.status.phase !== "connecting",
+  );
+  if (gaveUp) {
+    process.stdout.write(
+      `✔ دست‌دادنِ معلق: کلاینت در ${String(gaveUp.at - stuckAt)}ms دست کشید (${gaveUp.status.phase})\n`,
+    );
+  } else {
+    process.stdout.write(
+      `⚠️ دست‌دادنِ معلق: کلاینت بعد از ${String(CLIENT_WINDOW_MS)}ms **هنوز «connecting»** است — ترابری مهلتِ اتصال ندارد\n`,
+    );
+  }
+
   // ── پاکسازی ─────────────────────────────────────────────────────
-  for (const probe of [client, newcomer, rejected, ...herd]) probe.stop();
+  for (const probe of [client, newcomer, rejected, behindNat, stuck, ...herd]) probe.stop();
+  await relay.close();
+  await stalled.close();
+  await third.kill();
   await second.kill();
   await cleanupSeed(db, board);
   await db.end();
