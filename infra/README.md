@@ -107,7 +107,7 @@ $C --profile ops run --rm backup-storage
 $C --profile ops run --rm restore-drill
 
 # نگهداشت و پاک‌سازی (فاز ۸) — ⚠️ ترتیب اجباری است
-$C --profile ops run --rm purge node scripts/purge-deleted.ts --days=N --delete
+$C --profile ops run --rm purge node scripts/purge-deleted.ts --delete   # مرز: TRASH_RETENTION_DAYS=۳۰
 $C --profile ops run --rm sweep-orphans node scripts/sweep-orphans.ts --delete
 ```
 
@@ -115,8 +115,9 @@ $C --profile ops run --rm sweep-orphans node scripts/sweep-orphans.ts --delete
 نمی‌شود (نشتیِ ثبت‌شده از M3) و تازه بعدش **یتیم** می‌شود تا جاروب برش دارد. برعکسش
 بی‌اثر است: تا ردیف هست، جاروب بلاب را «دارای مرجع» می‌بیند — که همان رفتارِ درست است.
 
-⚠️ **هر دو پیش‌فرضِ «فقط گزارش» دارند** و `--delete` صریح می‌خواهند؛ و `purge` بدونِ
-`--days=N` عمداً بالا نمی‌آید (M5-D9 تصمیمِ مالک است، نه پیش‌فرضِ ما).
+⚠️ **هر دو پیش‌فرضِ «فقط گزارش» دارند** و `--delete` صریح می‌خواهند. مرزِ `purge` از
+`TRASH_RETENTION_DAYS` می‌آید — **۳۰ روز**، تصمیمِ مالک (M5-D9، ۱۴۰۵/۰۶/۱۹)؛ تا پیش از آن
+اسکریپت عمداً هیچ پیش‌فرضی نداشت. `--days=N` فقط overrideِ یک اجراست.
 
 ★★ **مشقِ بازیابی تزئینی نیست:** یک پشتیبانِ بازیابی‌نشده پشتیبان نیست. روی یک دیتابیسِ
 موقت برمی‌گرداند و پنج ادعا را می‌سنجد — از جمله **شمارشِ ردیف**، که تنها چکی است که

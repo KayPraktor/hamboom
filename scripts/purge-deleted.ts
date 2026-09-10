@@ -2,33 +2,36 @@
  * ★★★ پاک‌سازیِ نهاییِ حذفِ نرم — M5 گام ۸٫۱.
  *
  * ```bash
- * pnpm infra:purge -- --days=30              # فقط گزارش
- * pnpm infra:purge -- --days=30 --delete     # ⚠️ واقعاً پاک می‌کند
+ * pnpm infra:purge                           # فقط گزارش، با مرزِ سیاست (۳۰ روز)
+ * pnpm infra:purge -- --delete               # ⚠️ واقعاً پاک می‌کند
+ * pnpm infra:purge -- --days=7               # یک‌بارمصرف: مرزِ دیگر (فقط گزارش)
  * pnpm infra:purge -- --self-test            # روی تراکنشِ rollback‌شونده
  * ```
  *
- * ── ⚠️⚠️ عددِ N این‌جا **پیش‌فرض ندارد**، و این عمدی است ────────────────────
+ * ── ★ عددِ N: تصمیمِ M5-D9 — **۳۰ روز** (مالک، ۱۴۰۵/۰۶/۱۹) ─────────────────
  *
  * «چند روز بعد از حذف، داده واقعاً برود» یک تصمیمِ **سیاستی** است، نه فنی: به انتظارِ
- * کاربر، به تعهدِ ما، و به الزامِ قانونی بسته است (**M5-D9**، هنوز از مالک نیامده).
- * یک پیش‌فرضِ حدسی این‌جا بدترین شکلِ تصمیم‌گیری است — چون بی‌صدا اجرا می‌شود و
- * داده‌ی کسی را طبقِ **حدسِ من** پاک می‌کند. پس بدونِ `--days` اصلاً بالا نمی‌آید.
+ * کاربر و تعهدِ ما بسته است. تا پیش از این تاریخ همین اسکریپت **هیچ پیش‌فرضی نداشت** و
+ * بدونِ `--days` بالا نمی‌آمد — چون پیش‌فرضِ حدسی این‌جا یعنی حذفِ داده‌ی کسی طبقِ حدسِ
+ * من. حالا پیش‌فرض از `TRASH_RETENTION_DAYS` می‌آید ([`retentionEnvSchema`](../packages/config/src/sections.ts))
+ * که مقدارِ پیش‌فرضش همان تصمیم است. `--days=N` **override**ِ صریح برای یک اجراست،
+ * نه راهی برای عوض‌کردنِ سیاست.
  *
  * ⊕ همان الگوی `--prune`ِ [`backup-db`](backup-db.ts) و `--delete`ِ
- * [`sweep-orphans`](sweep-orphans.ts): سازوکار آماده است، عمل آگاهانه‌ی اپراتور است.
+ * [`sweep-orphans`](sweep-orphans.ts): سازوکار آماده است، **حذف** عملِ آگاهانه‌ی اپراتور است.
  *
  * ── ★★ زنجیره‌ی دو گامی ───────────────────────────────────────────────────
  *
  * این اسکریپت فقط **ردیف** پاک می‌کند. بلابِ S3 با CASCADE پاک نمی‌شود — همان نشتیِ
  * ثبت‌شده از M3. پس ترتیبِ درست همیشه این است:
  *
- * ‏   ۱. `infra:purge --days=N --delete`   ردیف‌ها می‌روند ⇒ بلاب‌ها **یتیم** می‌شوند
+ * ‏   ۱. `infra:purge --delete`             ردیف‌ها می‌روند ⇒ بلاب‌ها **یتیم** می‌شوند
  * ‏   ۲. `infra:sweep-orphans --delete`     یتیم‌ها پاک می‌شوند
  *
  * ⚠️ برعکسش بی‌اثر است: تا وقتی ردیف هست، جاروب بلاب را «دارای مرجع» می‌بیند و
  * دست نمی‌زند — که همان رفتارِ درست است.
  */
-import { databaseEnvSchema, loadEnv } from "@hamboom/config";
+import { databaseEnvSchema, loadEnv, retentionEnvSchema } from "@hamboom/config";
 import type pg from "pg";
 
 import { createDbPool } from "../apps/api/src/plugins/db.ts";
@@ -90,9 +93,18 @@ export async function purge(client: pg.PoolClient, days: number): Promise<PurgeC
   return before;
 }
 
-function daysArg(): number | null {
-  const arg = process.argv.slice(2).find((a) => a.startsWith("--days="));
-  if (arg === undefined) return null;
+/**
+ * مرزِ نگهداشت: `--days=N` اگر آمده، وگرنه سیاست (`TRASH_RETENTION_DAYS`).
+ *
+ * ★ تابعِ خالص است تا خودآزمون بتواند **هر سه** شاخه را بسنجد — بدونِ آن، «پیش‌فرض
+ * از سیاست می‌آید» فقط یک ادعا در کامنت بود.
+ *
+ * @returns `null` یعنی `--days` آمده ولی معتبر نیست — صریحاً می‌شکنیم، بی‌صدا به
+ *   سیاست برنمی‌گردیم (یک `--days=abc` نباید ۳۰ روز داده پاک کند).
+ */
+export function resolveDays(argv: readonly string[], policyDays: number): number | null {
+  const arg = argv.find((a) => a.startsWith("--days="));
+  if (arg === undefined) return policyDays;
   const value = Number(arg.split("=")[1]);
   if (!Number.isInteger(value) || value < 1) return null;
   return value;
@@ -101,8 +113,24 @@ function daysArg(): number | null {
 async function selfTest(pool: pg.Pool): Promise<void> {
   // ★ روی دیتابیسِ **زنده** ولی داخلِ تراکنشی که rollback می‌شود — همان الگوی
   //   `db:fk-test`. یعنی خودِ SQL آزموده می‌شود، نه یک بدلِ حافظه‌ای از آن.
-  const client = await pool.connect();
   const results: { name: string; ok: boolean; detail: string }[] = [];
+
+  // ★ سه شاخه‌ی مرزِ نگهداشت — بدونِ دیتابیس.
+  const fromPolicy = resolveDays([], 30);
+  const fromFlag = resolveDays(["--days=7"], 30);
+  const bad = [resolveDays(["--days=abc"], 30), resolveDays(["--days=0"], 30)];
+  results.push({
+    name: "★ بدونِ --days، مرز از سیاست (M5-D9) می‌آید؛ با --days، از پرچم",
+    ok: fromPolicy === 30 && fromFlag === 7,
+    detail: `سیاست→${String(fromPolicy)} · پرچم→${String(fromFlag)}`,
+  });
+  results.push({
+    name: "★ --daysِ نامعتبر می‌شکند، بی‌صدا به سیاست برنمی‌گردد",
+    ok: bad.every((b) => b === null),
+    detail: bad.every((b) => b === null) ? "abc و 0 هر دو رد شدند" : `واقعی: ${bad.join(",")}`,
+  });
+
+  const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const { randomUUID } = await import("node:crypto");
@@ -176,11 +204,11 @@ async function selfTest(pool: pg.Pool): Promise<void> {
     console.error(`\n✖ ${String(reds.length)} چک قرمز شد.`);
     process.exit(1);
   }
-  console.log("\n✔ معیارِ سن روی SQLِ واقعی اثبات شد، و هیچ ردیفی در دیتابیس نماند.");
+  console.log("\n✔ مرزِ نگهداشت درست resolve می‌شود، معیارِ سن روی SQLِ واقعی اثبات شد، و هیچ ردیفی نماند.");
 }
 
 async function main(): Promise<void> {
-  const env = loadEnv(databaseEnvSchema);
+  const env = loadEnv(databaseEnvSchema.and(retentionEnvSchema));
   const pool = createDbPool({
     connectionString: env.DATABASE_URL,
     ssl: env.DATABASE_SSL,
@@ -193,28 +221,28 @@ async function main(): Promise<void> {
       return;
     }
 
-    const days = daysArg();
+    const days = resolveDays(process.argv.slice(2), env.TRASH_RETENTION_DAYS);
     if (days === null) {
       console.error(
         [
-          "✖ `--days=N` لازم است و **پیش‌فرض ندارد**.",
+          "✖ `--days=N` باید عددِ صحیحِ ≥۱ باشد.",
           "",
-          "‏  «چند روز بعد از حذف، داده واقعاً برود» یک تصمیمِ سیاستی است، نه فنی —",
-          "‏  به انتظارِ کاربر، تعهدِ ما، و الزامِ قانونی بسته است (M5-D9).",
-          "‏  یک پیش‌فرضِ حدسی این‌جا یعنی داده‌ی کسی طبقِ حدس پاک شود.",
-          "",
-          "‏  مثال:  pnpm infra:purge -- --days=30",
+          "‏  بدونِ --days، مرز از سیاست می‌آید (TRASH_RETENTION_DAYS، تصمیمِ M5-D9 = ۳۰ روز).",
+          "‏  یک مقدارِ نامعتبر عمداً به سیاست برنمی‌گردد — حذفِ داده روی خطای تایپی، نه.",
         ].join("\n"),
       );
       process.exit(1);
     }
+    const source = process.argv.slice(2).some((a) => a.startsWith("--days="))
+      ? "پرچمِ --days"
+      : "سیاستِ M5-D9";
 
     const doDelete = process.argv.slice(2).includes("--delete");
     const client = await pool.connect();
     try {
       const counts = await countPurgeable(client, days);
       console.log(
-        `مرزِ نگهداشت: ${String(days)} روز · حالت: ${doDelete ? "⚠️ حذفِ واقعی" : "فقط گزارش"}`,
+        `مرزِ نگهداشت: ${String(days)} روز (${source}) · حالت: ${doDelete ? "⚠️ حذفِ واقعی" : "فقط گزارش"}`,
       );
       console.log(`  بورد           : ${String(counts.boards)}`);
       console.log(`  updateِ بورد    : ${String(counts.boardUpdates)}  (با CASCADE)`);
