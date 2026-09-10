@@ -56,6 +56,9 @@ jobs:
             -e APP_ENV=production
             -e PAYMENT_PROVIDER=zarinpal
             -e ZARINPAL_MERCHANT_ID=00000000-0000-0000-0000-000000000000
+            # ★ M5 گام ۹٫۲: بدونِ این، گاردِ TRUST_PROXY **پیش از** پیامک می‌شکند و همین چک
+            #   دوباره قرمز شد — «بالا نیامد، ولی به دلیلِ دیگری». همان رفتارِ درست، بارِ دوم.
+            -e TRUST_PROXY=true
           )
 
           assert_refused() {
