@@ -8,8 +8,8 @@
 | فایل | چه چیزی دارد |
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
-| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۳ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
-| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۸ تمام** (۸٫۱ منتظرِ عددِ M5-D9)، قدمِ بعد **فاز ۹** |
+| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۴ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
+| ★ [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | **TODOی فعالِ M5** — ۱۱ فاز؛ **فاز ۰ تا ۸ تمام و تاییدشده، فاز ۹ ساخته‌شده** (۹٫۱ رفعش منتظرِ تاییدِ M2)، ⏳ منتظرِ تاییدِ فاز ۹ |
 | ★ [infra/README.md](infra/README.md) | **چطور استقرار می‌شود** — چیدمان، `docker-compose.prod.yml`، کارهای اپراتور |
 | [TODO-M4-billing.md](TODO-M4-billing.md) · [PROGRESS-M4-billing.md](PROGRESS-M4-billing.md) | بایگانیِ M4 (`billing`، تمام‌شده) — مرجعِ تاریخی |
 | ★ [docs/m5-handoff.md](docs/m5-handoff.md) | **نقطه‌ی ورودِ M5** — آشتی‌دهیِ تک‌نود، سه ابهامِ بازِ زرین‌پال، و درس‌های روشیِ M4 |
@@ -45,7 +45,7 @@
 
 ```bash
 pnpm install
-pnpm verify           # ★ گیت نهایی — تنها «سبز»ی که قابل استناد است
+pnpm verify           # ★ گیت نهایی — تنها «سبز»ی که قابل استناد است (۱۵ گیت)
 pnpm dev              # turbo: همه‌ی اپ‌ها
 pnpm typecheck        # tsc روی scripts + turbo روی پکیج‌ها
 pnpm lint
@@ -107,6 +107,7 @@ pnpm infra:purge -- --days=N # ★★★ M5 فاز ۸٫۱: حذفِ نهاییِ
 pnpm infra:check-proxy       # ★★ M5 فاز ۲: مسیرهای api ↔ پروکسیِ dev ↔ nginx — **داخلِ verify هم هست**
 pnpm deps:check              # ★★ M5 فاز ۳٫۶: هر importِ bare اعلام شده؟ — **داخلِ verify هم هست**
 pnpm openapi:check           # ★★ M5 فاز ۳٫۳: docs/api.md + openapi.json کهنه نیستند — **داخلِ verify**
+pnpm p2:check                # ★★ M5 فاز ۹٫۳: صفر میزبانِ خارجی در کدِ runtime جز زرین‌پال/sms.ir — **داخلِ verify**
 node --env-file-if-exists=.env scripts/ci-wait-services.mjs   # انتظارِ آمادگیِ واقعیِ pg/redis/minio
 #   -- --write   بازتولیدِ infra/nginx/api-locations.conf بعد از افزودنِ مسیرِ نو
 #   -- --dry-run | --adopt | --stale-minutes=N | --expire-hours=N
@@ -271,9 +272,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
 ## وضعیت فعلی
 
-- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۸ + ۴٫۵ تمام و تاییدشده** (۱۴۰۵/۰۶/۱۹؛ فقط عددِ M5-D9 برای گام ۸٫۱ مانده).
+- **★★ M5 (`infra`) در جریان — فاز ۰ تا ۸ + ۴٫۵ تمام و تاییدشده (M5-D9 = ۳۰ روز)، فاز ۹ ساخته شده** (۱۴۰۵/۰۶/۱۹).
   TODO در [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
-  **قدمِ بعد: فاز ۹ (سخت‌سازیِ ایران).** فاز ۸ ساخته شد؛ فقط عددِ M5-D9 مانده.
+  **⏳ منتظرِ تاییدِ فاز ۹؛ قدمِ بعد فاز ۱۰ (تحویل).** گام ۹٫۱ یک رفعِ **M2** دارد که تاییدِ مالک می‌خواهد.
   - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
     **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
     ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).
@@ -286,7 +287,9 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
     [ADR-061](ARCHITECTURE_DECISIONS.md#adr-061) (رصدپذیریِ حداقلی، ولی **گیجِ حافظه‌ی اتاق
     اجباری**) · [ADR-062](ARCHITECTURE_DECISIONS.md#adr-062) (بدونِ `apps/worker` — کارِ دوره‌ای
     = اسکریپتِ یک‌بارمصرف) · [ADR-063](ARCHITECTURE_DECISIONS.md#adr-063) (انتقالِ ایمیج با
-    `docker save` روی ssh؛ رجیستری بهینه‌سازی است نه پیش‌نیاز — M5-D10 بسته شد).
+    `docker save` روی ssh؛ رجیستری بهینه‌سازی است نه پیش‌نیاز — M5-D10 بسته شد) ·
+    [ADR-064](ARCHITECTURE_DECISIONS.md#adr-064) (لبه‌ی TLS در خودِ nginx؛ گواهی = دو فایل از
+    هر منبع؛ production بدونش بالا نمی‌آید؛ سقفِ نرخِ لبه برای CGNAT).
 
   ### ★★ سه یافته‌ی فاز ۰ که نقشه را شکل دادند
 
@@ -498,6 +501,37 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   ✅ **چرخشِ لاگِ کانتینر** (۱۰MB×۳): درایورِ پیش‌فرضِ `json-file` هیچ سقفی ندارد و
   رایج‌ترین راهِ مردنِ یک VMِ تک‌ماشینه، پرشدنِ دیسک با لاگ است.
 
+  ### ◑ فاز ۹ (سخت‌سازیِ ایران، ۱۴۰۵/۰۶/۱۹) — دو نقص که فقط **استکِ واقعی** نشانشان داد
+
+  ★★ **سقفِ نرخِ api پشتِ nginx یک سطل برای کلِ سایت بود.** `Fastify()` بدونِ `trustProxy`
+  ⇒ `request.ip` همیشه nginx. اندازه‌گیری روی ایمیجِ فاز ۸ با سه `X-Forwarded-For`ِ
+  متفاوت: **۴→۳→۲→۱**. یعنی `RATE_LIMIT_OTP_MAX=5` روزِ اول «پنج پیامک در دقیقه برای همه»
+  می‌شد. رفع سه‌لایه ([ADR-064](ARCHITECTURE_DECISIONS.md#adr-064)): `TRUST_PROXY` (بخشِ
+  جدا، فقط api) + گاردِ بوتِ production + nginx هدر را **بازنویسی** می‌کند نه اینکه بیفزاید —
+  از بیرون هدرِ جعلی سطل نمی‌سازد (۹۸→۹۷→۹۶→۹۵)، از داخل دو IP دو سطل.
+
+  ★★ **و استکِ production با `SMS_PROVIDER=mock` از فازِ ۴٫۵ بوت نمی‌شد:** Compose
+  `SMS_IR_TEMPLATE_ID=""` می‌فرستد و `coerce.number("")` صفر است. بوتِ آن فاز با env
+  مستقیم بود، نه compose. **«محلی سبز شد» برای استک هم شرطِ لازم است، نه کافی.**
+
+  **TLS در خودِ nginx، گواهی = دو فایل از هر منبع** — «آروان یا certbot» تصمیمِ روزِ
+  استقرار مانْد چون از این شبکه اندازه‌گیری‌ناپذیر است؛ nginx به هر دو بی‌اعتناست. حالت را
+  کانتینر در بوت انتخاب می‌کند و **production بدونِ گواهی exit 1** می‌دهد. سقفِ نرخِ لبه
+  **CGNAT-آگاه** (یک IP در ایران یک اداره است)، سخت‌ترش فقط روی `/auth/otp` و **تولیدشده**
+  از همان مولدِ گیتِ پروکسی. همه روی استکِ واقعی اثبات شد (۳۰۱ · HSTS · TLS ۱٫۰ رد · wss ⇒
+  ۱۰۰۸ · ۳۶ تا ۴۲۹ی nginx در رگبار) و سه حالتش در `images.yml` است.
+
+  ★★ **گام ۹٫۱ اندازه گرفت، رفع نکرد:** ترابریِ کلاینت نه مهلتِ اتصال دارد نه نگهبانِ سکوت.
+  با رله‌ی سیاه‌چاله در `rt:reconnect`: سرور مسیرِ مرده را در **۳۹۵۸ms** (دو تیک) می‌بندد ✅،
+  ولی کلاینت بعد از **۱۵s** هنوز `open`/`connecting` است — هیچ قابِ بستنی نمی‌رسد، پس backoff
+  هرگز شروع نمی‌شود. رفعش فایلِ **M2** است (`canvas-sync` + `apps/realtime`) ⇒ تاییدِ مالک؛
+  پیشنهادش در TODO. تا آن روز دو خطِ ⚠️ی سنجه گزارش‌اند، نه شکست.
+
+  ✅ **P2 گیت شد** ([`check-p2.ts`](scripts/check-p2.ts)، گیت‌ها ۱۳ → ۱۵): ۲۴۱ فایلِ runtime،
+  صفر میزبانِ خارجی جز زرین‌پال و sms.ir؛ استثنای مرده قرمز. و روی **باندلِ واقعی** در
+  مرورگر: ورود → بورد → استیکی = ۲۰ درخواست، همه هم‌مبدأ، فونتِ Excalidraw هم از
+  `/excalidraw-assets/`.
+
   ### ✅ پیامک: سیم‌کشی شد (۱۴۰۵/۰۶/۱۸) — و گیتِ launch باز شد
 
   **sms.ir** با قالبِ `#CODE#` و شناسه‌ی `265541`.
@@ -528,12 +562,14 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   فهرستِ خریدِ آروان و سه سوالی که باید از پشتیبانیِ زرین‌پال پرسیده شود در
   [`TODO-M5-infra.md`](TODO-M5-infra.md).
 
-  ### ⏳ چیزهای بازِ بیرونی — هیچ‌کدام فاز ۹ را بلاک نمی‌کنند
+  ### ⏳ چیزهای بازِ بیرونی — هیچ‌کدام فاز ۱۰ را بلاک نمی‌کنند
 
-  **زرین‌پال** (تنها بلاک‌کننده‌ی `APP_ENV=production`) · **M5-D9** (عددِ روزهای سطل —
-  سازوکارِ `infra:purge` ساخته شده و بدونِ آن عمداً بالا نمی‌آید) · **قالبِ تولیدیِ sms.ir**
-  (قالبِ فعلی «پیامِ تست» است) · **PLAN Q4: حقیقی یا حقوقی؟** (نوعِ حسابِ زرین‌پال) ·
+  **زرین‌پال** (تنها بلاک‌کننده‌ی `APP_ENV=production`) · **رفعِ ۹٫۱** (دو فایلِ M2 — تاییدِ مالک)
+  · **قالبِ تولیدیِ sms.ir** (قالبِ فعلی «پیامِ تست» است) · **PLAN Q4: حقیقی یا حقوقی؟**
+  (نوعِ حسابِ زرین‌پال) · **`RATE_LIMIT_OTP_MAX`ِ تولیدی** (۵/دقیقه/IP زیرِ CGNAT تنگ است) ·
+  متنِ «۳۰ روز» در نمای سطلِ `apps/web` (M3) · منبعِ گواهی (آروان/certbot — روزِ استقرار) ·
   **VPS** — آگاهانه موکول شد؛ اولین استقرارِ واقعی به‌هرحال منتظرِ زرین‌پال است.
+  ✅ M5-D9 بسته شد: **۳۰ روز** (`TRASH_RETENTION_DAYS`).
 
 - **★★ M4 (`billing`) تمام و تحویل شد** (۱۴۰۵/۰۶/۱۵) — فاز ۰ تا ۱۰. TODO در
   [`TODO-M4-billing.md`](TODO-M4-billing.md)، دفترِ کار در [`PROGRESS-M4-billing.md`](PROGRESS-M4-billing.md).
