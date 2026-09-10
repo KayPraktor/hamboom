@@ -106,6 +106,47 @@ jobs:
       - name: ★★ انتقالِ ایمیج (ADR-063) + خودآزمونش
         run: node scripts/ship-images.ts --self-test --tag=ci
 
+      # ★★ M5 گام ۹٫۲ — لبه‌ی TLS داخلِ ایمیجِ web. سه ادعا، هر سه با **اجرای واقعیِ ایمیج**:
+      #    بدونِ گواهی در production بالا نمی‌آید · بدونِ گواهی در staging با http بالا می‌آید
+      #    و /nginx-healthz می‌دهد · با گواهی (خودامضا، همین‌جا ساخته می‌شود) https می‌دهد،
+      #    http ریدایرکت می‌کند، و HSTS فقط روی https هست.
+      - name: ★★ لبه‌ی TLS در ایمیجِ web — هر سه حالت
+        run: |
+          set -euo pipefail
+          # ⚠️ بیرونِ compose، nginx نامِ upstreamها (`api`، `realtime`) را در بوت resolve
+          #    می‌کند و بدونشان با [emerg] می‌افتد — پس به loopback نگاشته می‌شوند. این چک
+          #    لبه را می‌سنجد، نه backend را.
+          HOSTS=(--add-host api:127.0.0.1 --add-host realtime:127.0.0.1)
+          if docker run --rm "${HOSTS[@]}" -e APP_ENV=production hamboom/web:ci > tls-gate.log 2>&1; then
+            echo "✖ production بدونِ گواهی بالا آمد — گیتِ TLS مرده است"; cat tls-gate.log; exit 1
+          fi
+          grep -q "گواهیِ TLS" tls-gate.log || { echo "✖ بالا نیامد، ولی به دلیلِ دیگری"; cat tls-gate.log; exit 1; }
+          echo "✔ production بدونِ گواهی ⇒ بوت رد شد"
+
+          # ⚠️ نه `sleep`: روی ماشینِ توسعه ۲ ثانیه کافی نبود (۰۰۰) — تا ۱۵ ثانیه poll می‌شود.
+          wait_http() { for _ in $(seq 1 30); do curl -sk -o /dev/null "$1" && return 0; sleep 0.5; done; return 1; }
+          docker run -d --name web-http "${HOSTS[@]}" -e APP_ENV=staging -p 18080:8080 hamboom/web:ci
+          wait_http http://127.0.0.1:18080/nginx-healthz || true
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/nginx-healthz)
+          docker rm -f web-http > /dev/null
+          [ "$code" = "200" ] || { echo "✖ staging بدونِ گواهی: /nginx-healthz → $code"; exit 1; }
+          echo "✔ staging بدونِ گواهی ⇒ http، سلامت ۲۰۰"
+
+          mkdir -p tls && openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=localhost" \
+            -keyout tls/privkey.pem -out tls/fullchain.pem 2> /dev/null
+          docker run -d --name web-tls "${HOSTS[@]}" -e APP_ENV=production -p 18080:8080 -p 18443:8443 \
+            -v "$PWD/tls:/etc/hamboom/tls:ro" hamboom/web:ci
+          wait_http https://127.0.0.1:18443/nginx-healthz || true
+          redirect=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/boards)
+          https=$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1:18443/nginx-healthz)
+          hsts=$(curl -sk -D - -o /dev/null https://127.0.0.1:18443/nginx-healthz | grep -ci strict-transport || true)
+          plain_hsts=$(curl -s -D - -o /dev/null http://127.0.0.1:18080/nginx-healthz | grep -ci strict-transport || true)
+          docker rm -f web-tls > /dev/null
+          [ "$redirect" = "301" ] || { echo "✖ http → $redirect (انتظار ۳۰۱)"; exit 1; }
+          [ "$https" = "200" ] || { echo "✖ https → $https"; exit 1; }
+          [ "$hsts" = "1" ] || { echo "✖ HSTS روی https نیست"; exit 1; }
+          echo "✔ با گواهی ⇒ http ۳۰۱، https ۲۰۰، HSTS روی https (روی http: $plain_hsts)"
+
       - name: حجمِ ایمیج‌ها
         run: |
           {

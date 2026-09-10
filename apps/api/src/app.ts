@@ -67,6 +67,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const app = Fastify({
     logger: loggerOptions(config.LOG_LEVEL),
     genReqId: () => randomUUID(),
+    // ★★ بدونِ این، پشتِ nginx همه‌ی کاربران یک سطلِ نرخ دارند (M5 گام ۹٫۲؛ دلیل و
+    //    اندازه‌گیری در `apiServerEnvSchema.TRUST_PROXY`). nginx هدر را بازنویسی می‌کند.
+    trustProxy: config.TRUST_PROXY,
   });
   app.decorateRequest("authUser", null);
 

@@ -49,7 +49,25 @@ const covers = (prefix: string, route: string): boolean =>
  * که این گیت برای وجودنداشتنش ساخته شده. مرتب‌سازی برای پایداریِ خروجی است؛ nginx
  * خودش طولانی‌ترین پیشوند را انتخاب می‌کند، پس ترتیب اثری بر رفتار ندارد.
  */
-export function renderNginxLocations(prefixes: readonly string[]): string {
+/**
+ * ★★ سقفِ نرخِ **سخت‌ترِ** لبه — M5 گام ۹٫۲.
+ *
+ * کلید = پیشوندِ مسیر، مقدار = ناحیه‌ی `limit_req` در `infra/nginx/zones.conf`. بلوکش
+ * **تولید** می‌شود (نه دستی در `app.conf`) به همان دلیلی که بقیه تولید می‌شوند: یک
+ * `location /auth/otp`ِ دستی با جابه‌جاشدنِ مسیر **بی‌صدا** بی‌اثر می‌شد — همچنان پروکسی
+ * می‌کرد، فقط دیگر سقفی نداشت. این‌جا گیت می‌گیردش: پیشوندی که هیچ مسیری نپوشاند قرمز است.
+ *
+ * ⚠️ فقط مسیرهایی که **پیامک می‌فرستند**: `/auth/refresh` را هر بارگذاریِ SPA می‌زند و
+ * پشتِ یک IPِ CGNAT ده‌ها کاربر هم‌زمان می‌آیند — سقفِ ۱/s آن‌جا یعنی کاربرِ سالمِ خارج‌شده.
+ */
+export const EDGE_RATE_ZONES: Readonly<Record<string, { zone: string; burst: number }>> = {
+  "/auth/otp": { zone: "hb_auth", burst: 30 },
+};
+
+export function renderNginxLocations(
+  prefixes: readonly string[],
+  zones: Readonly<Record<string, { zone: string; burst: number }>> = EDGE_RATE_ZONES,
+): string {
   const header = [
     "# ⚠️ فایلِ **تولیدشده** — دستی ویرایشش نکن.",
     "#",
@@ -70,7 +88,20 @@ export function renderNginxLocations(prefixes: readonly string[]): string {
         "",
       ].join("\n"),
     );
-  return `${header.join("\n")}${blocks.join("\n")}`;
+  const limited = Object.entries(zones)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([p, { zone, burst }]) =>
+      [
+        "# ★ سقفِ نرخِ سخت‌تر (M5 گام ۹٫۲) — طولانی‌ترین پیشوند برنده است، پس روی بلوکِ پدرش می‌نشیند.",
+        `location ${p} {`,
+        `    limit_req zone=${zone} burst=${String(burst)} nodelay;`,
+        "    proxy_pass http://hamboom_api;",
+        "    include /etc/nginx/proxy-common.conf;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+  return `${header.join("\n")}${blocks.join("\n")}${limited.join("\n")}`;
 }
 
 interface Problem {
@@ -83,6 +114,7 @@ export function checkPrefixesAgainstRoutes(
   prefixes: readonly string[],
   routes: readonly string[],
   excluded: readonly string[] = [],
+  rateLimited: readonly string[] = [],
 ): Problem[] {
   const problems: Problem[] = [];
   // مسیرها به شکلِ «METHOD /url» می‌آیند؛ فقط بخشِ url مهم است.
@@ -113,6 +145,24 @@ export function checkPrefixesAgainstRoutes(
     problems.push({
       claim: "پیشوندی که هیچ مسیرِ واقعی ندارد",
       detail: `${dead.join("، ")} ⇒ یا مسیرش حذف شده یا اصلاً پیشوندِ URL نبوده`,
+    });
+  }
+
+  // ★ گام ۹٫۲ — پیشوندِ سقفِ نرخ باید (الف) زیرِ یک پیشوندِ پروکسی باشد، وگرنه بلوکش به
+  //   SPA نمی‌رسد که هیچ، اصلاً معنایی ندارد؛ و (ب) دستِ‌کم یک مسیرِ واقعی بپوشاند، وگرنه
+  //   همان «سقفِ بی‌صدا بی‌اثر» است که این تولید برای نداشتنش وجود دارد.
+  const outside = rateLimited.filter((r) => !prefixes.some((p) => covers(p, r)));
+  if (outside.length > 0) {
+    problems.push({
+      claim: "پیشوندِ سقفِ نرخ بیرونِ پیشوندهای پروکسی",
+      detail: `${outside.join("، ")} زیرِ هیچ پیشوندِ apiای نیست`,
+    });
+  }
+  const deadLimits = rateLimited.filter((r) => !urls.some((u) => covers(r, u)));
+  if (deadLimits.length > 0) {
+    problems.push({
+      claim: "سقفِ نرخی که هیچ مسیرِ واقعی ندارد",
+      detail: `${deadLimits.join("، ")} ⇒ مسیرش جابه‌جا/حذف شده و سقفِ لبه بی‌صدا بی‌اثر است`,
     });
   }
   return problems;
@@ -167,6 +217,30 @@ function selfTest(): boolean {
     ),
   });
   cases.push({
+    name: "★ سقفِ نرخِ لبه‌ای که مسیرش رفته گرفته می‌شود (گام ۹٫۲)",
+    ok: checkPrefixesAgainstRoutes(["/auth"], ["POST /auth/refresh"], [], ["/auth/otp"]).some((p) =>
+      p.claim.includes("سقفِ نرخی"),
+    ),
+  });
+  cases.push({
+    name: "★ سقفِ نرخِ لبه‌ی بیرونِ پروکسی گرفته می‌شود",
+    ok: checkPrefixesAgainstRoutes(
+      ["/me"],
+      ["GET /me", "POST /auth/otp/request"],
+      [],
+      ["/auth/otp"],
+    ).some((p) => p.claim.includes("بیرونِ پیشوندهای پروکسی")),
+  });
+  cases.push({
+    name: "سقفِ نرخِ درست قرمز نمی‌شود، و بلوکش تولید می‌شود",
+    ok:
+      checkPrefixesAgainstRoutes(["/auth"], ["POST /auth/otp/request"], [], ["/auth/otp"])
+        .length === 0 &&
+      renderNginxLocations(["/auth"], { "/auth/otp": { zone: "z", burst: 1 } }).includes(
+        "location /auth/otp {\n    limit_req zone=z burst=1 nodelay;",
+      ),
+  });
+  cases.push({
     name: "دریفتِ فایلِ nginx گرفته می‌شود",
     ok:
       checkNginxFile(renderNginxLocations(["/auth"]), renderNginxLocations(["/auth", "/me"]))
@@ -206,13 +280,14 @@ async function main(): Promise<void> {
   const actual = readFileSync(NGINX_CONF, "utf8").replace(/\r\n/g, "\n");
   const excluded = NEVER_PROXIED.map((e) => e.prefix);
   const problems = [
-    ...checkPrefixesAgainstRoutes(API_PREFIXES, routes, excluded),
+    ...checkPrefixesAgainstRoutes(API_PREFIXES, routes, excluded, Object.keys(EDGE_RATE_ZONES)),
     ...checkNginxFile(expected, actual),
   ];
 
   console.log(
     `مسیرهای ثبت‌شده: ${routes.length} · پیشوندها: ${API_PREFIXES.length} · ` +
-      `مستثنای عمدی: ${excluded.length} (${excluded.join("، ")})`,
+      `مستثنای عمدی: ${excluded.length} (${excluded.join("، ")}) · ` +
+      `سقفِ لبه: ${Object.keys(EDGE_RATE_ZONES).join("، ")}`,
   );
   if (problems.length > 0) {
     for (const p of problems) console.error(`✖ ${p.claim}\n    ${p.detail}`);

@@ -79,6 +79,8 @@ export interface ProductionGuardInput {
   /** M5 فازِ ۴٫۵ — فقط وقتی `smsir` است، کلید هم سنجیده می‌شود. */
   SMS_PROVIDER?: string;
   SMS_IR_API_KEY?: string;
+  /** M5 گام ۹٫۲ — فقط `apps/api` می‌فرستدش؛ بقیه‌ی مصرف‌کننده‌ها ندارند و سنجیده نمی‌شوند. */
+  TRUST_PROXY?: boolean;
 }
 
 /** آیا این راز بوی پیش‌فرضِ توسعه می‌دهد؟ (بدونِ لو دادنِ خودِ مقدار) */
@@ -172,6 +174,20 @@ export function assertProductionConfig(
     if (reason !== null) {
       violations.push(`SMS_IR_API_KEY جای‌نگه‌دار به‌نظر می‌رسد — ${reason}`);
     }
+  }
+
+  /**
+   * ★★ `TRUST_PROXY` — M5 گام ۹٫۲.
+   *
+   * در چیدمانِ ADR-059 هیچ درخواستی بدونِ عبور از nginx به api نمی‌رسد، پس IPِ سوکت
+   * همیشه nginx است. با `TRUST_PROXY=false` سقفِ نرخ **کلِ سایت را یک کاربر** می‌بیند
+   * (اندازه‌گیری‌شده). این نه «ضعیف» است نه «ناامن» — فقط در production **غلط** است.
+   */
+  if (input.TRUST_PROXY === false) {
+    violations.push(
+      "TRUST_PROXY=false است ولی در production هر درخواست از nginx می‌آید ⇒ سقفِ نرخ روی " +
+        "IPِ nginx کلید می‌خورد و همه‌ی کاربران یک سطل دارند. TRUST_PROXY=true بگذار",
+    );
   }
 
   if (violations.length > 0) throw new ProductionConfigError(violations);

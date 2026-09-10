@@ -48,6 +48,10 @@ x-api-env: &api-env
   APP_ENV: ${APP_ENV}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   PORT: 3002
+  # ★★ M5 گام ۹٫۲: api پورتِ هاست ندارد و هر درخواستش از nginx می‌آید؛ بدونِ این، سقفِ نرخ
+  #    روی IPِ nginx کلید می‌خورد و **همه‌ی کاربران یک سطل** دارند (اندازه‌گیری‌شده).
+  #    گاردِ بوتِ production بدونش بالا نمی‌آید.
+  TRUST_PROXY: ${TRUST_PROXY:-true}
   DATABASE_URL: ${DATABASE_URL}
   DATABASE_SSL: ${DATABASE_SSL:-false}
   DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
@@ -268,7 +272,13 @@ services:
       S3_BUCKET_ASSETS: ${S3_BUCKET_ASSETS}
       S3_BUCKET_SNAPSHOTS: ${S3_BUCKET_SNAPSHOTS}
 
-  # ── تنها دربِ ورودی: SPA + reverse proxy ────────────────────────────────
+  # ── تنها دربِ ورودی: SPA + reverse proxy + **لبه‌ی TLS** (M5 گام ۹٫۲) ──────────
+  #
+  # ★★ حالت را خودِ کانتینر در بوت انتخاب می‌کند (`infra/nginx/10-hamboom-mode.sh`):
+  #    - `fullchain.pem` + `privkey.pem` در `TLS_DIR` هست ⇒ ۴۴۳ https + ۸۰ ریدایرکت/ACME + HSTS
+  #    - نیست و `APP_ENV=staging`               ⇒ فقط ۸۰ http، با هشدارِ بلند
+  #    - نیست و `APP_ENV=production`            ⇒ **بالا نمی‌آید** (همان الگوی گاردهای api)
+  #    منبعِ گواهی (آروان / certbot) تصمیمِ روزِ استقرار است — دستورِ هر دو در infra/README.
   web:
     image: hamboom/web:${IMAGE_TAG:-local}
     build:
@@ -282,8 +292,15 @@ services:
         condition: service_started
       realtime:
         condition: service_started
+    environment:
+      APP_ENV: ${APP_ENV}
     ports:
-      - "${WEB_PORT:-8080}:8080"
+      - "${WEB_PORT:-80}:8080"
+      - "${WEB_TLS_PORT:-443}:8443"
+    volumes:
+      # ⚠️ مسیرِ نسبی نسبت به **همین پوشه** (infra/docker) است، نه ریشه‌ی ریپو. هر دو gitignore اند.
+      - ${TLS_DIR:-./tls}:/etc/hamboom/tls:ro
+      - ${ACME_WEBROOT:-./acme}:/var/www/acme:ro
 
   # ── کارِ دوره‌ایِ آشتی‌دهی: کانتینرِ یک‌بارمصرفِ همان ایمیجِ api ─────────────
   #

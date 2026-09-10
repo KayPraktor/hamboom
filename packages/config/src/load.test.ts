@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { ConfigError, loadEnv } from "./load.ts";
-import { appEnvSchema, authEnvSchema, databaseEnvSchema, realtimeEnvSchema } from "./sections.ts";
+import {
+  appEnvSchema,
+  authEnvSchema,
+  databaseEnvSchema,
+  realtimeEnvSchema,
+  smsEnvSchema,
+} from "./sections.ts";
 
 /**
  * این تست‌ها روی یک منبعِ **ساختگی** کار می‌کنند، نه `process.env` — وگرنه خودشان
@@ -105,5 +111,19 @@ describe("رازِ HS256", () => {
   it("کلیدِ ۳۲ کاراکتری را می‌پذیرد", () => {
     const secret = "x".repeat(32);
     expect(loadEnv(authEnvSchema, { JWT_SECRET: secret }).JWT_SECRET).toBe(secret);
+  });
+});
+
+describe("★ پیامک — رشته‌ی خالی از Compose (M5 گام ۹٫۲)", () => {
+  it("SMS_IR_TEMPLATE_ID خالی یعنی تعریف‌نشده، نه صفر — وگرنه استکِ mock بوت نمی‌شود", () => {
+    const env = loadEnv(smsEnvSchema, { SMS_PROVIDER: "mock", SMS_IR_TEMPLATE_ID: "" });
+    expect(env.SMS_IR_TEMPLATE_ID).toBeUndefined();
+  });
+
+  it("ولی مقدارِ واقعی همچنان عدد می‌شود و صفر/منفی رد می‌شود", () => {
+    expect(loadEnv(smsEnvSchema, { SMS_IR_TEMPLATE_ID: "265541" }).SMS_IR_TEMPLATE_ID).toBe(
+      265_541,
+    );
+    expect(() => loadEnv(smsEnvSchema, { SMS_IR_TEMPLATE_ID: "0" })).toThrow(ConfigError);
   });
 });

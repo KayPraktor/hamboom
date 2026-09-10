@@ -145,7 +145,7 @@ describe("assertProductionConfig", () => {
           {
             ...base,
             SMS_PROVIDER: "smsir",
-            SMS_IR_API_KEY: "9Cl8lFMUO3eR89NLovkMs4dk3Hd8f8pI9AgB1tcQ",
+            SMS_IR_API_KEY: "kCNu-vZAX3T2u4xFBsm_6VF8XKbAPalfgFOjJRNG",
           },
           {},
         ),
@@ -155,6 +155,32 @@ describe("assertProductionConfig", () => {
     it("⊕ با mock اصلاً بررسی نمی‌شود (کلید خوانده نمی‌شود)", () => {
       expect(() =>
         assertProductionConfig({ ...base, SMS_PROVIDER: "mock", SMS_IR_API_KEY: "change_me" }, {}),
+      ).not.toThrow();
+    });
+  });
+
+  describe("★★ TRUST_PROXY (M5 گام ۹٫۲)", () => {
+    it("در production با false رد می‌شود — وگرنه همه‌ی کاربران یک سطلِ نرخ دارند", () => {
+      let message = "";
+      try {
+        assertProductionConfig({ ...base, TRUST_PROXY: false }, {});
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain("TRUST_PROXY");
+    });
+
+    it("با true قبول می‌شود", () => {
+      expect(() => assertProductionConfig({ ...base, TRUST_PROXY: true }, {})).not.toThrow();
+    });
+
+    it("⊕ مصرف‌کننده‌ای که پرچم را ندارد (آشتی‌دهی، اسکریپت‌ها) سنجیده نمی‌شود", () => {
+      expect(() => assertProductionConfig({ ...base }, {})).not.toThrow();
+    });
+
+    it("⊕ بیرونِ production کاری نمی‌کند", () => {
+      expect(() =>
+        assertProductionConfig({ ...base, APP_ENV: "staging", TRUST_PROXY: false }, {}),
       ).not.toThrow();
     });
   });

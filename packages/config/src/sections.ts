@@ -215,6 +215,28 @@ export const apiServerEnvSchema = z.object({
 export type ApiServerEnv = z.infer<typeof apiServerEnvSchema>;
 
 /**
+ * ── ★★ اعتماد به پروکسی (M5 گام ۹٫۲) — فقط `apps/api`، عمداً بخشِ جدا ──────────
+ *
+ * پشتِ nginx، IPِ سوکت **همیشه nginx است**. سقفِ نرخِ api روی `request.ip` کلید
+ * می‌خورد، پس بدونِ این پرچم **همه‌ی کاربران یک سطل دارند** — اندازه‌گیری شد: سه IPِ
+ * جعلیِ متفاوت، یک شمارنده (۴→۳→۲→۱). یعنی `RATE_LIMIT_OTP_MAX=5` می‌شد «پنج پیامک در
+ * دقیقه برای کلِ سایت».
+ *
+ * ⚠️ فقط وقتی `true` باشد که api از بیرون **مستقیم** در دسترس نیست (چیدمانِ ADR-059:
+ * api پورتِ هاست ندارد و فقط از nginx می‌آید) — وگرنه هر کلاینتی با یک هدرِ جعلی سطلِ
+ * تازه می‌گیرد. nginx هم به همین دلیل هدر را **بازنویسی** می‌کند، نه اینکه به آن
+ * بیفزاید (`infra/nginx/proxy-common.conf`).
+ *
+ * ⊕ بخشِ جداست (نه فیلدی در `apiServerEnvSchema`) به همان دلیلِ `smsEnvSchema`: کانتینرِ
+ * آشتی‌دهی `apiServerEnvSchema` را برای URLِ mock می‌خواهد ولی هیچ درخواستِ HTTPای
+ * نمی‌گیرد؛ گاردِ production نباید از او چیزی بخواهد که معنایی برایش ندارد.
+ */
+export const proxyTrustEnvSchema = z.object({
+  TRUST_PROXY: envBoolean("false"),
+});
+export type ProxyTrustEnv = z.infer<typeof proxyTrustEnvSchema>;
+
+/**
  * ── محدودیتِ نرخِ `apps/api` ─────────────────────────────────────────────
  *
  * ⚠️ store پیش‌فرض **حافظه‌ای** است (تک‌نود). چندنودی → Redis (فاز بعد). سقفِ OTP سخت‌تر است چون
@@ -270,8 +292,18 @@ export type UploadEnv = z.infer<typeof uploadEnvSchema>;
 export const smsEnvSchema = z.object({
   SMS_PROVIDER: z.enum(["mock", "smsir"]).default("mock"),
   SMS_IR_API_KEY: z.string().optional(),
-  /** شناسه‌ی **عددیِ** قالبِ تاییدشده — عنوانِ قالب نیست. */
-  SMS_IR_TEMPLATE_ID: z.coerce.number().int().positive().optional(),
+  /**
+   * شناسه‌ی **عددیِ** قالبِ تاییدشده — عنوانِ قالب نیست.
+   *
+   * ⚠️ رشته‌ی خالی = تعریف‌نشده. Compose با `${SMS_IR_TEMPLATE_ID:-}` برای providerِ mock
+   * **رشته‌ی خالی** می‌فرستد، و `coerce.number("")` صفر است ⇒ «Too small». استکِ
+   * production با `SMS_PROVIDER=mock` از فازِ ۴٫۵ تا گام ۹٫۲ اصلاً بوت نمی‌شد — و فقط
+   * اجرای واقعیِ compose نشانش داد (بوتِ فازِ ۴٫۵ با env مستقیم بود، نه compose).
+   */
+  SMS_IR_TEMPLATE_ID: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.coerce.number().int().positive().optional(),
+  ),
   /** نامِ پارامتر داخلِ قالب، بدونِ `#` (متنِ قالب: `#CODE#`). */
   SMS_IR_PARAM_NAME: z.string().min(1).default("CODE"),
   SMS_IR_BASE_URL: z.url().default("https://api.sms.ir"),

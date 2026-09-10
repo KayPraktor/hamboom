@@ -7,6 +7,7 @@ import {
   loadEnv,
   otpEnvSchema,
   paymentEnvSchema,
+  proxyTrustEnvSchema,
   rateLimitEnvSchema,
   s3EnvSchema,
   smsEnvSchema,
@@ -25,6 +26,8 @@ const apiEnvSchema = appEnvSchema
   .and(authEnvSchema)
   .and(otpEnvSchema)
   .and(apiServerEnvSchema)
+  // ★ فقط api (نه آشتی‌دهی): دلیلش کنارِ خودِ schema (M5 گام ۹٫۲).
+  .and(proxyTrustEnvSchema)
   .and(rateLimitEnvSchema)
   .and(s3EnvSchema)
   .and(uploadEnvSchema)

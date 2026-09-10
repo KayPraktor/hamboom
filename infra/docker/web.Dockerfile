@@ -21,14 +21,24 @@ RUN pnpm install --frozen-lockfile --filter @hamboom/web...
 RUN pnpm --filter @hamboom/web build
 
 FROM nginx:1.27-alpine AS runtime
-# ⚠️ nginx خودش masterِ root و workerِ غیر-root است؛ سخت‌سازیِ بیشترِ لبه کارِ فاز ۹ است.
+# nginx خودش masterِ root و workerِ غیر-root است.
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 # ★★ `api-locations.conf` **تولیدشده** است از `apps/web/src/api-prefixes.ts` — همان
 #    فهرستی که پروکسیِ devِ Vite از آن می‌آید. گیتش: `pnpm infra:check-proxy`.
 COPY infra/nginx/proxy-common.conf /etc/nginx/proxy-common.conf
 COPY infra/nginx/api-locations.conf /etc/nginx/api-locations.conf
-COPY infra/nginx/hamboom.conf /etc/nginx/conf.d/default.conf
-EXPOSE 8080
+# ── لبه‌ی TLS و سقفِ نرخ (M5 گام ۹٫۲) ────────────────────────────────────────
+# سطحِ http (upstream، ناحیه‌ها) همیشه بارگذاری می‌شود؛ بلوکِ `server` را اسکریپتِ بوت
+# از روی وجودِ گواهی انتخاب می‌کند — `conf.d/default.conf` عمداً در ایمیج **نیست**.
+COPY infra/nginx/zones.conf /etc/nginx/conf.d/00-zones.conf
+COPY infra/nginx/app.conf infra/nginx/server-http.conf infra/nginx/server-tls.conf \
+     infra/nginx/security-headers.conf /etc/nginx/hamboom/
+# ⚠️ `--chmod`: بیتِ اجرا از git روی ویندوز نمی‌آید؛ بدونِ آن ایمیجِ رسمی اسکریپت را
+#    بی‌صدا رد می‌کند و nginx بدونِ هیچ `server`ی بالا می‌آید (۴۰۴ برای همه‌چیز).
+COPY --chmod=755 infra/nginx/10-hamboom-mode.sh /docker-entrypoint.d/10-hamboom-mode.sh
+RUN rm -f /etc/nginx/conf.d/default.conf && mkdir -p /etc/hamboom/tls /var/www/acme
+EXPOSE 8080 8443
 
+# ★ سلامتِ **خودِ nginx** (نه api)، و مسیری که در هر دو حالت — http و ریدایرکتِ TLS — ۲۰۰ است.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/nginx-healthz || exit 1

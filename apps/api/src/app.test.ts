@@ -212,6 +212,8 @@ describe("گاردهای بوتِ production (M5 فاز ۴)", () => {
     JWT_SECRET: "9f3a7c1e4b8d2065af13ce97b402d85f",
     PAYMENT_PROVIDER: "zarinpal" as const,
     ZARINPAL_MERCHANT_ID: "00000000-0000-0000-0000-000000000000",
+    // ★ M5 گام ۹٫۲: پشتِ nginx بدونِ این، همه‌ی کاربران یک سطلِ نرخ دارند.
+    TRUST_PROXY: true,
     ...over,
   });
 
@@ -233,6 +235,12 @@ describe("گاردهای بوتِ production (M5 فاز ۴)", () => {
     await expect(
       buildApp({ config: prod({ JWT_SECRET: TEST_CONFIG.JWT_SECRET }), db: db() }),
     ).rejects.toThrow(/JWT_SECRET/);
+  });
+
+  it("★★ TRUST_PROXY=false در production ⇒ اپ **بالا نمی‌آید** (M5 گام ۹٫۲)", async () => {
+    await expect(buildApp({ config: prod({ TRUST_PROXY: false }), db: db() })).rejects.toThrow(
+      /TRUST_PROXY/,
+    );
   });
 
   it("★ دیتابیسِ دور بدونِ SSL در production ⇒ اپ **بالا نمی‌آید**", async () => {
