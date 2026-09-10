@@ -2,6 +2,7 @@ import type { HbElement } from "@hamboom/shared-types";
 import {
   boardRoots,
   createBoardDoc,
+  decodeMessage,
   encodeMessage,
   MSG_TYPES,
   readDocument,
@@ -17,6 +18,7 @@ import { ROOM_MEMORY_RATIO } from "./metrics.ts";
 import { BUS_KINDS, MemoryBoardBus } from "./pubsub/board-bus.ts";
 import { createRoomManager, type RoomLimits } from "./room.ts";
 import type { RtSession } from "./server.ts";
+import { MemoryUpdateLog } from "./persistence/update-log.ts";
 import { MemoryBoardStore } from "./store/board-store.ts";
 
 /**
@@ -510,5 +512,115 @@ describe("★ نمونه‌برداریِ متریک", () => {
 
     await rooms.close();
     expect(rooms.sample()).toHaveLength(0);
+  });
+});
+
+/**
+ * ★★ keepaliveِ سطحِ برنامه — M5 گام ۹٫۱.
+ *
+ * مرورگر قابِ ping را نمی‌بیند؛ نگهبانِ سکوتِ کلاینت به **پیام** نیاز دارد. این‌جا دو
+ * ادعا: در اتاقِ ساکت پیام می‌آید، و پیامش **راست** می‌گوید.
+ */
+describe("★★ keepaliveِ سطحِ برنامه (گام ۹٫۱)", () => {
+  /** نشستی که بایت‌های فرستاده‌شده را نگه می‌دارد — برخلافِ `fakeSocket` که دور می‌ریزد. */
+  function recordingSession(sub = "usr_1") {
+    const handlers = new Map<string, () => void>();
+    let onMessage: ((data: Uint8Array) => void) | null = null;
+    const sent: Uint8Array[] = [];
+    const session: RtSession = {
+      socket: {
+        once: (event: string, cb: () => void) => handlers.set(event, cb),
+        on: (event: string, cb: (data: Uint8Array) => void) => {
+          if (event === "message") onMessage = cb;
+        },
+        send: (data: Uint8Array) => {
+          sent.push(data);
+        },
+      } as unknown as RtSession["socket"],
+      boardId: BOARD,
+      sub,
+      role: "editor",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    };
+    const roomInfos = () =>
+      sent
+        .map((bytes) => decodeMessage(bytes))
+        .filter((m) => m?.type === MSG_TYPES.HB_ROOM_INFO)
+        .map((m) => (m?.type === MSG_TYPES.HB_ROOM_INFO ? m.save : "?"));
+    return {
+      session,
+      roomInfos,
+      receive: (data: Uint8Array) => onMessage?.(data),
+      close: () => handlers.get("close")?.(),
+    };
+  }
+
+  const gesture = (id: string): Uint8Array => {
+    const doc = createBoardDoc();
+    doc.transact(() => writeElement(boardRoots(doc).elements, element(id)));
+    const inner = encoding.createEncoder();
+    syncProtocol.writeUpdate(inner, Y.encodeStateAsUpdate(doc));
+    return encodeMessage({ type: MSG_TYPES.SYNC, payload: encoding.toUint8Array(inner) });
+  };
+
+  const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("در اتاقِ ساکت هر `keepaliveMs` یک HB_ROOM_INFO می‌رود", async () => {
+    const rooms = createRoomManager({
+      store: seededStore(),
+      limits: LIMITS,
+      keepaliveMs: 20,
+      logger: createLogger({ level: "error", write: () => {} }),
+    });
+    const client = recordingSession();
+    await rooms.join(client.session);
+    const afterJoin = client.roomInfos().length;
+
+    await settle(95);
+    const later = client.roomInfos().length;
+    // ⚠️ حداقل، نه دقیقاً: زمان‌بندیِ setInterval روی ماشینِ شلوغ کش می‌آید.
+    expect(later - afterJoin).toBeGreaterThanOrEqual(3);
+    await rooms.close();
+  });
+
+  it("★★ بعد از نوشتنِ شکست‌خورده، keepalive «unsaved» را تکرار می‌کند — نه «saved»", async () => {
+    const rooms = createRoomManager({
+      store: seededStore(),
+      // لاگی که هرگز نمی‌نویسد: همان مسیری که ADR-009 برایش «unsaved» می‌فرستد.
+      log: Object.assign(new MemoryUpdateLog(), {
+        append: () => Promise.reject(new Error("دیتابیس در دسترس نیست")),
+      }),
+      limits: LIMITS,
+      keepaliveMs: 20,
+      logger: createLogger({ level: "error", write: () => {} }),
+    });
+    const client = recordingSession();
+    await rooms.join(client.session);
+    client.receive(gesture("stk_doomed"));
+    await settle(30);
+    expect(client.roomInfos()).toContain("unsaved");
+
+    const before = client.roomInfos().length;
+    await settle(70);
+    const fresh = client.roomInfos().slice(before);
+    expect(fresh.length).toBeGreaterThanOrEqual(2);
+    // ★ هر تکرار همان «unsaved» است — یک «saved»ِ بی‌پشتوانه دروغ به کاربر است.
+    expect(new Set(fresh)).toEqual(new Set(["unsaved"]));
+    await rooms.close();
+  });
+
+  it("با `keepaliveMs: 0` هیچ keepaliveای نمی‌رود (تست‌ها بدونِ نویز)", async () => {
+    const rooms = createRoomManager({
+      store: seededStore(),
+      limits: LIMITS,
+      keepaliveMs: 0,
+      logger: createLogger({ level: "error", write: () => {} }),
+    });
+    const client = recordingSession();
+    await rooms.join(client.session);
+    const afterJoin = client.roomInfos().length;
+    await settle(60);
+    expect(client.roomInfos().length).toBe(afterJoin);
+    await rooms.close();
   });
 });

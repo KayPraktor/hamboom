@@ -6,6 +6,8 @@ import type { TransportStatus } from "./transport.ts";
 import {
   closeReaction,
   createWebSocketTransport,
+  DEFAULT_CONNECT_TIMEOUT_MS,
+  DEFAULT_SILENCE_TIMEOUT_MS,
   type WebSocketLike,
   type WebSocketTransportOptions,
 } from "./websocket-transport.ts";
@@ -74,6 +76,8 @@ function fakeClock() {
       },
     },
     delays: (): number[] => [...pending.values()].map((entry) => entry.ms),
+    /** شناسه‌ی تایمرهای در انتظار — «از نو زمان‌بندی شد» فقط با این اثبات‌پذیر است. */
+    ids: (): number[] => [...pending.keys()],
     size: (): number => pending.size,
     /** همه‌ی زمان‌سنج‌های در انتظار را اجرا می‌کند (هر کدام یک‌بار). */
     fire(): void {
@@ -100,6 +104,10 @@ function harness(overrides: Partial<WebSocketTransportOptions> = {}) {
     // ⚠️ خاموش، مگر تستی صریحاً بخواهدش — وگرنه `fire()` تازه‌سازیِ توکن را هم
     //    راه می‌اندازد و هر ادعای «چند زمان‌سنج در انتظار است» بی‌معنا می‌شود.
     authRefreshMs: 0,
+    // ⚠️ همین دلیل برای دو نگهبانِ گام ۹٫۱: `fire()` همه‌ی تایمرها را می‌زند و مهلتِ
+    //    اتصال هر سوکتِ هنوز-باز-نشده را می‌انداخت. تست‌های خودشان روشنشان می‌کنند.
+    connectTimeoutMs: 0,
+    silenceTimeoutMs: 0,
     createSocket: (url) => {
       const socket = new FakeSocket(url);
       sockets.push(socket);
@@ -509,5 +517,154 @@ describe("★ شبکه‌ی مرورگر", () => {
 
     expect(net.sockets).toHaveLength(0);
     expect(net.statuses.at(-1)).toMatchObject({ phase: "stopped", reason: "offline" });
+  });
+});
+
+/**
+ * ★★ گام ۹٫۱ — دو قطعی که هرگز `close` نمی‌دهند.
+ *
+ * ادعای «چقدر طول می‌کشد» کارِ `rt:reconnect` است (رله‌ی سیاه‌چاله، ساعتِ دیوار). این‌جا
+ * فقط ماشینِ حالت: چه چیزی زمان‌بندی می‌شود، چه چیزی می‌افتد، و چه چیزی **نمی‌افتد**.
+ */
+describe("★★ مهلتِ اتصال (گام ۹٫۱)", () => {
+  // ⚠️ بلوکِ «رویدادهای شبکه» بالاتر `navigator` را stub می‌کند و آخرین تستش offline
+  //    می‌گذارد؛ بدونِ این، این‌جا اصلاً سوکتی ساخته نمی‌شود.
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("پیش‌فرض‌ها روشن‌اند و با سرور جفت‌اند (۳ × ۲۵s)", () => {
+    expect(DEFAULT_CONNECT_TIMEOUT_MS).toBe(10_000);
+    // ⚠️ اگر `RT_HEARTBEAT_INTERVAL_MS`ِ پیش‌فرض عوض شد، این عدد هم باید عوض شود.
+    expect(DEFAULT_SILENCE_TIMEOUT_MS).toBeGreaterThan(2 * 25_000);
+  });
+
+  it("سوکتی که باز نمی‌شود انداخته می‌شود و backoff شروع می‌شود", async () => {
+    const net = harness({ connectTimeoutMs: 10_000 });
+    await net.transport.connect();
+    await flush();
+    const stuck = net.last();
+    expect(net.clock.delays()).toEqual([10_000]);
+
+    net.clock.fire();
+    await flush();
+
+    expect(stuck.closedWith).not.toBeNull();
+    expect(net.statuses.at(-1)).toMatchObject({ phase: "retrying", attempt: 1 });
+    expect(net.statuses.at(-1)).toMatchObject({ nextRetryMs: expect.any(Number) });
+    // و بعد از فاصله، سوکتِ **تازه**‌ای ساخته می‌شود — نه همان قبلی.
+    net.clock.fire();
+    await flush();
+    expect(net.sockets).toHaveLength(2);
+    expect(net.last()).not.toBe(stuck);
+  });
+
+  it("★ سوکتی که به‌موقع باز شد، مهلتش پاک می‌شود — تایمرِ یتیم نمی‌مانَد", async () => {
+    const net = harness({ connectTimeoutMs: 10_000 });
+    await net.transport.connect();
+    await flush();
+    net.last().open();
+
+    expect(net.clock.size()).toBe(0);
+    expect(net.statuses.at(-1)).toEqual({ phase: "open", resumed: false });
+  });
+
+  it("★ تایمرِ نسلِ قبلی سوکتِ نسلِ بعدی را نمی‌اندازد", async () => {
+    // ⚠️ همان تله‌ی `generation`: بینِ «توکن را بگیر» و «سوکت را بساز» یک await هست.
+    const net = harness({ connectTimeoutMs: 10_000 });
+    await net.transport.connect();
+    await flush();
+    net.last().serverClose(1006);
+    // handleClose تایمرِ نسلِ اول را پاک کرده؛ فقط تایمرِ backoff مانده.
+    expect(net.clock.delays()).toHaveLength(1);
+    net.clock.fire();
+    await flush();
+    expect(net.sockets).toHaveLength(2);
+    net.last().open();
+    expect(net.statuses.at(-1)).toMatchObject({ phase: "open" });
+  });
+});
+
+describe("★★ نگهبانِ سکوت (گام ۹٫۱)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("سوکتِ بازِ بی‌پیام بعد از مهلت مرده فرض می‌شود و backoff شروع می‌شود", async () => {
+    const net = harness({ silenceTimeoutMs: 75_000 });
+    await net.transport.connect();
+    await flush();
+    const quiet = net.last();
+    quiet.open();
+
+    expect(net.clock.delays()).toEqual([75_000]);
+    net.clock.fire();
+    await flush();
+
+    expect(quiet.closedWith).not.toBeNull();
+    expect(net.statuses.at(-1)).toMatchObject({ phase: "retrying", attempt: 1 });
+    // ★ و ماشینِ حالت همان است: فاصله‌ی تلاشِ اول، نه سقفِ backoff.
+    const retrying = net.statuses.at(-1);
+    expect(retrying?.phase === "retrying" ? retrying.nextRetryMs : -1).toBeLessThanOrEqual(
+      backoffCeilingMs(1),
+    );
+  });
+
+  it("★ هر پیامِ ورودی تایمر را از نو می‌شمارد — اتصالِ زنده نمی‌افتد", async () => {
+    const net = harness({ silenceTimeoutMs: 75_000 });
+    await net.transport.connect();
+    await flush();
+    const live = net.last();
+    live.open();
+
+    const armedAtOpen = net.clock.ids();
+
+    // پیش از انقضا یک پیام می‌رسد (همان keepaliveِ سرور: HB_ROOM_INFO).
+    live.deliver(encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, users: 1, seq: 0, save: "saved" }));
+    // ★ فقط **یک** تایمرِ سکوت در انتظار است، و **تایمرِ تازه‌ای** است — نه همان قبلی.
+    //   بدونِ این مقایسه، «از نو شمردن» با «نشمردن» یک شکل بود: هر دو یک تایمر دارند.
+    expect(net.clock.delays()).toEqual([75_000]);
+    expect(net.clock.ids()).not.toEqual(armedAtOpen);
+    expect(live.closedWith).toBeNull();
+    expect(net.statuses.at(-1)).toMatchObject({ phase: "open" });
+  });
+
+  it("★ پیامِ ناشناخته هم نشانه‌ی زندگی است — پیش از decode شمرده می‌شود", async () => {
+    const net = harness({ silenceTimeoutMs: 75_000 });
+    await net.transport.connect();
+    await flush();
+    const live = net.last();
+    live.open();
+    const armedAtOpen = net.clock.ids();
+    live.deliver(new Uint8Array([0x7f, 1, 2, 3]));
+    expect(net.clock.delays()).toEqual([75_000]);
+    expect(net.clock.ids()).not.toEqual(armedAtOpen);
+    expect(live.closedWith).toBeNull();
+  });
+
+  it("با `disconnect` نگهبان هم می‌رود — بعدش هیچ تلاشی زمان‌بندی نمی‌شود", async () => {
+    const net = harness({ silenceTimeoutMs: 75_000, connectTimeoutMs: 10_000 });
+    await net.transport.connect();
+    await flush();
+    net.last().open();
+    net.transport.disconnect();
+
+    expect(net.clock.size()).toBe(0);
+    const before = net.statuses.length;
+    net.clock.fire();
+    await flush();
+    expect(net.statuses.length).toBe(before);
+    expect(net.sockets).toHaveLength(1);
+  });
+
+  it("★ سوکتِ ردشده (۱۰۰۸ fatal) نگهبانِ سکوت راه نمی‌اندازد", async () => {
+    const net = harness({ silenceTimeoutMs: 75_000 });
+    await net.transport.connect();
+    await flush();
+    net.last().open();
+    net
+      .last()
+      .deliver(
+        encodeMessage({ type: MSG_TYPES.HB_ERROR, code: HB_ERROR_CODES.FORBIDDEN, message: "نه" }),
+      );
+    net.last().serverClose(1008, HB_ERROR_CODES.FORBIDDEN);
+    expect(net.statuses.at(-1)).toMatchObject({ phase: "stopped", reason: "fatal" });
+    expect(net.clock.size()).toBe(0);
   });
 });

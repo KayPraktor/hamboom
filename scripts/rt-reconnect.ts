@@ -9,10 +9,18 @@ import {
 import {
   backoffCeilingMs,
   createWebSocketTransport,
+  DEFAULT_CONNECT_TIMEOUT_MS,
+  DEFAULT_SILENCE_TIMEOUT_MS,
   type TransportStatus,
   type WebSocketTransport,
 } from "@hamboom/canvas-sync/transport";
-import { databaseEnvSchema, loadEnv, redisEnvSchema, s3EnvSchema } from "@hamboom/config";
+import {
+  databaseEnvSchema,
+  loadEnv,
+  realtimeEnvSchema,
+  redisEnvSchema,
+  s3EnvSchema,
+} from "@hamboom/config";
 import {
   createCompactor,
   createPersistedBoardStore,
@@ -80,11 +88,17 @@ import { addMember, cleanupSeed, seedBoard } from "./rt-seed.ts";
  * هر دو با یک رله‌ی TCPِ **سیاه‌چاله** ساخته می‌شوند: رله وسطِ کلاینت و سرور
  * می‌نشیند، و در حالتِ تاریک هیچ بایتی رد نمی‌کند ولی **هیچ سوکتی را هم نمی‌بندد**.
  * از دیدِ هر دو طرف اتصال «هست». این همان چیزی است که ADR-006 نیمه‌ی سرورش را
- * ساخت (ping → `terminate`) و اینجا هر دو نیمه **اندازه** گرفته می‌شود: سرور چند
- * ثانیه بعد می‌فهمد، و کلاینت چند ثانیه بعد.
+ * ساخت (ping → `terminate`) و اینجا هر دو نیمه **اندازه** گرفته می‌شود.
  *
- * ⚠️ heartbeatِ نودِ این دو سناریو ۲ ثانیه است (نه ۲۵) تا سنجه در چند ثانیه تمام
- * شود؛ نسبت‌ها همان نسبت‌های تولید است.
+ * ★★ **پیش از رفع (۱۴۰۵/۰۶/۱۹) اندازه‌گیری شد:** سرور در ۳۹۵۸ms (دو تیک) می‌بست، کلاینت
+ * بعد از ۱۵s هنوز `open` / `connecting` بود — هیچ قابِ بستنی نمی‌رسد و backoff هرگز شروع
+ * نمی‌شد. رفع: keepaliveِ سطحِ برنامه در اتاق (`HB_ROOM_INFO` در هر تیک) + دو نگهبان در
+ * ترابری (`silenceTimeoutMs`، `connectTimeoutMs`). حالا هر دو **assert** می‌شوند، و
+ * بعدش بازگشتِ واقعی: رله روشن می‌شود و کلاینت بدونِ رفرش دوباره وصل و همگام می‌شود.
+ *
+ * ⚠️ heartbeatِ نودِ این دو سناریو ۲ ثانیه است (نه ۲۵) و نگهبان‌های کلاینت با همان
+ * نسبتِ تولید (۳× و ۱٫۵×) کوتاه شده‌اند تا سنجه در چند ثانیه تمام شود. ★ خودِ نامساویِ
+ * تولید (`silence > 2 × heartbeat`) هم روی **پیش‌فرض‌های واقعیِ** دو پکیج assert می‌شود.
  *
  * اجرا:
  *   pnpm db:up && pnpm db:migrate
@@ -166,6 +180,8 @@ async function startNode(
       thresholds: { everyUpdates: 99_999, everyMs: 99_999_999 },
     }),
     limits: { maxRoomsPerNode: 100, maxDocBytes: 52_428_800, idleTimeoutMs: 120_000 },
+    // ★ گام ۹٫۱: keepaliveِ اتاق با همان فاصله‌ی pingِ سرور — همان سیم‌کشیِ main.ts.
+    keepaliveMs: heartbeatMs ?? 25_000,
   });
 
   const server = await createRtServer({
@@ -212,6 +228,8 @@ interface Relay {
   port: number;
   /** از این لحظه هیچ بایتی رد نمی‌شود — ولی هیچ سوکتی هم بسته نمی‌شود. */
   darken(): void;
+  /** دوباره رد می‌کند — اتصال‌های **تازه** کار می‌کنند؛ قدیمی‌ها همان‌طور مرده می‌مانند. */
+  light(): void;
   /** کِی سرور سوکتِ خودش را بست (فقط در حالتِ تاریک ثبت می‌شود). */
   upstreamClosedAt(): number | null;
   close(): Promise<void>;
@@ -260,6 +278,9 @@ async function createRelay(targetPort: number, darkFromStart = false): Promise<R
     darken: () => {
       dark = true;
     },
+    light: () => {
+      dark = false;
+    },
     upstreamClosedAt: () => upstreamClosedAt,
     close: async () => {
       for (const socket of sockets) socket.destroy();
@@ -286,17 +307,27 @@ interface Probe {
   doc: Y.Doc;
   transport: WebSocketTransport;
   events: Event[];
+  /** رویدادهای loggerِ ترابری — `reason`ِ افتادن از همین‌جا خوانده می‌شود (گام ۹٫۱). */
+  logs: { at: number; message: string; fields: Record<string, unknown> }[];
   seq(): number;
   opens(): number;
+  /** تعدادِ `HB_ROOM_INFO`های رسیده — keepaliveِ گام ۹٫۱ از همین شمرده می‌شود. */
+  roomInfos(): number;
   gesture(id: string): void;
   waitFor(check: () => boolean, what: string, timeoutMs?: number): Promise<void>;
   stop(): void;
 }
 
-function probeClient(port: number, boardId: string, token: () => string | Promise<string>): Probe {
+function probeClient(
+  port: number,
+  boardId: string,
+  token: () => string | Promise<string>,
+  watchdogs: { connectTimeoutMs?: number; silenceTimeoutMs?: number } = {},
+): Probe {
   const doc = createBoardDoc();
   const events: Event[] = [];
-  const state = { seq: 0, opens: 0 };
+  const logs: Probe["logs"] = [];
+  const state = { seq: 0, opens: 0, roomInfos: 0 };
   const REMOTE = "probe:remote";
 
   const transport = createWebSocketTransport({
@@ -304,6 +335,8 @@ function probeClient(port: number, boardId: string, token: () => string | Promis
     token,
     // تازه‌سازیِ وسطِ اتصال کارِ این سنجه نیست؛ تستِ واحد داردش.
     authRefreshMs: 0,
+    ...watchdogs,
+    logger: (message, fields = {}) => logs.push({ at: Date.now(), message, fields }),
   });
 
   transport.onStatus((status) => {
@@ -326,6 +359,7 @@ function probeClient(port: number, boardId: string, token: () => string | Promis
     if (!message) return;
     if (message.type === MSG_TYPES.HB_ROOM_INFO) {
       state.seq = message.seq;
+      state.roomInfos += 1;
       return;
     }
     if (message.type !== MSG_TYPES.SYNC) return;
@@ -359,8 +393,10 @@ function probeClient(port: number, boardId: string, token: () => string | Promis
     doc,
     transport,
     events,
+    logs,
     seq: () => state.seq,
     opens: () => state.opens,
+    roomInfos: () => state.roomInfos,
     gesture(id) {
       doc.transact(() => {
         writeElement(boardRoots(doc).elements, {
@@ -603,16 +639,45 @@ async function main(): Promise<void> {
   // ── ۵) ★★ نشستِ نیم‌باز: هر دو نیمه‌ی ADR-006 را **اندازه بگیر** ────
   //
   // heartbeat ۲ ثانیه ⇒ سرور باید حداکثر در ۲ تیک (۴s) بفهمد. کلاینت قابِ بستن
-  // نمی‌گیرد، پس هرچه می‌فهمد باید از **خودش** باشد.
+  // نمی‌گیرد، پس هرچه می‌فهمد باید از **خودش** باشد: نگهبانِ سکوت، ۳× keepalive.
   const HALF_OPEN_HEARTBEAT_MS = 2_000;
-  const CLIENT_WINDOW_MS = 15_000;
+  const SILENCE_MS = 3 * HALF_OPEN_HEARTBEAT_MS;
+  const CONNECT_TIMEOUT_MS = 3_000;
+
+  // ★ نامساویِ تولید روی پیش‌فرض‌های **واقعیِ** دو پکیج — نه روی عددهای همین سنجه.
+  const productionHeartbeatMs = realtimeEnvSchema.parse({}).RT_HEARTBEAT_INTERVAL_MS;
+  if (DEFAULT_SILENCE_TIMEOUT_MS <= 2 * productionHeartbeatMs) {
+    fail(
+      `silenceTimeoutMs=${String(DEFAULT_SILENCE_TIMEOUT_MS)} از دو برابرِ heartbeat=${String(productionHeartbeatMs)} بیشتر نیست ` +
+        "⇒ یک keepaliveِ گم‌شده اتصالِ سالم را می‌اندازد. گام قبول نیست.",
+    );
+  }
+  if (SILENCE_MS <= 2 * HALF_OPEN_HEARTBEAT_MS) fail("نسبتِ خودِ سنجه غلط است.");
+  process.stdout.write(
+    `✔ جفت‌شدگی: silence ${String(DEFAULT_SILENCE_TIMEOUT_MS)}ms > 2 × heartbeat ${String(productionHeartbeatMs)}ms · connect ${String(DEFAULT_CONNECT_TIMEOUT_MS)}ms\n`,
+  );
+
   const third = await startNode(env, 0, reader, HALF_OPEN_HEARTBEAT_MS);
   const relay = await createRelay(third.server.port);
 
-  const behindNat = probeClient(relay.port, boardId, freshToken);
+  const behindNat = probeClient(relay.port, boardId, freshToken, {
+    silenceTimeoutMs: SILENCE_MS,
+    connectTimeoutMs: CONNECT_TIMEOUT_MS,
+  });
   await behindNat.waitFor(() => behindNat.opens() === 1, "کلاینتِ پشتِ رله وصل نشد");
   behindNat.gesture("stk_before_dark");
   await behindNat.waitFor(() => behindNat.seq() >= 1, "ژست از پشتِ رله تایید نشد");
+
+  // ★ پیش از تاریکی، keepaliveِ اتاق باید در اتاقِ **ساکت** هم برسد — وگرنه نگهبانِ
+  //   سکوت اتصالِ سالم را می‌انداخت. یک بازه‌ی کامل صبر و شمارش.
+  const infosBefore = behindNat.roomInfos();
+  await settle(HALF_OPEN_HEARTBEAT_MS + 500);
+  if (behindNat.roomInfos() <= infosBefore) {
+    fail("در اتاقِ ساکت هیچ HB_ROOM_INFOای نرسید — keepaliveِ اتاق کار نمی‌کند. گام قبول نیست.");
+  }
+  process.stdout.write(
+    `✔ keepaliveِ اتاق در سکوت: ${String(behindNat.roomInfos() - infosBefore)} HB_ROOM_INFO در ${String(HALF_OPEN_HEARTBEAT_MS + 500)}ms\n`,
+  );
 
   const darkAt = Date.now();
   relay.darken();
@@ -637,39 +702,71 @@ async function main(): Promise<void> {
     `✔ نشستِ نیم‌باز: سرور در ${String(serverDetectMs)}ms فهمید (heartbeat ${String(HALF_OPEN_HEARTBEAT_MS)}ms، سقف ${String(serverCeilingMs)}ms)\n`,
   );
 
-  await settle(Math.max(0, CLIENT_WINDOW_MS - (Date.now() - darkAt)));
+  // ★★ نیمه‌ی کلاینت — قبلاً «تا بی‌نهایت باز» بود. حالا باید در ≤ silence + یک keepalive
+  //    (آخرین پیام تا یک بازه پیش از تاریکی رسیده) بفهمد، و **به دلیلِ سکوت**.
+  const clientCeilingMs = SILENCE_MS + HALF_OPEN_HEARTBEAT_MS + 1_500;
+  await behindNat
+    .waitFor(() => firstNonOpenAfter(behindNat, darkAt) !== undefined, "", clientCeilingMs)
+    .catch(() => undefined);
   const clientNoticed = firstNonOpenAfter(behindNat, darkAt);
-  if (clientNoticed) {
-    process.stdout.write(
-      `✔ نشستِ نیم‌باز: کلاینت در ${String(clientNoticed.at - darkAt)}ms فهمید (${clientNoticed.status.phase})\n`,
-    );
-  } else {
-    // ★★ یافته‌ی گام ۹٫۱ — ادعا نمی‌شود، **اندازه‌گیری** می‌شود. تا رفعش تایید نشود
-    //    (فایل‌های M2)، این خط گزارش است نه شکست؛ با رفع، به `fail` تبدیل می‌شود.
-    process.stdout.write(
-      `⚠️ نشستِ نیم‌باز: کلاینت در ${String(CLIENT_WINDOW_MS)}ms (${String(
-        CLIENT_WINDOW_MS / HALF_OPEN_HEARTBEAT_MS,
-      )}× heartbeat) **هنوز «باز»** است — هیچ قابِ بستنی نرسیده و ترابری نگهبانِ سکوت ندارد\n`,
+  if (!clientNoticed) {
+    fail(
+      `نشستِ نیم‌باز: کلاینت در ${String(clientCeilingMs)}ms هنوز «باز» است — نگهبانِ سکوت کار نمی‌کند. گام قبول نیست.`,
     );
   }
+  const silenceLog = behindNat.logs.find((l) => l.at >= darkAt && l.fields.reason === "silence");
+  if (!silenceLog) {
+    fail("کلاینت افتاد ولی نه به دلیلِ سکوت — چیزِ دیگری آن را انداخته. گام قبول نیست.");
+  }
+  process.stdout.write(
+    `✔ نشستِ نیم‌باز: کلاینت در ${String(clientNoticed.at - darkAt)}ms فهمید (${clientNoticed.status.phase}، reason=silence، سقف ${String(clientCeilingMs)}ms)\n`,
+  );
+
+  // ★★ و بازگشت: رله روشن می‌شود، تلاشِ بعدیِ backoff وصل می‌شود، و کارِ همتا می‌رسد.
+  relay.light();
+  await behindNat.waitFor(
+    () => behindNat.opens() === 2,
+    "بعد از نشستِ نیم‌باز دوباره وصل نشد",
+    20_000,
+  );
+  newcomer.gesture("stk_after_dark");
+  await behindNat.waitFor(
+    () => boardRoots(behindNat.doc).elements.has("stk_after_dark"),
+    "بعد از بازگشت از نیم‌باز، کارِ همتا نمی‌رسد",
+  );
+  process.stdout.write("✔ نشستِ نیم‌باز: بدونِ رفرش دوباره وصل شد و همگام است\n");
 
   // ── ۶) ★★ دست‌دادنِ معلق: TCP وصل، upgrade بی‌جواب ───────────────
   const stalled = await createRelay(third.server.port, true);
-  const stuck = probeClient(stalled.port, boardId, freshToken);
+  const stuck = probeClient(stalled.port, boardId, freshToken, {
+    connectTimeoutMs: CONNECT_TIMEOUT_MS,
+    silenceTimeoutMs: SILENCE_MS,
+  });
   const stuckAt = Date.now();
-  await settle(CLIENT_WINDOW_MS);
-  const gaveUp = stuck.events.find(
-    (event) => event.at >= stuckAt && event.status.phase !== "connecting",
-  );
-  if (gaveUp) {
-    process.stdout.write(
-      `✔ دست‌دادنِ معلق: کلاینت در ${String(gaveUp.at - stuckAt)}ms دست کشید (${gaveUp.status.phase})\n`,
-    );
-  } else {
-    process.stdout.write(
-      `⚠️ دست‌دادنِ معلق: کلاینت بعد از ${String(CLIENT_WINDOW_MS)}ms **هنوز «connecting»** است — ترابری مهلتِ اتصال ندارد\n`,
+  const stuckCeilingMs = CONNECT_TIMEOUT_MS + 1_500;
+  const gaveUp = () =>
+    stuck.events.find((event) => event.at >= stuckAt && event.status.phase !== "connecting");
+  await stuck.waitFor(() => gaveUp() !== undefined, "", stuckCeilingMs).catch(() => undefined);
+  const gave = gaveUp();
+  if (!gave) {
+    fail(
+      `دست‌دادنِ معلق: کلاینت بعد از ${String(stuckCeilingMs)}ms هنوز «connecting» است — مهلتِ اتصال کار نمی‌کند. گام قبول نیست.`,
     );
   }
+  if (gave.status.phase !== "retrying") {
+    fail(`دست‌دادنِ معلق: کلاینت به «${gave.status.phase}» رفت، نه «retrying». گام قبول نیست.`);
+  }
+  const timeoutLog = stuck.logs.find(
+    (l) => l.at >= stuckAt && l.fields.reason === "connect-timeout",
+  );
+  if (!timeoutLog) fail("کلاینت دست کشید ولی نه به دلیلِ مهلتِ اتصال. گام قبول نیست.");
+  process.stdout.write(
+    `✔ دست‌دادنِ معلق: کلاینت در ${String(gave.at - stuckAt)}ms دست کشید (retrying، reason=connect-timeout، سقف ${String(stuckCeilingMs)}ms)\n`,
+  );
+  // و وقتی مسیر باز شد، همان backoff وصلش می‌کند — بدونِ رفرش.
+  stalled.light();
+  await stuck.waitFor(() => stuck.opens() === 1, "بعد از بازشدنِ مسیر، دست‌دادن وصل نشد", 20_000);
+  process.stdout.write("✔ دست‌دادنِ معلق: بعد از بازشدنِ مسیر وصل شد\n");
 
   // ── پاکسازی ─────────────────────────────────────────────────────
   for (const probe of [client, newcomer, rejected, behindNat, stuck, ...herd]) probe.stop();

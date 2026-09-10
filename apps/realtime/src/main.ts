@@ -119,6 +119,8 @@ async function main(): Promise<void> {
       },
       logger,
     }),
+    // ★ گام ۹٫۱: keepaliveِ سطحِ برنامه با همان فاصله‌ی pingِ سرور — یک عدد، دو مصرف‌کننده.
+    keepaliveMs: env.RT_HEARTBEAT_INTERVAL_MS,
     limits: {
       maxRoomsPerNode: env.RT_MAX_ROOMS_PER_NODE,
       maxDocBytes: env.RT_MAX_DOC_BYTES,

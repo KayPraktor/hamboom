@@ -93,6 +93,8 @@ export {
 export {
   closeReaction,
   createWebSocketTransport,
+  DEFAULT_CONNECT_TIMEOUT_MS,
+  DEFAULT_SILENCE_TIMEOUT_MS,
   type CloseReaction,
   type TransportTimers,
   type WebSocketLike,

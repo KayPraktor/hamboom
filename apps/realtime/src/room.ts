@@ -130,6 +130,20 @@ export interface RoomManagerOptions {
   /** شناسه‌ی این نود — برچسبِ ضدِ حلقه. */
   nodeId?: string;
   limits: RoomLimits;
+  /**
+   * ★★ keepaliveِ سطحِ برنامه — M5 گام ۹٫۱. `۰` خاموشش می‌کند (فقط برای تست).
+   *
+   * مرورگر قابِ pingِ سرور را به JS نشان نمی‌دهد، پس نگهبانِ سکوتِ کلاینت
+   * (`silenceTimeoutMs` در `canvas-sync`) به یک **پیام** نیاز دارد که در اتاقِ ساکت هم
+   * بیاید. هر `keepaliveMs` به همه‌ی نشست‌های هر اتاق یک `HB_ROOM_INFO` می‌رود — با
+   * **آخرین وضعیتِ راست‌گویانه‌ی ذخیره** (`room.save`)، نه یک «ذخیره شد»ِ بی‌پشتوانه:
+   * تکرارِ «unsaved»ی که بعد از نوشتنِ شکست‌خورده رفته، همان‌قدر لازم است که تکرارِ
+   * «saved» (ADR-009: هرگز به کاربر دروغ نمی‌گوییم).
+   *
+   * ⚠️ جفت با `RT_HEARTBEAT_INTERVAL_MS` (۲۵s)، و باید < نصفِ `silenceTimeoutMs`ِ
+   * کلاینت (۷۵s) بماند — `rt:reconnect` نامساوی را assert می‌کند.
+   */
+  keepaliveMs?: number;
   logger?: Logger;
 }
 
@@ -194,6 +208,11 @@ interface LiveRoom extends Room {
   idleTimer: ReturnType<typeof setTimeout> | null;
   /** آخرین `seq`ِ پایدارشده — در `HB_ROOM_INFO` به کلاینت می‌رود. */
   seq: number;
+  /**
+   * آخرین وضعیتِ ذخیره‌ای که به اتاق **گفته شده** — keepaliveِ گام ۹٫۱ همین را تکرار
+   * می‌کند. ★ فقط `info()` آن را می‌نویسد، پس هرگز از آنچه پخش شده جلو نمی‌افتد.
+   */
+  save: "saved" | "saving" | "unsaved";
   /** `seq`ی که آخرین snapshot تا آن را دارد — مبدأِ شمارشِ آستانه‌ی فشرده‌سازی. */
   compactedSeq: number;
   /** زمانِ آخرین فشرده‌سازی — مبدأِ `RT_SNAPSHOT_EVERY_MS`. */
@@ -218,6 +237,7 @@ export function createRoomManager({
   ownerLock,
   nodeId = "node-1",
   limits,
+  keepaliveMs = 25_000,
   logger = createLogger(),
 }: RoomManagerOptions): RoomManager {
   const rooms = new Map<string, LiveRoom>();
@@ -252,6 +272,26 @@ export function createRoomManager({
     if (room.owner) void ownerLock?.release(room.boardId).catch(() => undefined);
     room.owner = false;
   }
+
+  /**
+   * ★★ keepaliveِ سطحِ برنامه (گام ۹٫۱) — یک تایمر برای همه‌ی اتاق‌ها، نه یکی به‌ازای هر
+   * اتاق: با ۵۰۰ اتاق، ۵۰۰ تایمرِ ۲۵ثانیه‌ای فقط سربار است.
+   *
+   * ⚠️ `unref`: مثلِ heartbeatِ سرور، نباید جلوی خاموش‌شدنِ فرایند را بگیرد.
+   */
+  const keepalive =
+    keepaliveMs > 0
+      ? setInterval(() => {
+          for (const room of rooms.values()) {
+            if (room.sessions.size === 0) continue;
+            broadcast(
+              room,
+              encodeMessage({ type: MSG_TYPES.HB_ROOM_INFO, ...info(room, room.save) }),
+            );
+          }
+        }, keepaliveMs)
+      : null;
+  keepalive?.unref?.();
 
   function scheduleEviction(room: LiveRoom): void {
     if (room.idleTimer) clearTimeout(room.idleTimer);
@@ -472,6 +512,8 @@ export function createRoomManager({
       //    کاتالوگ است). یعنی آستانه‌ی `everyMs` از لحظه‌ی بالا آمدنِ اتاق شمرده
       //    می‌شود؛ محافظه‌کارانه است — دیرتر فشرده می‌کند، نه زودتر.
       compactedAt: Date.now(),
+      // اولین `HB_ROOM_INFO` بعد از join «saved» است (پایین)؛ تا آن لحظه keepalive نمی‌رود.
+      save: "saved",
       compacting: false,
       // ★ بعد از ساختِ اتاق پر می‌شود: خودِ `presence` برای پخش به اتاق نیاز دارد.
       presence: null as unknown as RoomPresence,
@@ -1002,6 +1044,7 @@ export function createRoomManager({
       }
 
       // ۳) رهاکردن
+      if (keepalive) clearInterval(keepalive);
       for (const room of rooms.values()) {
         if (room.idleTimer) clearTimeout(room.idleTimer);
         releaseRoom(room);
@@ -1018,8 +1061,14 @@ export function createRoomManager({
 // ارسال
 // ─────────────────────────────────────────────────────────────
 
-/** فیلدهای `HB_ROOM_INFO` — یک جا، تا `users`/`seq` هیچ‌وقت از هم عقب نیفتند. */
+/**
+ * فیلدهای `HB_ROOM_INFO` — یک جا، تا `users`/`seq` هیچ‌وقت از هم عقب نیفتند.
+ *
+ * ★ و **ثبت** می‌کند: `room.save` همیشه آخرین چیزی است که به اتاق گفته شده، تا keepaliveِ
+ * گام ۹٫۱ همان را تکرار کند — نه حدسی از وضعیتِ فعلی.
+ */
 function info(room: LiveRoom, save: "saved" | "saving" | "unsaved") {
+  room.save = save;
   return { users: room.sessions.size, seq: room.seq, save } as const;
 }
 

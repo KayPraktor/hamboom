@@ -44,6 +44,27 @@ export type { BackoffOptions } from "./backoff.ts";
  *
  * ⚠️ همین قاعده برای حضور و ephemeral هم درست است، و آنجا بدیهی‌تر: مکان‌نمای
  * ده‌ثانیه پیش برای هیچ‌کس ارزشی ندارد.
+ *
+ * ── ★★ دو قطعی که هرگز `close` نمی‌دهند (M5 گام ۹٫۱) ─────────────────────
+ *
+ * جدولِ بالا یک فرضِ پنهان دارد: **یک قابِ بستن می‌رسد**. روی شبکه‌ی ایران دو حالتِ
+ * رایج دقیقاً همان‌هایی‌اند که هیچ قابی نمی‌رسد، و `rt:reconnect` هر دو را اندازه گرفت:
+ *
+ * | حالت | چه چیزی روی سیم است | پیش از این گام |
+ * |---|---|---|
+ * | **نشستِ نیم‌باز** — NATی که وسطِ کار می‌میرد، تعویضِ شبکه، DPI | TCP «باز»، صفر بایت | سرور در دو تیکِ heartbeat می‌بندد (ADR-006)؛ کلاینت **تا بی‌نهایت** `open` |
+ * | **دست‌دادنِ معلق** — TCP وصل، upgrade بی‌جواب | همان، از قبل از `open` | **تا بی‌نهایت** `connecting` |
+ *
+ * مرورگر قابِ pingِ سرور را به JS نشان نمی‌دهد، پس نیمه‌ی کلاینت باید روی **پیامِ
+ * سطحِ برنامه** بنشیند: سرور در هر تیکِ heartbeat یک `HB_ROOM_INFO` هم می‌فرستد
+ * (`apps/realtime/src/room.ts`)، و این‌جا دو نگهبان هست — `connectTimeoutMs` (سوکتی که
+ * باز نمی‌شود) و `silenceTimeoutMs` (سوکتِ بازی که هیچ پیامی نمی‌آورد). هر دو به همان
+ * مسیرِ backoffِ جدولِ بالا می‌ریزند؛ چیزِ تازه‌ای در ماشینِ حالت نیست، فقط دو ماشه‌ی تازه.
+ *
+ * ⚠️ **جفت‌شدگی با سرور:** `silenceTimeoutMs` باید از **دو برابرِ** فاصله‌ی keepaliveِ
+ * سرور (`RT_HEARTBEAT_INTERVAL_MS`، ۲۵s) بیشتر باشد، وگرنه یک keepaliveِ گم‌شده اتصالِ
+ * سالم را می‌اندازد. پیش‌فرضِ ۷۵s سه برابر است — دو keepaliveِ پیاپی می‌توانند گم شوند.
+ * `rt:reconnect` این نامساوی را روی هر دو طرف **assert** می‌کند، نه فقط این کامنت.
  */
 
 // ─────────────────────────────────────────────────────────────
@@ -113,6 +134,15 @@ const CLOSE_POLICY = 1008;
 
 /** چه کار کنیم بعد از بسته‌شدن. */
 export type CloseReaction = "immediate" | "backoff" | "fatal";
+
+/** مهلتِ باز شدنِ سوکت — M5 گام ۹٫۱. دست‌دادنی که ۱۰ ثانیه جواب نگرفته، نمی‌گیرد. */
+export const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+/**
+ * نگهبانِ سکوت — M5 گام ۹٫۱. ★ **۳ × ۲۵s**: keepaliveِ سرور هر ۲۵ ثانیه می‌آید و دو
+ * تای پیاپی می‌توانند گم شوند بی‌آنکه اتصالِ سالم بیفتد. اگر `RT_HEARTBEAT_INTERVAL_MS`
+ * را بالا بردی، این را هم ببر — `rt:reconnect` نامساوی را می‌سنجد.
+ */
+export const DEFAULT_SILENCE_TIMEOUT_MS = 75_000;
 
 /**
  * ★★ سقفِ تلاش‌های **فوریِ پیاپی** — بدونِ آن، «فوری» یک حلقه‌ی تنگ است.
@@ -198,6 +228,22 @@ export interface WebSocketTransportOptions {
    * انحرافِ ساعت و رفت‌وبرگشت می‌مانَد.
    */
   authRefreshMs?: number;
+  /**
+   * ★★ مهلتِ اتصال (M5 گام ۹٫۱) — سوکتی که تا این مدت `open` نشده، انداخته می‌شود و
+   * تلاشِ بعدی با backoff زمان‌بندی می‌شود. `۰` خاموشش می‌کند (فقط برای تست).
+   *
+   * اندازه‌گیری‌شده: بدونِ آن، دست‌دادنِ معلق (TCP وصل، upgrade بی‌جواب) کلاینت را
+   * **تا بی‌نهایت** در `connecting` نگه می‌داشت.
+   */
+  connectTimeoutMs?: number;
+  /**
+   * ★★ نگهبانِ سکوت (M5 گام ۹٫۱) — سوکتِ بازی که این مدت **هیچ** پیامی نیاورده، مرده
+   * فرض می‌شود: انداخته می‌شود و تلاشِ بعدی با backoff می‌آید. هر پیامِ ورودی تایمر را
+   * از نو می‌شمارد. `۰` خاموشش می‌کند (فقط برای تست).
+   *
+   * ⚠️ باید > ۲ × فاصله‌ی keepaliveِ سرور باشد (پیش‌فرض ۳×). دلیلش در سرِ فایل.
+   */
+  silenceTimeoutMs?: number;
   /** ⚠️ P7 — هرگز توکن یا نشانیِ حاوی توکن به این نمی‌رود. */
   logger?: (message: string, fields?: Record<string, unknown>) => void;
 }
@@ -227,6 +273,8 @@ export function createWebSocketTransport(options: WebSocketTransportOptions): We
     createSocket = globalSocket,
     timers = systemTimers,
     authRefreshMs = 45_000,
+    connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS,
+    silenceTimeoutMs = DEFAULT_SILENCE_TIMEOUT_MS,
     logger = () => undefined,
   } = options;
 
@@ -257,6 +305,10 @@ export function createWebSocketTransport(options: WebSocketTransportOptions): We
   let started = false;
   let retryTimer: unknown = null;
   let refreshTimer: unknown = null;
+  /** مهلتِ اتصال — از ساختِ سوکت تا `open` (گام ۹٫۱). */
+  let connectTimer: unknown = null;
+  /** نگهبانِ سکوت — از `open`، و از هر پیامِ ورودی، از نو (گام ۹٫۱). */
+  let silenceTimer: unknown = null;
   /** آخرین `HB_ERROR`ِ رسیده — برای پیامِ فارسی هنگام بسته‌شدن. */
   let lastError: { code: string; message: string } | null = null;
   let droppedWhileDown = 0;
@@ -276,6 +328,8 @@ export function createWebSocketTransport(options: WebSocketTransportOptions): We
     const current = socket;
     socket = null;
     refreshTimer = clearTimer(refreshTimer);
+    connectTimer = clearTimer(connectTimer);
+    silenceTimer = clearTimer(silenceTimer);
     if (!current) return;
     // ★ اول شنونده‌ها را برمی‌داریم: `close` روی سوکتی که خودمان انداختیم
     //   نباید مثلِ یک قطعیِ واقعی رفتار کند.
@@ -344,6 +398,8 @@ export function createWebSocketTransport(options: WebSocketTransportOptions): We
     if (mine !== generation) return;
     socket = null;
     refreshTimer = clearTimer(refreshTimer);
+    connectTimer = clearTimer(connectTimer);
+    silenceTimer = clearTimer(silenceTimer);
 
     // ★ کدِ خطا از **دو** جا: `denyConnection`ِ سرور آن را در `reason`ِ قابِ
     //   بستن می‌گذارد، و همان لحظه یک `HB_ERROR` هم می‌فرستد. اولی کوتاه‌تر و
@@ -363,6 +419,38 @@ export function createWebSocketTransport(options: WebSocketTransportOptions): We
     }
 
     scheduleRetry(reaction);
+  }
+
+  /**
+   * ★★ نگهبانِ سکوت (گام ۹٫۱) — از `open` و از هر پیامِ ورودی از نو.
+   *
+   * ⚠️ «مرده فرض شد» یعنی همان مسیرِ قطعیِ ناگهانی: سوکت انداخته می‌شود (بدونِ
+   * دست‌دادنِ بستن — روی مسیرِ مرده تا timeout معلق می‌مانَد) و backoff شروع می‌شود.
+   * `attempt` بعد از هر `open`ِ موفق صفر شده، پس اولین تلاش با فاصله‌ی پایه می‌آید.
+   */
+  function armSilence(mine: number): void {
+    if (silenceTimeoutMs <= 0) return;
+    silenceTimer = clearTimer(silenceTimer);
+    silenceTimer = timers.setTimeout(() => {
+      silenceTimer = null;
+      if (mine !== generation || !socket) return;
+      logger("اتصال مرده فرض شد", { reason: "silence", silenceTimeoutMs, attempt });
+      dropSocket(CLOSE_NORMAL);
+      scheduleRetry("backoff");
+    }, silenceTimeoutMs);
+  }
+
+  /** ★★ مهلتِ اتصال (گام ۹٫۱) — از ساختِ سوکت تا `open`. */
+  function armConnectTimeout(mine: number): void {
+    if (connectTimeoutMs <= 0) return;
+    connectTimer = clearTimer(connectTimer);
+    connectTimer = timers.setTimeout(() => {
+      connectTimer = null;
+      if (mine !== generation || !socket) return;
+      logger("مهلتِ اتصال تمام شد", { reason: "connect-timeout", connectTimeoutMs, attempt });
+      dropSocket(CLOSE_NORMAL);
+      scheduleRetry("backoff");
+    }, connectTimeoutMs);
   }
 
   async function openSocket(): Promise<void> {
@@ -396,19 +484,24 @@ export function createWebSocketTransport(options: WebSocketTransportOptions): We
     next.binaryType = "arraybuffer";
     socket = next;
     lastError = null;
+    armConnectTimeout(mine);
 
     next.onopen = () => {
       if (mine !== generation) return;
+      connectTimer = clearTimer(connectTimer);
       const resumed = started;
       started = true;
       attempt = 0;
       immediateRuns = 0;
       publish({ phase: "open", resumed });
       scheduleAuthRefresh();
+      armSilence(mine);
     };
 
     next.onmessage = (event) => {
       if (mine !== generation) return;
+      // ★ هر پیامِ ورودی یعنی مسیر زنده است — پیش از decode، تا پیامِ ناشناخته هم بشمارد.
+      armSilence(mine);
       const bytes = toBytes(event.data);
       if (!bytes) return;
       rememberError(bytes);
