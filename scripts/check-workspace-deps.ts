@@ -39,6 +39,8 @@ import { builtinModules } from "node:module";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { stripComments } from "./source-text.ts";
+
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /**
@@ -106,46 +108,6 @@ export function packageOf(specifier: string): string | null {
  * را کامنت نبیند، ولی regex literal را نه. بدترین حالتش این است که یک importِ واقعی
  * را از قلم بیندازد — نه اینکه چیزی را که اعلام شده قرمز کند.
  */
-export function stripComments(source: string): string {
-  let out = "";
-  let i = 0;
-  let quote: string | null = null;
-  while (i < source.length) {
-    const c = source[i] ?? "";
-    const next = source[i + 1] ?? "";
-    if (quote !== null) {
-      out += c;
-      if (c === "\\") {
-        out += next;
-        i += 2;
-        continue;
-      }
-      if (c === quote) quote = null;
-      i += 1;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") {
-      quote = c;
-      out += c;
-      i += 1;
-      continue;
-    }
-    if (c === "/" && next === "/") {
-      while (i < source.length && source[i] !== "\n") i += 1;
-      continue;
-    }
-    if (c === "/" && next === "*") {
-      i += 2;
-      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i += 1;
-      i += 2;
-      continue;
-    }
-    out += c;
-    i += 1;
-  }
-  return out;
-}
-
 /**
  * استخراجِ شناسه‌های bare از یک فایل.
  *

@@ -204,7 +204,9 @@ async function selfTest(pool: pg.Pool): Promise<void> {
     console.error(`\n✖ ${String(reds.length)} چک قرمز شد.`);
     process.exit(1);
   }
-  console.log("\n✔ مرزِ نگهداشت درست resolve می‌شود، معیارِ سن روی SQLِ واقعی اثبات شد، و هیچ ردیفی نماند.");
+  console.log(
+    "\n✔ مرزِ نگهداشت درست resolve می‌شود، معیارِ سن روی SQLِ واقعی اثبات شد، و هیچ ردیفی نماند.",
+  );
 }
 
 async function main(): Promise<void> {

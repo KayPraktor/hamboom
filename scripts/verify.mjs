@@ -157,6 +157,10 @@ const GATES = [
   { name: "deps", run: "node scripts/check-workspace-deps.ts --self-test" },
   { name: "deps (اعلامِ وابستگی)", run: "node scripts/check-workspace-deps.ts" },
   { name: "docs (openapi)", run: "node scripts/gen-openapi.ts --check" },
+  // ★ گیتِ اصل P2 — M5 گام ۹٫۳. یک grepِ یک‌بارمصرف همان گیتِ هیچ‌وقت-اجرانشده است؛ این
+  //   همان grep است که **هر بار** اجرا می‌شود، با فهرستِ مجازِ دلیل‌دار و استثنای مرده‌گیر.
+  { name: "p2", run: "node scripts/check-p2.ts --self-test" },
+  { name: "p2 (بدونِ سرویسِ خارجی)", run: "node scripts/check-p2.ts" },
 ];
 
 const results = [];
