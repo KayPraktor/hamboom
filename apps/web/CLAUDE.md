@@ -273,6 +273,14 @@ pnpm --filter @hamboom/web build       # tsc --noEmit سپس vite build
   [`PanelPayment`](src/panel/PanelPayment.tsx) (payloadها در `<details>`ِ بسته؛ سه عملِ مخرب: verify/ابطال/استرداد). ★ دکمه‌ی ابطال با
   **`expireBlocked`ِ سرور** غیرفعال می‌شود، نه با محاسبه‌ی رابط (سقفش configی است — ADR-056). `PAYMENT_STATUS_FA`/`toman` در
   [`payment-fa.ts`](src/panel/payment-fa.ts) و `isStepUpRequired` در [`step-up.ts`](src/panel/step-up.ts) (سومین مصرف‌کننده آمد ⇒ از کامپوننت بیرون کشیده شد).
+- **آمار و وضعیتِ سیستم (فاز ۷، [ADR-067](../../ARCHITECTURE_DECISIONS.md#adr-067)):** [`PanelStats`](src/panel/PanelStats.tsx) (KPI + سه نمودار + جدولِ پلن؛ پنجره‌ی ۷/۳۰/۹۰ در **state**، نه URL) ·
+  [`PanelSystem`](src/panel/PanelSystem.tsx) (۸ چکِ زنده + پشتیبان + آشتی‌دهی + ساعت + پرچم‌های فقط‌خواندنی؛ **تازه‌سازیِ دستی** چون هر بار واقعاً probeِ شبکه می‌زند) ·
+  [`BarChart`](src/panel/BarChart.tsx) **صفر dep** — رنگ از توکن‌های `--hb-*` (تمِ تیره مجانی)، tooltip با `<title>`ِ بومیِ SVG و صفر JS.
+  ⚠️ **بدونِ `xmlns`**: JSXِ درون‌خطی لازمش ندارد و نوشتنش یک میزبانِ `http://…` به سورسِ runtime می‌آورد که گیتِ P2 قرمزش می‌کند.
+  ★ زمان **از راست به چپ** می‌رود (قدیمی‌ترین سمتِ راست) — رابط فارسیِ native است؛ استثنای P6 مالِ **مختصاتِ بوم** است نه نمودار.
+  ★★ **فرمت‌کننده‌ها از `@hamboom/i18n`** (ADR-024): `formatToman`/`formatJalaliShort`/`formatNumber`/`toPersianDigits` از قبل بودند و هر سه `Asia/Tehran` را **پین** می‌کنند — برخلافِ `fmtTime`ِ محلیِ بقیه‌ی پنل.
+  ⚠️ رشته‌های `detail`ِ سرور ارقامِ **لاتین** دارند (آن‌جا لایه‌ی نمایش نیست) ⇒ تبدیل در خودِ نما با `toPersianDigits` (P6).
+- اندازه‌گیریِ فاز ۷: chunkِ ورودی **+۵۱۴ B** (دو lazy + دو route + دو آیتمِ ناوبری)؛ chunkِ پنل ۳۱٬۴۹۵ → **۴۲٬۲۹۰** بایت؛ **صفر** میزبانِ خارجی در chunkِ ساخته‌شده.
 - اندازه‌گیریِ فاز ۶: chunkِ ورودی **+۳۴۴ B** (دو lazy + دو route)؛ chunkِ پنل ۱۸٫۵ → **۳۰٫۱KB**.
 - اندازه‌گیریِ فاز ۵: chunkِ ورودی **+۲٬۹۵۳ B** (سه route/lazy + کارتِ معلق + متدهای نوی sdk که در ورودی می‌نشینند)؛ chunkِ پنل ۷٫۶ → **۱۸٫۵KB**.
 - ⚠️ **«خروج» نشست را در سرور نمی‌بندد** (ارثیه‌ی M3: `signOut` فقط توکنِ حافظه را پاک می‌کند، کوکیِ refresh می‌مانَد و بارگذاریِ

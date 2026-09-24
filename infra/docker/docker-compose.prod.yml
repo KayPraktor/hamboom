@@ -96,6 +96,15 @@ x-api-env: &api-env
   BILLING_PENDING_EXPIRE_HOURS: ${BILLING_PENDING_EXPIRE_HOURS:-72}
   BILLING_RECONCILE_BATCH: ${BILLING_RECONCILE_BATCH:-50}
   BILLING_ADOPT_ORPHANS: ${BILLING_ADOPT_ORPHANS:-false}
+  # ★★ M6 فاز ۷٫۴ — ورودیِ `GET /admin/system`. ⚠️ هر دو **اختیاری**‌اند و `:-` دارند:
+  #    یک چکِ سلامت نباید api را از بوت بیندازد، و `:?` همان کاری را می‌کرد که در فاز ۴
+  #    کلِ استک را انداخت. نبودنشان ⇒ آن چک «نامعلوم» می‌شود، نه «خراب».
+  #    ⊕ api فقط **می‌خوانَد** (سنِ آخرین پشتیبان)؛ هیچ نوشتنی در باکتِ پشتیبان ندارد.
+  REDIS_URL: ${REDIS_URL:-}
+  REDIS_TLS: ${REDIS_TLS:-false}
+  S3_BUCKET_BACKUPS: ${S3_BUCKET_BACKUPS:-}
+  ADMIN_SYSTEM_TIMEOUT_MS: ${ADMIN_SYSTEM_TIMEOUT_MS:-2000}
+  ADMIN_BACKUP_STALE_HOURS: ${ADMIN_BACKUP_STALE_HOURS:-30}
 
 # ★ envِ **باریکِ** کارِ آشتی‌دهی — M5 گام ۴٫۲.
 #
@@ -117,6 +126,15 @@ x-reconcile-env: &reconcile-env
   BILLING_PENDING_EXPIRE_HOURS: ${BILLING_PENDING_EXPIRE_HOURS:-72}
   BILLING_RECONCILE_BATCH: ${BILLING_RECONCILE_BATCH:-50}
   BILLING_ADOPT_ORPHANS: ${BILLING_ADOPT_ORPHANS:-false}
+  # ★★ M6 فاز ۷٫۴ — ورودیِ `GET /admin/system`. ⚠️ هر دو **اختیاری**‌اند و `:-` دارند:
+  #    یک چکِ سلامت نباید api را از بوت بیندازد، و `:?` همان کاری را می‌کرد که در فاز ۴
+  #    کلِ استک را انداخت. نبودنشان ⇒ آن چک «نامعلوم» می‌شود، نه «خراب».
+  #    ⊕ api فقط **می‌خوانَد** (سنِ آخرین پشتیبان)؛ هیچ نوشتنی در باکتِ پشتیبان ندارد.
+  REDIS_URL: ${REDIS_URL:-}
+  REDIS_TLS: ${REDIS_TLS:-false}
+  S3_BUCKET_BACKUPS: ${S3_BUCKET_BACKUPS:-}
+  ADMIN_SYSTEM_TIMEOUT_MS: ${ADMIN_SYSTEM_TIMEOUT_MS:-2000}
+  ADMIN_BACKUP_STALE_HOURS: ${ADMIN_BACKUP_STALE_HOURS:-30}
 
 # ★ envِ باریکِ کارهای **پشتیبان** — M5 فاز ۷.
 #

@@ -20,7 +20,12 @@ import { createReconcileRecorder, createStalePendingCounter, renderApiMetrics } 
 import { createDbPool } from "./plugins/db.ts";
 import { createPaymentGateway } from "./plugins/payment.ts";
 import { registerReconcileJob, reconcilePolicyFrom } from "./plugins/reconcile.ts";
-import { createAssetObjectStore, createSnapshotObjectStore } from "./plugins/s3.ts";
+import {
+  createAssetObjectStore,
+  createBackupObjectStore,
+  createSnapshotObjectStore,
+} from "./plugins/s3.ts";
+import { registerAdminStatsRoutes } from "./routes/admin-stats.ts";
 import { registerAdminPaymentRoutes, registerAdminRoutes } from "./routes/admin.ts";
 import { registerAssetRoutes } from "./routes/assets.ts";
 import { registerBillingRoutes } from "./routes/billing.ts";
@@ -69,6 +74,11 @@ export interface BuildAppOptions {
   snapshots?: ObjectStore;
   /** ObjectStoreِ باکتِ assets — تزریق‌پذیر تا تست بدونِ MinIO اجرا شود (وگرنه از config). */
   assets?: ObjectStore;
+  /**
+   * ★ ObjectStoreِ باکتِ **پشتیبان** — فقط‌خواندنی، برای `GET /admin/system` (M6 ۷٫۴).
+   * `null`ِ صریح یعنی «عمداً پیکربندی نشده»؛ نیامدنِ آپشن یعنی «از config بساز».
+   */
+  backups?: ObjectStore | null;
   /** درگاهِ پرداخت — تزریق‌پذیر تا تست بدونِ شبکه (وگرنه از config، M4 فاز ۵). */
   gateway?: PaymentGateway;
 }
@@ -233,6 +243,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   // یک store به‌ازای هر باکت؛ تزریق‌پذیر تا تست بدونِ MinIO اجرا شود.
   const snapshots = options.snapshots ?? createSnapshotObjectStore(config);
   const assetStore = options.assets ?? createAssetObjectStore(config);
+  // ★ M6 ۷٫۴ — فقط‌خواندنی و اختیاری؛ `null` یعنی چکِ پشتیبان «نمی‌دانم» می‌گوید، نه «خراب».
+  const backupStore = options.backups === undefined ? createBackupObjectStore(config) : options.backups;
   // ★ fileId از نوعِ uuid ساخته می‌شود چون کلیدِ اصلیِ جدولِ `files` است.
   const assetService = createAssetService({
     objectStore: assetStore,
@@ -324,6 +336,34 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     requireStepUp,
     gateway: resolvedGateway,
     reconcilePolicy: reconcilePolicyFrom(config),
+  });
+
+  // ── ★ آمار و وضعیتِ سیستم (M6 فاز ۷، ADR-067) ─────────────────────────
+  // ★ این‌جا و نه بالاتر: `reconcileRecorder` و انبارها باید از قبل ساخته شده باشند. ضبط‌کننده
+  //   `app.decorate` نشده، پس تنها راهِ رسیدنش به یک handler همین تزریق است.
+  // ⚠️ `startedAtMs` همین‌جا گرفته می‌شود تا probe بتواند «هنوز نوبتِ اولین آشتی‌دهی نرسیده» را
+  //   از «فعال است ولی هرگز اجرا نشده» جدا کند — یک هشدارِ یکسان برای هر دو، روی هر ماشینِ dev
+  //   گرگ‌گویی می‌کرد.
+  registerAdminStatsRoutes(app, {
+    pool,
+    requireAuth,
+    requireStaff,
+    system: {
+      pool,
+      stores: { assets: assetStore, snapshots, backups: backupStore },
+      redis:
+        config.REDIS_URL === undefined
+          ? null
+          : { url: config.REDIS_URL, tls: config.REDIS_TLS },
+      reconcile: {
+        enabled: config.BILLING_RECONCILE_ENABLED,
+        intervalSeconds: config.BILLING_RECONCILE_INTERVAL_SECONDS,
+        snapshot: () => reconcileRecorder.snapshot(),
+      },
+      startedAtMs: Date.now(),
+      staleBackupHours: config.ADMIN_BACKUP_STALE_HOURS,
+      probeTimeoutMs: config.ADMIN_SYSTEM_TIMEOUT_MS,
+    },
   });
 
   // ── آشتی‌دهیِ بازه‌ای (M4 فاز ۷) — **پیش‌فرض خاموش** ─────────────────

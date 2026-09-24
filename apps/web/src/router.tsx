@@ -155,6 +155,13 @@ const PanelPayments = lazy(() =>
 const PanelPayment = lazy(() =>
   import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelPayment })),
 );
+// فاز ۷ — آمار و وضعیتِ سیستم؛ همان chunk (نمودارِ SVG هم داخلِ همین است، نه chunkِ ورودی).
+const PanelStats = lazy(() =>
+  import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelStats })),
+);
+const PanelSystem = lazy(() =>
+  import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelSystem })),
+);
 const panelFallback = <div className="loader">در حال بارگذاری…</div>;
 
 const panelRoute = createRoute({
@@ -216,6 +223,19 @@ const panelPaymentRoute = createRoute({
   component: PanelPayment,
 });
 
+// فاز ۷ — پنجره‌ی آمار (۷/۳۰/۹۰) عمداً در URL نیست: یک تنظیمِ نمایشیِ بی‌اهمیت است و
+// نگه‌داشتنِ الگوی «هیچ پارامترِ پنلی در تاریخچه» ساده‌تر از استثنا‌گذاشتن است.
+const panelStatsRoute = createRoute({
+  getParentRoute: () => panelRoute,
+  path: "/stats",
+  component: PanelStats,
+});
+const panelSystemRoute = createRoute({
+  getParentRoute: () => panelRoute,
+  path: "/system",
+  component: PanelSystem,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -234,6 +254,8 @@ const routeTree = rootRoute.addChildren([
     panelTeamRoute,
     panelPaymentsRoute,
     panelPaymentRoute,
+    panelStatsRoute,
+    panelSystemRoute,
   ]),
 ]);
 

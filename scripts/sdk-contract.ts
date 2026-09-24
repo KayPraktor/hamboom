@@ -21,10 +21,12 @@ import { recordAudit } from "../apps/api/src/audit.ts";
 import { loadApiConfig } from "../apps/api/src/config.ts";
 import { withTransaction } from "../apps/api/src/plugins/db.ts";
 import {
+  adminFeatureFlag,
   adminMe,
   adminPaymentDetail,
   adminPaymentSummary,
   adminSearchResult,
+  adminStats,
   adminTeamDetail,
   adminUserBoard,
   adminUserDetail,
@@ -39,6 +41,7 @@ import {
   invoice,
   plan,
   subscription,
+  systemStatus,
   team,
   user,
 } from "../packages/shared-types/src/api/index.ts";
@@ -352,6 +355,10 @@ async function main(): Promise<void> {
   //
   // ★ مسیرهای `/admin` در سندِ عمومیِ OpenAPI نیستند (internal)، پس این تنها جایی است که
   //   شکلِ پاسخشان با zodِ shared-types روی سیمِ واقعی سنجیده می‌شود.
+  // ⚠️ فیکسچرِ صریح، نه تکیه به وضعِ محیط: اگر کسی به همین شماره دستی staff داده باشد
+  //    (مثلاً برای یک اثباتِ مرورگر)، این چک بی‌دلیل قرمز می‌شد. یک گیت نباید به حالتِ
+  //    محیطی که خودش نساخته تکیه کند.
+  await app.db.query("UPDATE users SET is_staff = false WHERE id = $1", [verified.user!.id]);
   let adminErr: unknown;
   try {
     await sdk.admin.me();
@@ -394,8 +401,11 @@ async function main(): Promise<void> {
         }
         adminMe.parse(verifiedStepUp);
         if (verifiedStepUp.stepUpVerifiedAt === null) throw new Error("stepUpVerifiedAt هنوز null");
+        // ⚠️ این مهر را **Postgres** می‌زند و این‌جا با ساعتِ **Node** سنجیده می‌شود؛ دو ساعتِ
+        //   متفاوت. کفِ منفی همان رواداریِ `CLOCK_SKEW_TOLERANCE_MS`ِ گارد است — بدونش این چک
+        //   تصادفی قرمز می‌شد (اندازه‌گیری: تا ۲ms جلوتر).
         const age = Date.now() - Date.parse(verifiedStepUp.stepUpVerifiedAt);
-        if (!(age >= 0 && age < 10_000)) throw new Error(`stepUpVerifiedAt تازه نیست: ${age}ms`);
+        if (!(age > -2_000 && age < 10_000)) throw new Error(`stepUpVerifiedAt تازه نیست: ${age}ms`);
       },
     );
 
@@ -1055,6 +1065,168 @@ async function main(): Promise<void> {
       await app.db.query("DELETE FROM otp_challenges WHERE destination = $1", [targetPhone]);
       await app.db.query("DELETE FROM users WHERE id = $1", [targetId]);
     }
+
+      // ── فاز ۷ — آمار و وضعیتِ سیستم (ADR-067) ──
+      const stats = await sdk.admin.stats({ days: 14 });
+      check(
+        "45) ★★ GET /admin/stats: DTO سبز، **هر عددِ پولی `number` است نه رشته** (B-2)، و سری دقیقاً ۱۴ سطلِ صفر‌پُر دارد",
+        () => {
+          adminStats.parse(stats);
+          // ★ معیارِ پذیرشِ ۷٫۲ روی **سطحِ API**: هر عددِ پولی عدد است، نه رشته.
+          // ⚠️ و عمداً ادعا نمی‌کند که افتادنِ یک `::bigint` را می‌گیرد — با شکستنِ عمدی آزموده شد و
+          //   **نگرفت**، چون `toAdminStats` هر مقدار را از `Number()` رد می‌کند. شکلِ خودِ کوئری در
+          //   `services/admin-stats.test.ts` قفل است (آن‌جا همان شکستن قرمز می‌شود).
+          for (const [k, v] of Object.entries(stats.revenue)) {
+            if (typeof v !== "number") throw new Error(`revenue.${k} = ${typeof v}`);
+          }
+          if (typeof stats.boards.live !== "number") throw new Error("boards.live رشته است");
+          if (stats.windowDays !== 14) throw new Error(`windowDays=${stats.windowDays}`);
+          for (const [k, arr] of Object.entries(stats.series)) {
+            if (arr.length !== 14) throw new Error(`series.${k} = ${arr.length} سطل، نه ۱۴`);
+          }
+          // ★★ سطل باید **نیمه‌شبِ تهران** باشد، نه نیمه‌شبِ UTC — انحرافِ تاییدشده‌ی «الف».
+          //   تهران +۳:۳۰ است، پس لحظه‌ی UTCی سطل باید ۲۰:۳۰ یا ۲۱:۳۰ (ساعتِ تابستانی) باشد.
+          for (const p of stats.series.boards) {
+            const d = new Date(p.date);
+            const minutes = d.getUTCHours() * 60 + d.getUTCMinutes();
+            if (minutes !== 20 * 60 + 30 && minutes !== 21 * 60 + 30) {
+              throw new Error(`سطل نیمه‌شبِ تهران نیست: ${p.date}`);
+            }
+          }
+          if (stats.teams.personal > stats.teams.total) throw new Error("personal > total");
+          // ★★ ناوردای متقاطع: سری و مجموعِ پنجره **همان predicate و همان پنجره**‌اند، پس باید
+          //   دقیقاً برابر باشند. بدونِ این، یک سریِ سراسر صفر (مثلاً وقتی کلیدِ join با سطل
+          //   نمی‌خواند) از همه‌ی چک‌های شکلی سبز رد می‌شد — با شکستنِ عمدی دیده شد.
+          const sum = (xs: readonly { count?: number; rial?: number }[]): number =>
+            xs.reduce((a2, x) => a2 + (x.count ?? x.rial ?? 0), 0);
+          if (sum(stats.series.boards) !== stats.boards.newInWindow) {
+            throw new Error(
+              `سریِ بورد ${sum(stats.series.boards)} ≠ مجموعِ پنجره ${stats.boards.newInWindow}`,
+            );
+          }
+          if (sum(stats.series.users) !== stats.users.newInWindow) {
+            throw new Error(
+              `سریِ کاربر ${sum(stats.series.users)} ≠ مجموعِ پنجره ${stats.users.newInWindow}`,
+            );
+          }
+          if (sum(stats.series.revenue) !== stats.revenue.windowGrossRial) {
+            throw new Error(
+              `سریِ درآمد ${sum(stats.series.revenue)} ≠ مجموعِ پنجره ${stats.revenue.windowGrossRial}`,
+            );
+          }
+        },
+      );
+
+
+      // ── ★★ ۴۹: سطلِ روزانه واقعاً **روزِ تهران** است، نه UTC ──────────────
+      //
+      // ⚠️ چکِ ۴۵ این را **نمی‌تواند** ببیند و با شکستنِ عمدی ثابت شد: اگر سطل به UTC برگردد،
+      //   مجموعِ سری و برچسبِ سطل‌ها **هر دو** همان می‌مانند و فقط ردیف‌ها به روزِ دیگری می‌افتند.
+      //   تنها راهِ دیدنش، ردیفی است که روزِ تهران و روزِ UTCش **متفاوت** باشد.
+      //
+      // تهران +۳:۳۰ است، پس «ساعتِ ۱ بامدادِ امروزِ تهران» در UTC می‌شود ۲۱:۳۰ی **دیروز**.
+      // چنین بوردی باید در **آخرین** سطل بنشیند؛ با سطلِ UTC در سطلِ ماقبلِ آخر می‌نشیند.
+      const boardTeam = await app.db.query<{ id: string }>(
+        "SELECT id FROM teams WHERE owner_user_id = $1 AND deleted_at IS NULL LIMIT 1",
+        [verified.user!.id],
+      );
+      const tzBoardId = randomUUID();
+      const before2 = await sdk.admin.stats({ days: 7 });
+      await app.db.query(
+        `INSERT INTO boards (id, team_id, created_by, title, created_at, updated_at, last_activity_at)
+         VALUES ($1, $2, $3, $4,
+                 (date_trunc('day', now() AT TIME ZONE 'Asia/Tehran') + interval '1 hour') AT TIME ZONE 'Asia/Tehran',
+                 now(), now())`,
+        [tzBoardId, boardTeam.rows[0]!.id, verified.user!.id, "بوردِ آزمونِ منطقه‌ی زمانی"],
+      );
+      const after2 = await sdk.admin.stats({ days: 7 });
+      await app.db.query("DELETE FROM boards WHERE id = $1", [tzBoardId]);
+      check(
+        "49) ★★ بوردِ ساخته‌شده در ۱:۰۰ بامدادِ تهران (= ۲۱:۳۰ی دیروزِ UTC) در **آخرین** سطل می‌نشیند — نه سطلِ قبلی",
+        () => {
+          const b0 = before2.series.boards;
+          const b1 = after2.series.boards;
+          if (b0.length !== 7 || b1.length !== 7) throw new Error("طولِ سری ۷ نیست");
+          const lastDelta = b1[6]!.count - b0[6]!.count;
+          const prevDelta = b1[5]!.count - b0[5]!.count;
+          if (lastDelta !== 1) {
+            throw new Error(
+              `بورد در آخرین سطل ننشست (آخری ${lastDelta}، قبلی ${prevDelta}) — سطل احتمالاً UTC است`,
+            );
+          }
+          if (prevDelta !== 0) throw new Error(`سطلِ قبلی هم عوض شد: ${prevDelta}`);
+        },
+      );
+      const sys = await sdk.admin.system();
+      const readyz = await app.inject({ method: "GET", url: "/readyz" });
+      check(
+        "46) ★★ GET /admin/system: DB سبز، اختلافِ ساعت عدد است، هر چکِ ناموجود `unknown` (نه `fail`)، و /readyz دست‌نخورده",
+        () => {
+          systemStatus.parse(sys);
+          const byKey = new Map(sys.checks.map((c) => [c.key, c]));
+          for (const k of ["db", "s3:assets", "s3:snapshots", "s3:backups", "redis", "clock", "backup", "reconcile"]) {
+            if (!byKey.has(k)) throw new Error(`چکِ ${k} نیست`);
+          }
+          if (byKey.get("db")!.state !== "ok") throw new Error(`db = ${byKey.get("db")!.state}`);
+          if (byKey.get("s3:assets")!.state !== "ok") throw new Error("باکتِ assets در دسترس نیست");
+          // ⚠️ `unknown` = «نپرسیدیم»؛ با `fail` یکی نیست و نباید حالتِ کلی را به fail ببرد.
+          if (sys.state === "fail") throw new Error("حالتِ کلی fail است");
+          if (typeof sys.clockSkewMs !== "number") throw new Error("اختلافِ ساعت عدد نیست");
+          if (Math.abs(sys.clockSkewMs) > 60_000) throw new Error(`اختلافِ ساعتِ نامعقول: ${sys.clockSkewMs}ms`);
+          if (sys.backup.staleAfterHours !== 30) throw new Error("آستانه‌ی ۳۰ ساعت نیست");
+          // ★ /readyz باید دقیقاً همان چیزی بماند که بود (معیارِ پذیرشِ ۷٫۴).
+          if (readyz.statusCode !== 200) throw new Error(`readyz = ${readyz.statusCode}`);
+          if (JSON.stringify(readyz.json()) !== JSON.stringify({ status: "ready" })) {
+            throw new Error(`readyz عوض شده: ${readyz.payload}`);
+          }
+        },
+      );
+
+      await app.db.query("DELETE FROM feature_flags WHERE key = $1", ["p7-contract"]);
+      const flagsBefore = await sdk.admin.featureFlags();
+      await app.db.query(
+        "INSERT INTO feature_flags (key, enabled, rollout_pct, team_ids) VALUES ($1, true, 25, $2)",
+        ["p7-contract", ["018f7c4e-9c1a-7c2b-8e3d-1a2b3c4d5e6f"]],
+      );
+      const flagsAfter = await sdk.admin.featureFlags();
+      await app.db.query("DELETE FROM feature_flags WHERE key = $1", ["p7-contract"]);
+      check(
+        "47) GET /admin/feature-flags: نمای فقط‌خواندنی — ردیفِ واقعی را می‌بیند و DTOاش سبز است",
+        () => {
+          for (const f of flagsAfter.items) adminFeatureFlag.parse(f);
+          const before = flagsBefore.items.some((f) => f.key === "p7-contract");
+          const row = flagsAfter.items.find((f) => f.key === "p7-contract");
+          if (before) throw new Error("پرچم پیش از درج هم بود");
+          if (row === undefined) throw new Error("پرچمِ درج‌شده دیده نشد");
+          if (row.rolloutPct !== 25 || !row.enabled) throw new Error(JSON.stringify(row));
+          if (row.teamIds.length !== 1) throw new Error(`teamIds=${JSON.stringify(row.teamIds)}`);
+        },
+      );
+
+      await app.db.query("UPDATE users SET is_staff = false WHERE id = $1", [verified.user!.id]);
+      let statsDenied: unknown;
+      let systemDenied: unknown;
+      try {
+        await sdk.admin.stats();
+      } catch (e) {
+        statsDenied = e;
+      }
+      try {
+        await sdk.admin.system();
+      } catch (e) {
+        systemDenied = e;
+      }
+      await app.db.query("UPDATE users SET is_staff = true WHERE id = $1", [verified.user!.id]);
+      check(
+        "48) ★ هر سه مسیرِ فاز ۷ staff-only‌اند: کاربرِ عادی ۴۰۳ می‌گیرد، نه ۲۰۰ی خالی",
+        () => {
+          for (const [name, e] of [["stats", statsDenied], ["system", systemDenied]] as const) {
+            if (!(e instanceof SdkError) || e.status !== 403) {
+              throw new Error(`${name}: ${String(e)}`);
+            }
+          }
+        },
+      );
   } finally {
     await app.db.query(
       "UPDATE users SET is_staff = false, step_up_verified_at = NULL WHERE id = $1",
@@ -1064,6 +1236,56 @@ async function main(): Promise<void> {
     // ردیف‌های auditِ این اجرا (FK RESTRICT روی actor — کاربرِ قرارداد می‌مانَد، ردیف‌ها نه).
     await app.db.query("DELETE FROM audit_logs WHERE actor_user_id = $1", [verified.user!.id]);
   }
+
+  // ── ۷٫۱ — `last_seen_at` روی PGِ زنده ───────────────────────────────────────
+  //
+  // ★ سه ادعا در یک چک، و هیچ‌کدام از تستِ واحد درنمی‌آید (آن فقط شکلِ SQL را می‌سنجد):
+  //   ورود می‌نویسد · گلویِ ۱۵ دقیقه‌ای جلوی نوشتنِ بلافاصله را می‌گیرد · refresh بعد از کهنه‌شدن می‌نویسد.
+  const seenUserId = verified.user!.id;
+  const readSeen = async (): Promise<string | null> => {
+    const { rows } = await app.db.query<{ t: string | null }>(
+      "SELECT last_seen_at::text AS t FROM users WHERE id = $1",
+      [seenUserId],
+    );
+    return rows[0]?.t ?? null;
+  };
+  const refreshOnce = async (token: string): Promise<string> => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/auth/refresh",
+      payload: { refreshToken: token },
+    });
+    if (res.statusCode !== 200) throw new Error(`refresh ⇒ ${res.statusCode}`);
+    const body = res.json() as { refreshToken?: string };
+    if (body.refreshToken === undefined) throw new Error("refreshToken برنگشت (APP_ENV=local لازم است)");
+    return body.refreshToken;
+  };
+
+  await app.db.query("UPDATE users SET last_seen_at = NULL WHERE id = $1", [seenUserId]);
+  await sdk.auth.requestOtp({ phone });
+  const relogin = await sdk.auth.verifyOtp({ phone, code: "424242" });
+  const afterLogin = await readSeen();
+
+  const rotatedToken = await refreshOnce(relogin.refreshToken!);
+  const afterThrottle = await readSeen();
+
+  await app.db.query("UPDATE users SET last_seen_at = now() - interval '20 minutes' WHERE id = $1", [
+    seenUserId,
+  ]);
+  const backdated = await readSeen();
+  await refreshOnce(rotatedToken);
+  const afterStale = await readSeen();
+
+  check(
+    "44) last_seen_at: ورود می‌نویسد · گلویِ ۱۵ دقیقه نگه می‌دارد · refreshِ کهنه دوباره می‌نویسد",
+    () => {
+      if (afterLogin === null) throw new Error("ورود هیچ‌چیز ننوشت");
+      if (afterThrottle !== afterLogin) throw new Error("گلو نگرفت — refreshِ بلافاصله هم نوشت");
+      if (afterStale === null) throw new Error("مقدار پاک شد");
+      if (afterStale === backdated) throw new Error("refresh بعد از کهنگی ننوشت");
+    },
+  );
+  await app.db.query("DELETE FROM otp_challenges WHERE destination = $1", [phone]);
 
   console.log(`\nsummary: ${pass} pass, ${fail} fail.\n`);
   await app.close();

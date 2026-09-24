@@ -5,8 +5,12 @@ import {
   adminPaymentSummary,
   expireRequest,
   paymentActionResult,
+  adminFeatureFlag,
+  adminStats,
+  adminStatsQuery,
   reconcileReport,
   reconcileRequest,
+  systemStatus,
   refundRequest,
   refundResult,
   adminSearchQuery,
@@ -146,6 +150,11 @@ const INTERNAL_SCHEMAS: Record<string, z.ZodType> = {
   RefundResult: refundResult,
   ReconcileRequest: reconcileRequest,
   ReconcileReport: reconcileReport,
+  // فاز ۷ (D12، تاییدِ ۱۴۰۵/۰۷/۰۳) — آمار و وضعیتِ سیستم (ADR-067)
+  AdminStatsQuery: adminStatsQuery,
+  AdminStats: adminStats,
+  SystemStatus: systemStatus,
+  AdminFeatureFlag: adminFeatureFlag,
 };
 
 type PublicSchemaName = keyof typeof COMPONENT_SCHEMAS;
@@ -653,6 +662,33 @@ const ROUTES: RouteDoc[] = [
     internal: true,
     body: "ReconcileRequest",
     ok: { schema: "ReconcileReport" },
+  },
+  // ── فاز ۷ — آمار و وضعیتِ سیستم (ADR-067) ──
+  {
+    method: "get",
+    path: "/admin/stats",
+    tag: "admin",
+    summary:
+      "آمارِ محصول از SQLِ خالص (بدونِ جدولِ شمارنده): کاربر/بورد/تیم، درآمدِ ناخالص و مسترد، تیم‌ها به تفکیکِ پلن، و سه سریِ روزانه‌ی صفر‌پُر بر اساسِ **روزِ تهران**",
+    internal: true,
+    ok: { schema: "AdminStats" },
+  },
+  {
+    method: "get",
+    path: "/admin/system",
+    tag: "admin",
+    summary:
+      "وضعیتِ زنده‌ی زیرساخت: DB، سه باکتِ S3 (با iteratePrefix، نه headObject)، PINGِ RESPِ Redis، سنِ آخرین پشتیبان، وضعیتِ آشتی‌دهی، و اختلافِ ساعتِ DB↔api — /readyz دست‌نخورده می‌مانَد",
+    internal: true,
+    ok: { schema: "SystemStatus" },
+  },
+  {
+    method: "get",
+    path: "/admin/feature-flags",
+    tag: "admin",
+    summary: "نمای فقط‌خواندنیِ feature_flags (M6-D7: ارزیاب و CRUD موکول)",
+    internal: true,
+    ok: { schema: "AdminFeatureFlag", description: "{ items: AdminFeatureFlag[] }" },
   },
 ];
 

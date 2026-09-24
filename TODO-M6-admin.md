@@ -17,8 +17,13 @@
 > انقضای مشروط با **verifyِ تازه**، sweepِ دستی، پنلِ `/panel/payments`، و بازبینیِ خصمانه‌ی جدا (**۱۰ یافته، ۸ رفع**).
 > `sdk:contract` **۴۳/۴۳** · `billing:refund` **۱۱/۱۱** · `billing:settle` **۱۱/۱۱** · `probe-reconcile` **۱۰/۱۰** ·
 > `billing:quota` ۶/۶ · `db:fk-test` سبز · verify ۱۶ گیت سبز.
-> ⏭ **قدمِ بعد: فاز ۷ (آمار و وضعیتِ سیستم؛ `GET /admin/stats` + `GET /admin/system`، DTOها با توقفِ D12) — هنوز
-> شروع نشده؛** با تاییدِ صریحِ مالک شروع می‌شود.
+> ✅ **فاز ۷ (آمار و وضعیتِ سیستم) تمام شد (۱۴۰۵/۰۷/۰۳) — ۷٫۰ تا ۷٫۵:** `last_seen_at` در ورود و refresh (گلو در
+> خودِ `WHERE`، **بیرونِ** تراکنشِ `FOR SHARE` — داخلش روی PG `40P01 deadlock` داد) · `GET /admin/stats` با SQLِ
+> خالص و سطلِ **روزِ تهران** · نمودارِ SVGِ خانگی (صفر dep، ورودی **+۵۱۴ B**) · `GET /admin/system` با ۸ چکِ
+> موازی (Redis با `node:net`، باکت‌ها با `iteratePrefix`) · نمای فقط‌خواندنیِ پرچم‌ها.
+> `sdk:contract` **۴۹/۴۹** · verify ۱۶ گیت سبز. ★ یک **باگِ ۴۲۸ی حلقه‌ای** در `stepUpFresh` پیدا و رفع شد، و
+> **سه سبزِ دروغین در گیت‌های خودم** با شکستنِ عمدی گرفته شد (جدول در [PROGRESS](PROGRESS-M6-admin.md)).
+> ✅ **تایید شد (۱۴۰۵/۰۷/۰۳)**؛ ⏭ قدمِ بعد فاز ۸ (E2E و سخت‌سازی) — هنوز شروع نشده.
 >
 > **نقطه‌ی ورود:** [`docs/m6-handoff.md`](docs/m6-handoff.md) — سندِ تحویلِ M5 به M6 (هفت چیزِ
 > بی‌صدا‌شکننده، گپِ بازیابیِ Object Storage، تصمیم‌های باز).
@@ -259,13 +264,17 @@
 
 | # | گام | معیار پذیرش |
 |---|---|---|
-| ۷٫۱ | `last_seen_at` در refresh (D8) | یک UPDATE هر ≤ ۱۵ دقیقه، تست |
-| ۷٫۲ | `GET /admin/stats` (کاربرِ فعالِ ۱/۷/۳۰ روزه، بوردِ ساخته‌شده، تیم، درآمد `::bigint`، اشتراکِ فعال به تفکیکِ پلن) | تستِ `typeof revenue === "number"` (B-2)؛ گروه‌بندیِ روزانه UTC، جلالی در نما |
-| ۷٫۳ | نمودارِ SVGِ خانگی + `formatToman`/`formatJalaliDate`/`toPersianDigits` | صفر dep؛ P2 روی باندل |
-| ۷٫۴ | `GET /admin/system`: DB · S3 head روی هر سه باکت · Redis با RESP PING روی `node:net` · سنِ آخرین dump/mirror (باکتِ backups فقط‌خواندنی برای api) · `reconcile_last_run = 0` ⇒ هشدار | نقاطِ کورِ handoff §۱٫۵ **قابلِ دیدن**؛ `/readyz` دست‌نخورده |
-| ۷٫۵ | نمای فقط‌خواندنیِ `feature_flags` (D7) | — |
+| ✅ ۷٫۰ | **اندازه‌گیریِ پیش از کد** (۵ خواننده روی کد + ۶ probe روی PG/MinIOِ زنده) | ۷ یافته که نقشه را عوض کردند — جدول در [PROGRESS](PROGRESS-M6-admin.md) |
+| ✅ ۷٫۱ | [`touchLastSeen`](apps/api/src/routes/auth.ts) در ورود **و** refresh (D8) — گلو در خودِ `WHERE`، **بیرونِ** تراکنشِ `FOR SHARE` | ✅ حداکثر یک UPDATE هر ۱۵ دقیقه · تستِ واحد با شکستنِ عمدی قرمز شد · `sdk:contract` **۴۴** روی PGِ زنده (می‌نویسد ⇒ گلو نگه می‌دارد ⇒ بعد از کهنگی دوباره می‌نویسد) · ★ probe: همین UPDATE **داخلِ** تراکنش ⇒ `40P01 deadlock detected` |
+| ✅ ۷٫۱b | ★★ **باگِ ۴۲۸ی حلقه‌ای** در [`stepUpFresh`](apps/api/src/admin-guard.ts): `age >= 0` هر جلو‌بودنِ ساعتِ PG (اندازه‌گیری: ۰–۲ms) را «کهنه» می‌شمرد ⇒ staff کد را وارد می‌کرد و باز ۴۲۸ می‌گرفت | ✅ رواداریِ `CLOCK_SKEW_TOLERANCE_MS = 2_000`؛ تستِ نو با برگرداندنِ `age >= 0` قرمز شد · دو شکستِ «گذرا»ی `sdk:contract` همین بود؛ حالا سه اجرای پیاپی سبز |
+| ✅ ۷٫۲ | [`services/admin-stats.ts`](apps/api/src/services/admin-stats.ts): سه سازنده‌ی کوئریِ **خالص** + `readStats`ِ سه‌کوئریِ موازی؛ سطل = **روزِ تهران** (انحرافِ الف تایید شد)؛ «تیم‌ها به تفکیکِ پلن» از `teams` شروع می‌شود و `subscriptions` را LEFT JOIN می‌کند (وگرنه ۱۸ از ۲۰ تیمِ این ماشین بی‌صدا حذف می‌شدند)؛ سری با `generate_series` **صفر‌پُر** | ✅ **۳۵ms** روی PGِ زنده، هر مقدار `number` · `sdk:contract` **۴۵** (`typeof` روی سطحِ API) + **۴۹** (بوردِ ۱:۰۰ بامدادِ تهران در **آخرین** سطل — با UTC قرمز شد) · شکلِ کوئری در [`admin-stats.test.ts`](apps/api/src/services/admin-stats.test.ts) قفل (برداشتنِ `::bigint` قرمزش می‌کند) |
+| ✅ ۷٫۳ | [`BarChart.tsx`](apps/web/src/panel/BarChart.tsx) — ~۹۰ خط SVG، صفر dep، رنگ از توکن‌های `--hb-*` (تمِ تیره مجانی)، tooltip با `<title>`ِ بومی و صفر JS، زمان **از راست به چپ** | ✅ chunkِ ورودی **+۵۱۴ B** (معیار < ۱KB) · chunkِ پنل ۳۱٬۴۹۵ → **۴۲٬۲۹۰** بایت · **صفر** میزبانِ خارجی در chunkِ ساخته‌شده · بدونِ `xmlns` (گیتِ P2) · در مرورگر با خواندنِ `x`ِ هر `rect` اثبات شد |
+| ✅ ۷٫۴ | [`services/system-status.ts`](apps/api/src/services/system-status.ts): ۸ چکِ **موازی**، هر کدام با مهلتِ خودش · باکت‌ها با **`iteratePrefix`** نه `headObject` · Redis با RESP PINGِ `node:net` (+TLS برای `rediss:`)، **صفر وابستگیِ نو** · سنِ پشتیبان از مهرِ **داخلِ نامِ** کلید (نه `sort().at(-1)` که «آخرین دیتابیس به ترتیبِ الفبا» می‌دهد) · اختلافِ ساعت · `reconcile` با **سه** معنیِ جدا | ✅ روی استکِ واقعی: db ۴ms · باکت‌ها ۷/۱۰/۱۱ms · Redis ۵ms (PONG) · پشتیبانِ ۲۸۹٫۸ ساعته ⇒ **هشدار** · آشتی‌دهیِ خاموش ⇒ **نامعلوم** · `/readyz` بایت‌به‌بایت همان (چکِ ۴۶) · ۱۷ تستِ واحد، و برگرداندن به `headObject` **دقیقاً همان یک تست** را قرمز کرد |
+| ✅ ۷٫۵ | [`services/admin-flags.ts`](apps/api/src/services/admin-flags.ts) + جدول در صفحه‌ی سیستم | ✅ `sdk:contract` **۴۷** (ردیفِ واقعی درج و دیده شد) · جدول امروز **خالی** است و همان نوشته می‌شود — پرچمِ نمایشیِ ساختگی ساخته نشد |
 
 ---
+
+### ✅ فاز ۷ — تمام و **تایید شد (۱۴۰۵/۰۷/۰۳)**
 
 ### فاز ۸ — E2E و سخت‌سازی
 

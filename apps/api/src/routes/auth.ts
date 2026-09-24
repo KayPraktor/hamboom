@@ -11,7 +11,7 @@ import {
   type SmsProvider,
 } from "@hamboom/auth-core";
 import type { ApiErrorCode } from "@hamboom/shared-types";
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
 import type pg from "pg";
 
@@ -59,6 +59,48 @@ async function refreshOwnerSuspended(tx: Executor, rawToken: string): Promise<bo
     [createHash("sha256").update(rawToken).digest("hex")],
   );
   return rows[0]?.status === "suspended";
+}
+
+/**
+ * ★★ M6 ۷٫۱ — «آخرین‌بار دیده‌شده» (M6-D8).
+ *
+ * تا امروز `users.last_seen_at` **هرگز نوشته نمی‌شد** (واقعیتِ فاز ۰، و روی دیتابیسِ این ماشین
+ * اندازه گرفته شد: ۱۹ کاربر، **صفر** مقدار). یعنی هر «کاربرِ فعالِ ۷ روزه» پیش از این گام یک
+ * **صفرِ راست‌گونما** بود، نه یک عدد — دقیقاً همان چیزی که یک داشبوردِ آمار را بی‌ارزش می‌کند.
+ *
+ * گلو در خودِ `WHERE` است نه در کد: حداکثر **یک** UPDATE هر ۱۵ دقیقه به‌ازای هر کاربر، هرچند
+ * بار که refresh بزند.
+ *
+ * ⚠️⚠️ **و عمداً بیرونِ تراکنشِ چرخش صدا زده می‌شود.** آن تراکنش روی همین ردیف `FOR SHARE`
+ * دارد (`refreshOwnerSuspended` / `userSuspendedForShare`)، پس یک UPDATE داخلش یعنی **ارتقای
+ * قفل**، و دو refreshِ هم‌زمانِ یک کاربر به بن‌بست می‌رسند. روی PGِ زنده اثبات شد:
+ * داخلِ تراکنش ⇒ `40P01 deadlock detected` برای یکی از دو نشست (یعنی یک ۵۰۰ و از دست رفتنِ
+ * توکنِ چرخیده)؛ بیرون ⇒ هر دو commit و خودِ گلو سریالی‌شان می‌کند (یکی ۱ ردیف، دیگری ۰).
+ */
+const LAST_SEEN_THROTTLE = "15 minutes";
+
+/** تعدادِ ردیفِ به‌روزشده: ۱ یعنی واقعاً نوشت، ۰ یعنی گلو جلویش را گرفت (یا کاربر حذف‌شده است). */
+export async function touchLastSeen(db: Executor, userId: string): Promise<number> {
+  const { rowCount } = await db.query(
+    `UPDATE users SET last_seen_at = now()
+      WHERE id = $1 AND deleted_at IS NULL
+        AND (last_seen_at IS NULL OR last_seen_at < now() - $2::interval)`,
+    [userId, LAST_SEEN_THROTTLE],
+  );
+  return rowCount ?? 0;
+}
+
+/**
+ * همان، ولی خطا را می‌بلعد. ورود و refresh **نباید** به‌خاطرِ یک متریک بشکنند.
+ * ⚠️ فقط `message` لاگ می‌شود، نه خودِ خطا — خطای pg می‌تواند رشته‌ی اتصال را با خود بیاورد (P7،
+ * همان قاعده‌ی `/readyz`).
+ */
+async function touchLastSeenQuietly(req: FastifyRequest, db: Executor, userId: string): Promise<void> {
+  try {
+    await touchLastSeen(db, userId);
+  } catch (error) {
+    req.log.warn({ reason: String((error as Error).message) }, "last_seen_at به‌روز نشد");
+  }
 }
 
 /** وضعیتِ یک کاربر با قفلِ مشترک — پشتِ تعلیقِ هم‌زمان می‌ایستد (همان استدلالِ بالا، برای verify). */
@@ -147,6 +189,10 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
       return { account, refreshToken };
     });
 
+    // ★ ۷٫۱: ورود هم یک «دیده‌شدن» است. بدونِ این، نشستِ کوتاه‌تر از ۱۵ دقیقه (که هرگز به
+    //   refresh نمی‌رسد) هیچ ردی نمی‌گذارد و «کاربرِ فعالِ امروز» سیستماتیک کم می‌شمارد.
+    await touchLastSeenQuietly(req, deps.pool, created.account.userId);
+
     const accessToken = await signAccessToken(
       deps.secret,
       created.account.userId,
@@ -211,6 +257,9 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRouteDeps): v
         throw error;
       }
       await client.query("COMMIT");
+      // ★ ۷٫۱ — **بعد از** COMMIT و روی همان اتصال، ولی بیرونِ تراکنش. دلیلِ «بیرون» بالای
+      //   `touchLastSeen` است و با بن‌بستِ واقعیِ `40P01` اثبات شده.
+      await touchLastSeenQuietly(req, client, rotated.sub);
       const accessToken = await signAccessToken(deps.secret, rotated.sub, deps.accessTtlSeconds);
       setRefreshCookie(reply, deps, rotated.refreshToken);
       return {

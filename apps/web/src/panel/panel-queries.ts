@@ -174,3 +174,34 @@ export function useReconcile() {
     },
   });
 }
+
+// ── فاز ۷ — آمار و وضعیتِ سیستم (ADR-067) ─────────────────────────────────
+
+export const adminStatsKey = (days: number) => ["admin", "stats", days] as const;
+export const adminSystemKey = ["admin", "system"] as const;
+export const adminFlagsKey = ["admin", "feature-flags"] as const;
+
+/** `GET /admin/stats` — `days` بخشی از کلید است تا هر پنجره کشِ خودش را داشته باشد. */
+export function useAdminStats(days: number) {
+  return useQuery({ queryKey: adminStatsKey(days), queryFn: () => api.admin.stats({ days }) });
+}
+
+/**
+ * `GET /admin/system` — ⚠️ برخلافِ بقیه‌ی hookها، این یکی **probeِ شبکه** می‌زند (S3، Redis).
+ * پس نه با فوکوسِ پنجره refetch می‌شود و نه با mountِ دوباره؛ تازه‌سازی **دستی** است تا
+ * باز‌کردنِ یک تب، سه سرویس را بی‌دلیل صدا نزند.
+ */
+export function useAdminSystem() {
+  return useQuery({
+    queryKey: adminSystemKey,
+    queryFn: () => api.admin.system(),
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    staleTime: 30_000,
+  });
+}
+
+/** نمای فقط‌خواندنیِ پرچم‌ها (M6-D7) — امروز عمداً خالی است. */
+export function useAdminFeatureFlags() {
+  return useQuery({ queryKey: adminFlagsKey, queryFn: () => api.admin.featureFlags() });
+}

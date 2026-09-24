@@ -10,9 +10,10 @@ import { boardAccessMode, boardRole, teamRole } from "./roles.ts";
  *
  * ★ **عمداً کوچک:** فقط آنچه فازِ جاری مصرف می‌کند. فاز ۳: `adminMe`/`stepUpVerifyRequest`؛ فاز ۴: `auditLogEntry`/
  * `auditLogQuery` (تاییدِ ۱۴۰۵/۰۶/۲۶)؛ فاز ۵: کاربران/تیم‌ها/تعلیق/نمای پشتیبانی (تاییدِ ۱۴۰۵/۰۶/۲۷)؛ فاز ۶: پرداخت‌ها و
- * استرداد (تاییدِ ۱۴۰۵/۰۷/۰۱). DTOهای فازهای بعد (`AdminStats`، `SystemStatus`)
- * در **همان فاز** و با یک توقفِ ثبت‌شده در `PROGRESS-M6-admin.md` اضافه می‌شوند — شکلِ فاز ۷ در
- * فاز ۰ حدس است، و ADR-021 تصویبِ حدس نمی‌خواهد.
+ * استرداد (تاییدِ ۱۴۰۵/۰۷/۰۱)؛ فاز ۷: آمار و وضعیتِ سیستم (تاییدِ ۱۴۰۵/۰۷/۰۳).
+ * ★ هر فاز DTOی خودش را **در همان فاز** و با یک توقفِ ثبت‌شده در `PROGRESS-M6-admin.md` آورد —
+ * شکلِ فاز ۷ در فاز ۰ حدس بود، و ADR-021 تصویبِ حدس نمی‌خواهد. (و درست هم بود: `plan_id`ی که
+ * نقشه فرض کرده بود اصلاً وجود ندارد، ستون `plan_code` است.)
  *
  * ⚠️ این‌ها در سندِ **عمومیِ** OpenAPI نیستند (`internal` — ADR-067)؛ در sdk تایپ‌شده‌اند.
  */
@@ -331,3 +332,156 @@ export const reconcileReport = z.object({
   errors: z.array(z.string()),
 });
 export type ReconcileReport = z.infer<typeof reconcileReport>;
+
+// ── فاز ۷ — آمار و وضعیتِ سیستم (تاییدِ مالک ۱۴۰۵/۰۷/۰۳، D12) ──────────────────────────
+
+/**
+ * کوئریِ `GET /admin/stats` — فقط پنجره‌ی سریِ روزانه.
+ *
+ * ⚠️ سقفِ ۹۰ عمدی است: سری روی جدولِ `boards`/`payments` **بدونِ ایندکس** اجرا می‌شود (اندازه‌گیریِ ۷٫۰:
+ * روی ۳۰۰هزار ردیف ۱۶ms، پس ایندکس هنوز نمی‌ارزد) و یک پنجره‌ی بی‌سقف آن استدلال را باطل می‌کند.
+ */
+export const adminStatsQuery = z.object({
+  days: z.coerce.number().int().min(7).max(90).default(30),
+});
+export type AdminStatsQuery = z.infer<typeof adminStatsQuery>;
+
+/**
+ * یک نقطه‌ی سریِ روزانه.
+ *
+ * ★★ `date` **شروعِ روزِ تهران** است (نه UTC)، به‌صورتِ لحظه‌ی ISO. دلیلش اندازه‌گیری است:
+ * لایه‌ی نمایش (`@hamboom/i18n`) منطقه را روی `Asia/Tehran` **پین** کرده، پس یک سطلِ UTC یعنی
+ * برچسبِ جلالیِ «فلان روز» روی بازه‌ی ۰۳:۳۰ تا ۰۳:۳۰ — روی داده‌ی همین ماشین **۴ از ۱۶** سطل
+ * روزِ دیگری می‌افتاد. سرور سطل را به لحظه تبدیل می‌کند تا نما هیچ ریاضیِ منطقه‌ای نکند.
+ */
+export const statPoint = z.object({ date: isoDateTime, count: nonNegative });
+export type StatPoint = z.infer<typeof statPoint>;
+
+/** همان، برای پول. */
+export const statMoneyPoint = z.object({ date: isoDateTime, rial });
+export type StatMoneyPoint = z.infer<typeof statMoneyPoint>;
+
+/** یک ردیفِ «تیم‌ها به تفکیکِ پلن». */
+export const adminPlanUsage = z.object({
+  /** ⚠️ عمداً رشته، نه enum — افزودنِ یک پلنِ نو نباید قراردادِ پنل را بشکند. */
+  planCode: z.string(),
+  planName: z.string(),
+  /** `null` یعنی تیمِ **بی‌ردیفِ اشتراک** (رایگان/شخصی)؛ این‌ها در جدولِ `subscriptions` اصلاً نیستند. */
+  period: z.enum(["monthly", "yearly"]).nullable(),
+  teams: nonNegative,
+  /** صندلیِ **فروخته‌شده** (`subscriptions.seats`)، نه شمارشِ عضو — `team_members` تاریخچه ندارد. */
+  seats: nonNegative,
+});
+export type AdminPlanUsage = z.infer<typeof adminPlanUsage>;
+
+/** پاسخِ `GET /admin/stats` — همه از SQLِ خالص، همه با `::bigint` (B-2). */
+export const adminStats = z.object({
+  generatedAt: isoDateTime,
+  windowDays: nonNegative,
+  users: z.object({
+    total: nonNegative,
+    suspended: nonNegative,
+    staff: nonNegative,
+    active1d: nonNegative,
+    active7d: nonNegative,
+    active30d: nonNegative,
+    newInWindow: nonNegative,
+    /**
+     * ★★ `false` یعنی هنوز **هیچ** ردیفی `last_seen_at` ندارد ⇒ سه عددِ فعالِ بالا «نامعلوم»اند،
+     * نه صفر. بدونِ این پرچم، پنل یک صفرِ راست‌گونما نشان می‌داد — همان چیزی که تا پیش از ۷٫۱
+     * واقعیتِ دیتابیس بود (۱۹ کاربر، صفر مقدار).
+     */
+    activityTracked: z.boolean(),
+  }),
+  boards: z.object({ live: nonNegative, trashed: nonNegative, newInWindow: nonNegative }),
+  /** `personal` زیرمجموعه‌ی `total` است — هر ثبت‌نام یک تیمِ شخصی می‌سازد. */
+  teams: z.object({ total: nonNegative, personal: nonNegative, newInWindow: nonNegative }),
+  plans: z.array(adminPlanUsage),
+  revenue: z.object({
+    /** جمعِ پرداخت‌هایی که **یک‌بار پرداخت شده‌اند** — یعنی `paid` **و** `refunded` (استرداد `paid_at` را پاک نمی‌کند). */
+    grossRial: rial,
+    refundedRial: rial,
+    /**
+     * ⚠️ **علامت‌دار** و عمداً `rial` نیست: استردادِ پرداختی که **پیش از** پنجره انجام شده بود
+     * می‌تواند خالصِ پنجره را منفی کند. یک `nonnegative` این‌جا فقط یک ۵۰۰ی بی‌دلیل می‌ساخت.
+     */
+    netRial: z.number().int(),
+    windowGrossRial: rial,
+  }),
+  series: z.object({
+    boards: z.array(statPoint),
+    users: z.array(statPoint),
+    revenue: z.array(statMoneyPoint),
+  }),
+});
+export type AdminStats = z.infer<typeof adminStats>;
+
+/** وضعیتِ یک چکِ سیستم. `unknown` = «نپرسیدیم/نمی‌دانیم» و با `fail` یکی نیست (همان قاعده‌ی ADR-056). */
+export const systemCheckState = z.enum(["ok", "warn", "fail", "unknown"]);
+export type SystemCheckState = z.infer<typeof systemCheckState>;
+
+/** یک چکِ زنده در `GET /admin/system`. */
+export const systemCheck = z.object({
+  /** ⚠️ عمداً رشته: `db` · `s3:assets` · `s3:snapshots` · `s3:backups` · `redis` · `clock`. */
+  key: z.string(),
+  state: systemCheckState,
+  /** فارسیِ کوتاهِ قابلِ نمایش — ⚠️ هرگز رشته‌ی اتصال، رمز یا متنِ خامِ خطا (P7). */
+  detail: z.string(),
+  /** `null` یعنی اصلاً پرسیده نشد (مثلاً Redis پیکربندی نشده). */
+  latencyMs: nonNegative.nullable(),
+});
+export type SystemCheck = z.infer<typeof systemCheck>;
+
+/**
+ * پاسخِ `GET /admin/system` — نقاطِ کورِ `/readyz` را **دیدنی** می‌کند
+ * ([ADR-067](../../../../ARCHITECTURE_DECISIONS.md#adr-067): به‌جای عمیق‌کردنِ `/readyz`).
+ */
+export const systemStatus = z.object({
+  generatedAt: isoDateTime,
+  /** بدترینِ حالتِ چک‌ها (`fail` > `warn` > `unknown` > `ok`). */
+  state: systemCheckState,
+  checks: z.array(systemCheck),
+  backup: z.object({
+    lastDumpAt: isoDateTime.nullable(),
+    lastMirrorAt: isoDateTime.nullable(),
+    /** سنِ تازه‌ترینِ آن دو به ساعت؛ `null` یعنی هیچ پشتیبانی نیست. */
+    ageHours: z.number().nullable(),
+    /** عددِ سیاستیِ فاز ۰: ۳۰ ساعت. */
+    staleAfterHours: nonNegative,
+  }),
+  reconcile: z.object({
+    /** `BILLING_RECONCILE_ENABLED` — خاموش‌بودن **خرابی نیست**. */
+    enabled: z.boolean(),
+    intervalSeconds: nonNegative,
+    /**
+     * ⚠️ فقط مسیرِ **تایمر** را می‌شمارد؛ sweepِ دستیِ فاز ۶ به آن دست نمی‌زند، و نودی که
+     * قفلِ رهبری را باخته هیچ‌وقت ثبت نمی‌کند. پس `null` سه معنی دارد و پنل هر سه را جدا می‌گوید.
+     */
+    lastRunAt: isoDateTime.nullable(),
+    runs: nonNegative,
+    activated: nonNegative,
+    expired: nonNegative,
+    orphans: nonNegative,
+    adopted: nonNegative,
+    errors: nonNegative,
+  }),
+  /**
+   * ★★ ساعتِ Postgres منهای ساعتِ api (میلی‌ثانیه). همین اختلاف بود که step-up را به حلقه‌ی ۴۲۸
+   * می‌انداخت (۷٫۱b) — حالا به‌جای نامرئی‌ماندن، دیده می‌شود. `null` یعنی خودِ DB در دسترس نبود.
+   */
+  clockSkewMs: z.number().nullable(),
+});
+export type SystemStatus = z.infer<typeof systemStatus>;
+
+/**
+ * یک ردیفِ `feature_flags` — **فقط‌خواندنی** (M6-D7: ارزیاب و CRUD موکول شدند).
+ * ⚠️ جدول امروز خالی است و این صادقانه است، نه باگ؛ پرچمِ نمایشیِ ساختگی ساخته نمی‌شود.
+ */
+export const adminFeatureFlag = z.object({
+  key: z.string(),
+  enabled: z.boolean(),
+  rolloutPct: z.number().int().min(0).max(100),
+  teamIds: z.array(uuid),
+  updatedAt: isoDateTime,
+});
+export type AdminFeatureFlag = z.infer<typeof adminFeatureFlag>;

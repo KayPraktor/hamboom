@@ -194,7 +194,15 @@ describe("stepUpFresh — پنجره‌ی per-user (خالص)", () => {
   it("یک میلی‌ثانیه بعد از مرز ⇒ کهنه", () => {
     expect(stepUpFresh(new Date(now - 600_001), 600, now)).toBe(false);
   });
-  it("⚠️ زمانِ **آینده** (skewِ ساعت) ⇒ کهنه، نه تازه‌ی همیشگی", () => {
+  it("⚠️ زمانِ **آینده**ی دور ⇒ کهنه، نه تازه‌ی همیشگی", () => {
     expect(stepUpFresh(new Date(now + 5_000), 600, now)).toBe(false);
+    expect(stepUpFresh(new Date(now + 3_600_000), 600, now)).toBe(false);
+  });
+  it("★ ولی skewِ کوچکِ ساعتِ دیتابیس ⇒ هنوز تازه (باگِ ۴۲۸ی حلقه‌ای، M6 ۷٫۱)", () => {
+    // روی همین ماشین اندازه گرفته شد: now()ِ PG تا ۲ms از Date.nowِ Node جلوتر است.
+    expect(stepUpFresh(new Date(now + 2), 600, now)).toBe(true);
+    expect(stepUpFresh(new Date(now + 1_999), 600, now)).toBe(true);
+    // و درست بیرونِ رواداری دوباره کهنه — رواداری پنجره را باز نمی‌کند.
+    expect(stepUpFresh(new Date(now + 2_001), 600, now)).toBe(false);
   });
 });

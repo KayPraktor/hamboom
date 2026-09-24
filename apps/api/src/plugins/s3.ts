@@ -32,3 +32,16 @@ export function createSnapshotObjectStore(config: ApiConfig): ObjectStore {
 export function createAssetObjectStore(config: ApiConfig): ObjectStore {
   return createS3ObjectStore(s3ConfigFor(config, config.S3_BUCKET_ASSETS));
 }
+
+/**
+ * ★★ باکتِ پشتیبان — **فقط برای خواندن** در `GET /admin/system` (M6 فاز ۷٫۴).
+ *
+ * ⚠️ `null` وقتی `S3_BUCKET_BACKUPS` ست نشده باشد: این متغیر برای api عمداً اختیاری است و
+ * **پیش‌فرض ندارد** — یک نامِ حدسی چکِ سلامت را قرمزِ دروغین می‌کرد (دلیلِ کامل کنارِ
+ * `adminProbeEnvSchema`). هیچ نوشتنی از این مسیر انجام نمی‌شود و `ensureBucket` هرگز صدا
+ * زده نمی‌شود — یک صفحه‌ی staff نباید بتواند در production باکت بسازد.
+ */
+export function createBackupObjectStore(config: ApiConfig): ObjectStore | null {
+  const bucket = config.S3_BUCKET_BACKUPS;
+  return bucket === undefined ? null : createS3ObjectStore(s3ConfigFor(config, bucket));
+}

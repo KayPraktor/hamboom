@@ -12,7 +12,7 @@ import { Link, Outlet } from "@tanstack/react-router";
  * لینکِ بخشی که هنوز endpoint ندارد این‌جا نیست — منوی «به‌زودی» فقط شلوغی است.
  */
 const SECTIONS: readonly {
-  to: "/panel" | "/panel/audit" | "/panel/users" | "/panel/payments";
+  to: "/panel" | "/panel/audit" | "/panel/users" | "/panel/payments" | "/panel/stats" | "/panel/system";
   label: string;
   exact?: boolean;
 }[] = [
@@ -20,6 +20,8 @@ const SECTIONS: readonly {
   { to: "/panel/users", label: "کاربران و تیم‌ها" }, // فاز ۵
   { to: "/panel/payments", label: "پرداخت‌ها" }, // فاز ۶
   { to: "/panel/audit", label: "ممیزی" }, // فاز ۴٫۳
+  { to: "/panel/stats", label: "آمار" }, // فاز ۷
+  { to: "/panel/system", label: "وضعیتِ سیستم" }, // فاز ۷
 ];
 
 export function PanelLayout() {

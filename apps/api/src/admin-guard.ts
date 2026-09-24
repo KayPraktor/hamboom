@@ -73,6 +73,24 @@ export async function readStaff(
   };
 }
 
+/**
+ * ★★ رواداریِ اختلافِ ساعت — رفعِ باگی که فاز ۷ پیدا کرد (M6 ۷٫۱).
+ *
+ * `step_up_verified_at` را **Postgres** با `now()` می‌نویسد، ولی تازگی را **Node** با
+ * `Date.now()` می‌سنجد. این دو ساعتِ متفاوت‌اند (در production دو کانتینرِ جدا). نسخه‌ی قبلی
+ * `age >= 0` می‌خواست، پس اگر ساعتِ دیتابیس حتی **یک میلی‌ثانیه** جلوتر می‌بود، step-upِ
+ * تازه‌ی تازه **کهنه** شمرده می‌شد: staff کد را وارد می‌کرد و عملِ بعدی‌اش باز ۴۲۸ می‌گرفت —
+ * یک حلقه‌ی بی‌پایان، بدونِ هیچ پیامِ قابلِ فهم.
+ *
+ * ⚠️ **حدس نبود، اندازه‌گیری شد:** روی همین ماشین اختلاف ۰ تا ۲ms است و در سه اجرای
+ * `sdk:contract` **دو بار** قرمز شد (یک‌بار ۴۲۸ روی تعلیق، یک‌بار «تازه نیست: -2ms»).
+ *
+ * ۲ ثانیه عمداً کوچک است: کانتینرهای یک میزبان در حدِ میکروثانیه اختلاف دارند و NTP هم
+ * زیرِ ثانیه نگه می‌دارد. بزرگ‌تر از این دیگر skew نیست، **خرابیِ ساعت** است — و به‌جای
+ * بازکردنِ پنجره، `GET /admin/system` خودِ اختلاف را نشان می‌دهد (۷٫۴).
+ */
+const CLOCK_SKEW_TOLERANCE_MS = 2_000;
+
 /** آیا step-up داخلِ پنجره است؟ خالص، برای تست و برای پنل (`GET /admin/me`). */
 export function stepUpFresh(
   stepUpVerifiedAt: Date | null,
@@ -81,7 +99,7 @@ export function stepUpFresh(
 ): boolean {
   if (stepUpVerifiedAt === null) return false;
   const age = nowMs - stepUpVerifiedAt.getTime();
-  return age >= 0 && age <= stepUpSeconds * 1000;
+  return age >= -CLOCK_SKEW_TOLERANCE_MS && age <= stepUpSeconds * 1000;
 }
 
 export function makeStaffGuards(deps: StaffGuardDeps): {

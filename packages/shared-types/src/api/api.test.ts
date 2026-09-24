@@ -32,6 +32,10 @@ import {
   teamMember,
   user,
   userPublic,
+  adminStats,
+  adminStatsQuery,
+  adminFeatureFlag,
+  systemStatus,
 } from "./index.ts";
 
 const ID = "018f7c4e-9c1a-7c2b-8e3d-1a2b3c4d5e6f";
@@ -310,5 +314,93 @@ describe("قراردادِ billing — فاز ۲ی M4", () => {
     // ★ یک مقدارِ سومِ آینده نباید ۴۰۰ بدهد و یک پرداختِ واقعی را گم کند
     expect(zarinpalCallbackQuery.safeParse({ ...q, Status: "SOMETHING_NEW" }).success).toBe(true);
     expect(zarinpalCallbackQuery.safeParse({ ...q, Authority: "" }).success).toBe(false);
+  });
+});
+
+describe("پنلِ ادمین — آمار و وضعیتِ سیستم (M6 فاز ۷)", () => {
+  const STATS = {
+    generatedAt: DATE,
+    windowDays: 30,
+    users: {
+      total: 19,
+      suspended: 0,
+      staff: 1,
+      active1d: 3,
+      active7d: 7,
+      active30d: 12,
+      newInWindow: 4,
+      activityTracked: true,
+    },
+    boards: { live: 64, trashed: 0, newInWindow: 9 },
+    teams: { total: 20, personal: 18, newInWindow: 2 },
+    plans: [{ planCode: "pro", planName: "حرفه‌ای", period: "monthly", teams: 1, seats: 1 }],
+    revenue: { grossRial: 174_960_000, refundedRial: 85_000_000, netRial: 89_960_000, windowGrossRial: 0 },
+    series: {
+      boards: [{ date: DATE, count: 3 }],
+      users: [{ date: DATE, count: 1 }],
+      revenue: [{ date: DATE, rial: 1_990_000 }],
+    },
+  };
+
+  it("شکلِ کاملِ adminStats رفت‌وبرگشت می‌کند", () => {
+    expect(adminStats.parse(STATS)).toEqual(STATS);
+  });
+
+  it("★★ B-2: پولِ **رشته‌ای** رد می‌شود — همان خرابی‌ای که `sum()` بدونِ `::bigint` می‌سازد", () => {
+    expect(rial.safeParse("174960000").success).toBe(false);
+    const asString = { ...STATS, revenue: { ...STATS.revenue, grossRial: "174960000" } };
+    expect(adminStats.safeParse(asString).success).toBe(false);
+    const countAsString = { ...STATS, boards: { ...STATS.boards, live: "64" } };
+    expect(adminStats.safeParse(countAsString).success).toBe(false);
+  });
+
+  it("⚠️ netRial علامت‌دار است (استردادِ پرداختِ پیش از پنجره) ولی gross هرگز منفی نیست", () => {
+    expect(adminStats.safeParse({ ...STATS, revenue: { ...STATS.revenue, netRial: -85_000_000 } }).success).toBe(true);
+    expect(adminStats.safeParse({ ...STATS, revenue: { ...STATS.revenue, grossRial: -1 } }).success).toBe(false);
+  });
+
+  it("پلنِ بی‌اشتراک با period=null مجاز است (تیمِ رایگان/شخصی ردیفِ اشتراک ندارد)", () => {
+    const free = { planCode: "free", planName: "رایگان", period: null, teams: 17, seats: 17 };
+    expect(adminStats.safeParse({ ...STATS, plans: [free] }).success).toBe(true);
+    expect(adminStats.safeParse({ ...STATS, plans: [{ ...free, period: "weekly" }] }).success).toBe(false);
+  });
+
+  it("پنجره‌ی روز: کف ۷، سقف ۹۰، پیش‌فرض ۳۰، و رشته‌ی عددی coerce می‌شود (query string)", () => {
+    expect(adminStatsQuery.parse({}).days).toBe(30);
+    expect(adminStatsQuery.parse({ days: "14" }).days).toBe(14);
+    expect(adminStatsQuery.safeParse({ days: 6 }).success).toBe(false);
+    expect(adminStatsQuery.safeParse({ days: 91 }).success).toBe(false);
+  });
+
+  it("systemStatus: حالت‌های چهارگانه، و clockSkewMs علامت‌دار و nullable", () => {
+    const S = {
+      generatedAt: DATE,
+      state: "warn",
+      checks: [{ key: "s3:backups", state: "warn", detail: "باکت در دسترس است", latencyMs: 12 }],
+      backup: { lastDumpAt: DATE, lastMirrorAt: null, ageHours: 31.5, staleAfterHours: 30 },
+      reconcile: {
+        enabled: false,
+        intervalSeconds: 300,
+        lastRunAt: null,
+        runs: 0,
+        activated: 0,
+        expired: 0,
+        orphans: 0,
+        adopted: 0,
+        errors: 0,
+      },
+      clockSkewMs: -2,
+    };
+    expect(systemStatus.parse(S)).toEqual(S);
+    expect(systemStatus.safeParse({ ...S, state: "degraded" }).success).toBe(false);
+    expect(systemStatus.safeParse({ ...S, clockSkewMs: null }).success).toBe(true);
+    expect(systemStatus.safeParse({ ...S, checks: [{ key: "redis", state: "unknown", detail: "پیکربندی نشده", latencyMs: null }] }).success).toBe(true);
+  });
+
+  it("پرچمِ قابلیت: درصدِ انتشار ۰..۱۰۰ و teamIds همه uuid", () => {
+    const F = { key: "new-toolbar", enabled: false, rolloutPct: 0, teamIds: [ID], updatedAt: DATE };
+    expect(adminFeatureFlag.parse(F)).toEqual(F);
+    expect(adminFeatureFlag.safeParse({ ...F, rolloutPct: 101 }).success).toBe(false);
+    expect(adminFeatureFlag.safeParse({ ...F, teamIds: ["not-a-uuid"] }).success).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import {
   adminEnvSchema,
+  adminProbeEnvSchema,
   apiServerEnvSchema,
   assertProductionConfig,
   appEnvSchema,
@@ -37,7 +38,10 @@ const apiEnvSchema = appEnvSchema
   //    چون تنها فرستنده mock بود و چیزی برای پیکربندی نداشت.
   .and(smsEnvSchema)
   // ★ M6 فاز ۳ — پنجره‌ی step-upِ پنل (ADR-066). فقط api؛ آشتی‌دهی پایین این را ندارد.
-  .and(adminEnvSchema);
+  .and(adminEnvSchema)
+  // ★★ M6 فاز ۷٫۴ — ورودیِ `GET /admin/system`. ⚠️ همه اختیاری/پیش‌فرض‌دار: یک چکِ سلامت
+  //    نباید سرور را از بوت بیندازد (دلیلِ کامل کنارِ خودِ schema).
+  .and(adminProbeEnvSchema);
 
 export function loadApiConfig() {
   const config = loadEnv(apiEnvSchema);

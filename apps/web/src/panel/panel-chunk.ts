@@ -7,6 +7,8 @@ export { PanelHome } from "./PanelHome.tsx";
 export { PanelLayout } from "./PanelLayout.tsx";
 export { PanelPayment } from "./PanelPayment.tsx";
 export { PanelPayments } from "./PanelPayments.tsx";
+export { PanelStats } from "./PanelStats.tsx";
+export { PanelSystem } from "./PanelSystem.tsx";
 export { PanelTeam } from "./PanelTeam.tsx";
 export { PanelUser } from "./PanelUser.tsx";
 export { PanelUsers } from "./PanelUsers.tsx";

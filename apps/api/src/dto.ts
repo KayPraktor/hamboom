@@ -1,11 +1,14 @@
 import { maskPhone } from "@hamboom/auth-core";
 import type {
+  AdminFeatureFlag,
   AdminPaymentDetail,
   AdminPaymentSummary,
+  AdminPlanUsage,
   AdminTeamDetail,
   AdminTeamSummary,
   AdminUserBoard,
   AdminUserDetail,
+  AdminStats,
   AdminUserSummary,
   AuditLogEntry,
   Board,
@@ -32,6 +35,7 @@ import type {
   AdminPaymentDetailRows,
   AdminPaymentRow,
 } from "./services/admin-payments.ts";
+import type { StatsRows, StatsSeriesRow } from "./services/admin-stats.ts";
 
 /**
  * لایه‌ی serialize — ردیفِ خامِ DB (snake_case) → DTOهای camelCaseِ `shared-types`. گام ۶ (اصلاحِ فاز ۵).
@@ -597,4 +601,84 @@ export function toAdminPaymentDetail(
     subscription: rows.subscription === null ? null : toSubscription(rows.subscription),
     expireBlocked,
   };
+}
+
+// ── آمار و وضعیتِ سیستم (M6 فاز ۷) ───────────────────────────────────────
+
+/**
+ * ردیف‌های خامِ آمار → `AdminStats`.
+ *
+ * ★ `Number(...)` روی همه‌ی مقادیر عمدی است، هرچند کوئری‌ها `::bigint` دارند و استخر OIDِ ۲۰ را
+ * کوئرس می‌کند: اگر روزی یک `::bigint` از یک کوئری بیفتد، این‌جا به‌جای الحاقِ رشته یک عددِ درست
+ * می‌سازد و تستِ `typeof === "number"` هم همان را قفل می‌کند (B-2).
+ */
+export function toAdminStats(rows: StatsRows, windowDays: number): AdminStats {
+  const t = rows.totals;
+  const pick = (kind: StatsSeriesRow["kind"]): StatsSeriesRow[] =>
+    rows.series.filter((s) => s.kind === kind);
+  const grossRial = Number(t.revenue_gross);
+  const refundedRial = Number(t.revenue_refunded);
+  return {
+    generatedAt: iso(t.generated_at),
+    windowDays,
+    users: {
+      total: Number(t.users_total),
+      suspended: Number(t.users_suspended),
+      staff: Number(t.users_staff),
+      active1d: Number(t.users_1d),
+      active7d: Number(t.users_7d),
+      active30d: Number(t.users_30d),
+      newInWindow: Number(t.users_new),
+      // ★ «هیچ ردیفی last_seen_at ندارد» ≠ «هیچ‌کس فعال نیست». نما باید بتواند این دو را جدا بگوید.
+      activityTracked: Number(t.users_seen_any) > 0,
+    },
+    boards: {
+      live: Number(t.boards_live),
+      trashed: Number(t.boards_trashed),
+      newInWindow: Number(t.boards_new),
+    },
+    teams: {
+      total: Number(t.teams_total),
+      personal: Number(t.teams_personal),
+      newInWindow: Number(t.teams_new),
+    },
+    plans: rows.plans.map((p) => ({
+      planCode: p.plan_code,
+      planName: p.plan_name,
+      period: p.period as AdminPlanUsage["period"],
+      teams: Number(p.teams),
+      seats: Number(p.seats),
+    })),
+    revenue: {
+      grossRial,
+      refundedRial,
+      // ⚠️ می‌تواند منفی شود اگر استردادِ پرداختی از پیش از پنجره در این پنجره ثبت شده باشد.
+      netRial: grossRial - refundedRial,
+      windowGrossRial: Number(t.revenue_window),
+    },
+    series: {
+      boards: pick("boards").map((s) => ({ date: iso(s.bucket), count: Number(s.value) })),
+      users: pick("users").map((s) => ({ date: iso(s.bucket), count: Number(s.value) })),
+      revenue: pick("revenue").map((s) => ({ date: iso(s.bucket), rial: Number(s.value) })),
+    },
+  };
+}
+
+/** ردیفِ `feature_flags` → DTO. جدول امروز خالی است و همین صادقانه نمایش داده می‌شود (M6-D7). */
+export function toAdminFeatureFlag(r: FeatureFlagRow): AdminFeatureFlag {
+  return {
+    key: r.key,
+    enabled: r.enabled,
+    rolloutPct: Number(r.rollout_pct),
+    teamIds: r.team_ids ?? [],
+    updatedAt: iso(r.updated_at),
+  };
+}
+
+export interface FeatureFlagRow {
+  key: string;
+  enabled: boolean;
+  rollout_pct: number | string;
+  team_ids: string[] | null;
+  updated_at: Date | string;
 }

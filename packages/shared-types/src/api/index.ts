@@ -98,6 +98,16 @@ export {
   refundResult,
   reconcileRequest,
   reconcileReport,
+  // فاز ۷ — آمار و وضعیتِ سیستم (ADR-067)
+  adminStatsQuery,
+  statPoint,
+  statMoneyPoint,
+  adminPlanUsage,
+  adminStats,
+  systemCheckState,
+  systemCheck,
+  systemStatus,
+  adminFeatureFlag,
 } from "./admin.ts";
 export type {
   AdminMe,
@@ -124,6 +134,15 @@ export type {
   RefundResult,
   ReconcileRequest,
   ReconcileReport,
+  AdminStatsQuery,
+  StatPoint,
+  StatMoneyPoint,
+  AdminPlanUsage,
+  AdminStats,
+  SystemCheckState,
+  SystemCheck,
+  SystemStatus,
+  AdminFeatureFlag,
 } from "./admin.ts";
 
 export { rtTokenClaims } from "./rt-token.ts";

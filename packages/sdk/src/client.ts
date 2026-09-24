@@ -1,15 +1,19 @@
 import type {
   AddBoardMemberBody,
+  AdminFeatureFlag,
   AdminMe,
   AdminSearchResult,
   AdminTeamDetail,
   AdminPaymentDetail,
   AdminPaymentQuery,
+  AdminStats,
+  AdminStatsQuery,
   AdminPaymentSummary,
   AdminUserBoard,
   ExpireRequest,
   PaymentActionResult,
   ReconcileReport,
+  SystemStatus,
   ReconcileRequest,
   RefundRequest,
   RefundResult,
@@ -461,6 +465,26 @@ export function createClient(options: ClientOptions) {
         reconcile: (body: Partial<ReconcileRequest> = {}): Promise<ReconcileReport> =>
           request("POST", "/admin/payments/reconcile", { body }),
       },
+      // ── فاز ۷ — آمار و وضعیتِ سیستم (ADR-067) ──
+      /**
+       * آمارِ محصول — همه از SQLِ خالص، هیچ جدولِ شمارنده‌ای پشتش نیست.
+       *
+       * ★ سطلِ روزانه‌ی سری‌ها **روزِ تهران** است و `date` لحظه‌ی شروعِ آن روز — پس نما فقط
+       *   `formatJalaliShort` می‌زند و هیچ ریاضیِ منطقه‌ای نمی‌کند.
+       * ⚠️ `users.activityTracked === false` یعنی هنوز هیچ ردیفی `last_seen_at` ندارد؛ آن‌وقت
+       *   `active1d/7d/30d` **نامعلوم**‌اند، نه صفر.
+       */
+      stats: (query: Partial<AdminStatsQuery> = {}): Promise<AdminStats> =>
+        request("GET", "/admin/stats", { query }),
+      /**
+       * وضعیتِ زنده‌ی زیرساخت — نقاطِ کورِ `/readyz` را دیدنی می‌کند (ADR-067).
+       * ⚠️ probeهای شبکه‌ای دارد، پس کندتر از بقیه است (سقفش `ADMIN_SYSTEM_TIMEOUT_MS`).
+       * `state: "unknown"` یعنی «نپرسیدیم» (مثلاً Redis پیکربندی نشده)، نه «خراب».
+       */
+      system: (): Promise<SystemStatus> => request("GET", "/admin/system"),
+      /** نمای فقط‌خواندنیِ پرچم‌های قابلیت — امروز عمداً خالی است (M6-D7). */
+      featureFlags: (): Promise<{ items: AdminFeatureFlag[] }> =>
+        request("GET", "/admin/feature-flags"),
     },
 
     links: {
