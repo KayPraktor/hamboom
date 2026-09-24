@@ -62,6 +62,11 @@ const covers = (prefix: string, route: string): boolean =>
  */
 export const EDGE_RATE_ZONES: Readonly<Record<string, { zone: string; burst: number }>> = {
   "/auth/otp": { zone: "hb_auth", burst: 30 },
+  // ★ M6 فاز ۳ (ADR-065، عددِ سیاستیِ مالک: ۵ r/s، رگبار ۲۰): کلِ پنلِ ادمین. کلید **برابرِ**
+  //   پیشوند است، پس مولد `limit_req` را در **همان** بلوکِ `location /admin` می‌نشاند — بلوکِ دوم
+  //   یعنی `[emerg] duplicate location` و nginx بوت نمی‌شود (probe ۱٫۹ اندازه گرفت)؛ کلیدِ
+  //   `/admin/` هم هیچ مسیری را نمی‌پوشاند (`covers` ⇒ `/admin//`).
+  "/admin": { zone: "hb_admin", burst: 20 },
 };
 
 export function renderNginxLocations(
@@ -77,18 +82,26 @@ export function renderNginxLocations(
     "# هر پیشوند به upstreamِ api می‌رود؛ هر چیزِ دیگری به SPA (بلوکِ `location /`).",
     "",
   ];
-  const blocks = [...prefixes]
-    .sort()
-    .map((p) =>
-      [
-        `location ${p} {`,
-        "    proxy_pass http://hamboom_api;",
-        "    include /etc/nginx/proxy-common.conf;",
-        "}",
-        "",
-      ].join("\n"),
-    );
+  // ★ M6 فاز ۳: ناحیه‌ای که کلیدش **دقیقاً** یک پیشوند است، در همان بلوک ادغام می‌شود — nginx دو
+  //   `location`ِ هم‌نام را با `[emerg] duplicate location` رد می‌کند (اندازه‌گیریِ probe ۱٫۹).
+  const blocks = [...prefixes].sort().map((p) => {
+    const merged = zones[p];
+    return [
+      ...(merged === undefined
+        ? []
+        : ["# ★ سقفِ نرخِ سخت‌تر روی خودِ پیشوند (M6 فاز ۳) — همان بلوک، نه بلوکِ دوم."]),
+      `location ${p} {`,
+      ...(merged === undefined
+        ? []
+        : [`    limit_req zone=${merged.zone} burst=${String(merged.burst)} nodelay;`]),
+      "    proxy_pass http://hamboom_api;",
+      "    include /etc/nginx/proxy-common.conf;",
+      "}",
+      "",
+    ].join("\n");
+  });
   const limited = Object.entries(zones)
+    .filter(([p]) => !prefixes.includes(p))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([p, { zone, burst }]) =>
       [
@@ -239,6 +252,28 @@ function selfTest(): boolean {
       renderNginxLocations(["/auth"], { "/auth/otp": { zone: "z", burst: 1 } }).includes(
         "location /auth/otp {\n    limit_req zone=z burst=1 nodelay;",
       ),
+  });
+  cases.push({
+    name: "★★ ناحیه‌ای با کلیدِ برابرِ پیشوند ⇒ **دقیقاً یک** بلوکِ location، با limit_req داخلش (M6 فاز ۳)",
+    ok: (() => {
+      const out = renderNginxLocations(["/admin", "/me"], { "/admin": { zone: "z", burst: 2 } });
+      const count = out.split("location /admin {").length - 1;
+      return (
+        count === 1 &&
+        out.includes("location /admin {\n    limit_req zone=z burst=2 nodelay;\n    proxy_pass") &&
+        !out.includes("location /me {\n    limit_req")
+      );
+    })(),
+  });
+  cases.push({
+    name: "★ و همان ورودی با مولدِ **ساده‌لوح** دو بلوک می‌ساخت (شکستنِ عمدی: ادغام برداشته شود)",
+    ok: (() => {
+      // همان منطقِ پیش از M6: هر ناحیه بلوکِ خودش — روی کلیدِ برابرِ پیشوند دو `location /admin`.
+      const naive =
+        renderNginxLocations(["/admin"]) +
+        `location /admin {\n    limit_req zone=z burst=2 nodelay;\n}\n`;
+      return naive.split("location /admin {").length - 1 === 2;
+    })(),
   });
   cases.push({
     name: "دریفتِ فایلِ nginx گرفته می‌شود",

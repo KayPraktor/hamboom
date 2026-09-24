@@ -30,9 +30,33 @@ export const LIVE_SUBSCRIPTION_STATUSES = ["trialing", "active", "past_due"] as 
 
 export type SettleOutcome =
   | { kind: "activated"; subscriptionId: string; invoiceId: string; refId: string }
-  | { kind: "alreadySettled"; subscriptionId: string | null; invoiceId: string | null }
+  | {
+      kind: "alreadySettled";
+      subscriptionId: string | null;
+      invoiceId: string | null;
+      /**
+       * ★ وضعیتِ **واقعیِ** ردیف (`paid` | `canceled` | `refunded` | `failed` | …) — M6 فاز ۶.
+       *
+       * ⚠️ نبودنش یک باگِ کاربرپسند می‌ساخت: callback هر `alreadySettled`ی را `?status=ok` می‌کرد، پس
+       * کاربری که پرداختش باطل یا مسترد شده بود صفحه‌ی «پرداخت موفق» می‌دید (یافته‌ی منتقدِ فاز ۶).
+       */
+      status: string;
+    }
   | { kind: "notPaid"; code: number | null; message: string }
   | { kind: "unknown"; message: string };
+
+/**
+ * قلاب‌های تسویه — M6 فاز ۶ ([ADR-067](../../../../ARCHITECTURE_DECISIONS.md#adr-067) §۱).
+ *
+ * ★ `onSettled` **داخلِ همان تراکنش** و پیش از commit صدا زده می‌شود، برای **هر** نتیجه‌ی تصمیم‌گرفته —
+ * تا ردیفِ auditِ verifyِ ادمین با خودِ عمل یک تراکنش باشد. اگر قلاب پرتاب کند، تسویه هم rollback می‌شود؛
+ * این عمدی است: «عمل بدونِ audit» از «بدونِ عمل» بدتر است.
+ */
+export interface SettleHooks {
+  onSettled?: (tx: Executor, outcome: SettleOutcome) => Promise<void>;
+  /** `{Authority, Status}`ِ بازگشت از درگاه — در `payments.callback_payload` می‌نشیند (ستونی که از M4 خالی مانده بود). */
+  callbackPayload?: Record<string, unknown>;
+}
 
 /**
  * پارامترهای خریدی که در `payments.request_payload` منجمد می‌شوند.
@@ -60,6 +84,57 @@ interface PaymentRow {
   status: string;
   authority: string | null;
   request_payload: unknown;
+  /** M6 فاز ۶ — ورودیِ assertِ درگاه؛ بدونِ این، ردیفِ یک درگاه با درگاهِ دیگری verify می‌شد. */
+  gateway: string;
+  gateway_mode: string;
+}
+
+const PAYMENT_COLUMNS =
+  "id, team_id, initiated_by, invoice_id, amount_rial, status, authority, request_payload, gateway, gateway_mode";
+
+/**
+ * ★★ **ردیف مالِ همین درگاه و همین حالت است؟** — M6 فاز ۶ (یافته‌ی منتقد).
+ *
+ * `payments_authority_uq` روی `(gateway, authority)` است و `gateway_mode` **جزئش نیست**؛ پس یک ردیفِ
+ * `zarinpal/production` می‌توانست به پروسه‌ای برسد که درگاهش `zarinpal/sandbox` است (همان VM، `.env`ِ
+ * عوض‌شده). آن‌وقت verify کدِ غیر-۱۰۰ می‌گیرد ⇒ `failure_code` ثبت می‌شود ⇒ نردبانِ انقضا یک پرداختِ
+ * **واقعاً پرداخت‌شده** را باطل می‌کند. و در استرداد بدتر: `MockGateway` یک مرجعِ ساختگی می‌داد برای پولی
+ * که هرگز جابه‌جا نشد.
+ *
+ * ⇒ ۴۰۹ صریح، **پیش از** هر تماس با درگاه و هر نوشتنی.
+ */
+export function assertGatewayMatches(
+  row: { gateway: string; gateway_mode: string },
+  gateway: PaymentGateway,
+): void {
+  if (row.gateway !== gateway.name || row.gateway_mode !== gateway.mode) {
+    throw new HttpError(
+      409,
+      "CONFLICT",
+      `این پرداخت مالِ درگاهِ «${row.gateway}/${row.gateway_mode}» است و این سرور با ` +
+        `«${gateway.name}/${gateway.mode}» بالا آمده؛ به آن دست نمی‌زنیم.`,
+    );
+  }
+}
+
+/** verdictِ درگاه به شکلِ ذخیره‌شدنی — ★ بدونِ `cardPanMasked`/`cardHash` (P7: کارت ستونِ خودش را دارد). */
+function verifyPayloadOf(verdict: {
+  status: string;
+  code?: number | null;
+  message?: string;
+  alreadyVerified?: boolean;
+  refId?: string;
+  feeRial?: number | null;
+}): string {
+  return JSON.stringify({
+    status: verdict.status,
+    code: verdict.code ?? null,
+    message: verdict.message ?? null,
+    alreadyVerified: verdict.alreadyVerified ?? null,
+    refId: verdict.refId ?? null,
+    feeRial: verdict.feeRial ?? null,
+    at: new Date().toISOString(),
+  });
 }
 
 export interface SettleDeps {
@@ -106,81 +181,133 @@ function readIntent(raw: unknown): PurchaseIntent {
 export async function settlePayment(
   deps: SettleDeps,
   locator: PaymentLocator,
+  hooks: SettleHooks = {},
 ): Promise<SettleOutcome> {
   return withTransaction(deps.pool, async (tx) => {
-    // ⚠️ `payments_authority_uq` روی **جفتِ** `(gateway, authority)` است. بدونِ فیلترِ
-    //    gateway، ردیفِ mock و zarinpal با authorityِ یکسان قابلِ اشتباه‌گرفتن‌اند و کوئری
-    //    هم نمی‌تواند از آن ایندکس استفاده کند (seq scan روی مسیرِ عمومیِ callback).
-    const { rows } = await tx.query<PaymentRow>(
-      locator.by === "id"
-        ? `SELECT id, team_id, initiated_by, invoice_id, amount_rial, status, authority, request_payload
-             FROM payments WHERE id = $1 FOR UPDATE`
-        : `SELECT id, team_id, initiated_by, invoice_id, amount_rial, status, authority, request_payload
-             FROM payments WHERE gateway = $2 AND authority = $1 LIMIT 1 FOR UPDATE`,
-      locator.by === "id" ? [locator.id] : [locator.authority, deps.gateway.name],
-    );
-    const payment = rows[0];
-    if (payment === undefined) {
-      throw new HttpError(404, "PAYMENT_NOT_FOUND", "پرداخت یافت نشد.");
-    }
+    const payment = await lockPaymentForSettle(tx, deps.gateway, locator);
+    const outcome = await settleLocked(tx, deps, payment, hooks);
+    // ★ قلاب **داخلِ** همان تراکنش، پس از تصمیم و پیش از commit (ADR-067 §۱).
+    await hooks.onSettled?.(tx, outcome);
+    return outcome;
+  });
+}
 
-    // ★★ خروجِ زودهنگام روی **هر** وضعیتِ غیر-`pending`، نه فقط `paid`.
-    //    ⚠️ نگارشِ اول فقط `paid` را می‌گرفت: ردیفِ `refunded` یا `canceled` دوباره verify
-    //    می‌شد، درگاه ۱۰۱ می‌داد، و یک اشتراکِ **دوم** برای پرداختی که پولش برگشته ساخته
-    //    می‌شد — و `subscriptions_active_uq` هم نمی‌گرفتش، چون خودمان قبلش ردیفِ زنده را
-    //    expire می‌کنیم.
-    if (payment.status !== "pending") {
-      const sub = await tx.query<{ id: string }>(
-        "SELECT id FROM subscriptions WHERE activated_by_payment_id = $1",
-        [payment.id],
-      );
-      return {
-        kind: "alreadySettled",
-        subscriptionId: sub.rows[0]?.id ?? null,
-        invoiceId: payment.invoice_id,
-      };
-    }
+/** ردیف را قفل می‌کند و مالکیتِ درگاه را **پیش از هر کاری** می‌سنجد. */
+export async function lockPaymentForSettle(
+  tx: Executor,
+  gateway: PaymentGateway,
+  locator: PaymentLocator,
+): Promise<PaymentRow> {
+  // ⚠️ `payments_authority_uq` روی **جفتِ** `(gateway, authority)` است. بدونِ فیلترِ
+  //    gateway، ردیفِ mock و zarinpal با authorityِ یکسان قابلِ اشتباه‌گرفتن‌اند و کوئری
+  //    هم نمی‌تواند از آن ایندکس استفاده کند (seq scan روی مسیرِ عمومیِ callback).
+  const { rows } = await tx.query<PaymentRow>(
+    locator.by === "id"
+      ? `SELECT ${PAYMENT_COLUMNS} FROM payments WHERE id = $1 FOR UPDATE`
+      : `SELECT ${PAYMENT_COLUMNS} FROM payments WHERE gateway = $2 AND authority = $1 LIMIT 1 FOR UPDATE`,
+    locator.by === "id" ? [locator.id] : [locator.authority, gateway.name],
+  );
+  const payment = rows[0];
+  if (payment === undefined) {
+    throw new HttpError(404, "PAYMENT_NOT_FOUND", "پرداخت یافت نشد.");
+  }
+  // ★★ و `gateway_mode` هم — دلیلش بالای `assertGatewayMatches`.
+  assertGatewayMatches(payment, gateway);
+  return payment;
+}
 
-    if (payment.authority === null) {
-      return { kind: "unknown", message: "این پرداخت هنوز به درگاه نرسیده است." };
-    }
+/**
+ * هسته‌ی تسویه، **روی ردیفِ از قبل قفل‌شده** — M6 فاز ۶.
+ *
+ * ★ جدا شد تا مسیرِ **انقضای دستی/خودکار** بتواند پیش از باطل‌کردن همین را زیرِ قفلِ خودش صدا بزند:
+ * یک تعریف از «یک‌بار»، دو فراخوان. هیچ‌کس نباید یک مسیرِ دومِ فعال‌سازی بسازد.
+ */
+export async function settleLocked(
+  tx: Executor,
+  deps: { gateway: PaymentGateway },
+  payment: PaymentRow,
+  hooks: SettleHooks = {},
+): Promise<SettleOutcome> {
+  // ★ بازگشتِ مرورگر ثبت می‌شود حتی اگر نتیجه `notPaid` باشد — ستونِ `callback_payload` از M4 همیشه NULL بود.
+  if (hooks.callbackPayload !== undefined) {
+    await tx.query("UPDATE payments SET callback_payload = $2::jsonb WHERE id = $1", [
+      payment.id,
+      JSON.stringify(hooks.callbackPayload),
+    ]);
+  }
 
-    const verdict = await deps.gateway.verifyPayment({
-      authority: payment.authority,
-      amountRial: payment.amount_rial,
-    });
-
-    if (verdict.status === "gatewayError") {
-      return { kind: "unknown", message: verdict.message };
-    }
-
-    if (verdict.status === "notPaid") {
-      // ★★ **«هنوز پرداخت نشده» پایانِ کار نیست.** کدِ `-51`ِ زرین‌پال دقیقاً وقتی می‌آید که
-      //    کاربر هنوز روی صفحه‌ی بانک است. نگارشِ اول ردیف را `failed` می‌کرد و چون ایندکسِ
-      //    sweep روی `status='pending'` است، آن پرداخت **برای همیشه نامرئی** می‌شد — پول
-      //    گرفته می‌شد و هیچ‌کس دیگر سراغش نمی‌رفت. پس وضعیت `pending` می‌مانَد و فقط آخرین
-      //    کدِ شکست ثبت می‌شود؛ کهنه‌بودن را **سنِ ردیف** در sweepِ فاز ۷ تعیین می‌کند.
-      await tx.query("UPDATE payments SET failure_code = $2, verified_at = now() WHERE id = $1", [
-        payment.id,
-        verdict.code === null ? null : String(verdict.code),
-      ]);
-      return { kind: "notPaid", code: verdict.code, message: verdict.message };
-    }
-
-    const activated = await activateFromPayment(tx, payment);
-    await tx.query(
-      `UPDATE payments SET status = 'paid', ref_id = $2, card_pan_masked = $3, card_hash = $4,
-              fee_rial = $5, paid_at = now(), verified_at = now(), failure_code = NULL
-         WHERE id = $1`,
-      [payment.id, verdict.refId, verdict.cardPanMasked, verdict.cardHash, verdict.feeRial],
+  // ★★ خروجِ زودهنگام روی **هر** وضعیتِ غیر-`pending`، نه فقط `paid`.
+  //    ⚠️ نگارشِ اول فقط `paid` را می‌گرفت: ردیفِ `refunded` یا `canceled` دوباره verify
+  //    می‌شد، درگاه ۱۰۱ می‌داد، و یک اشتراکِ **دوم** برای پرداختی که پولش برگشته ساخته
+  //    می‌شد — و `subscriptions_active_uq` هم نمی‌گرفتش، چون خودمان قبلش ردیفِ زنده را
+  //    expire می‌کنیم.
+  if (payment.status !== "pending") {
+    const sub = await tx.query<{ id: string }>(
+      "SELECT id FROM subscriptions WHERE activated_by_payment_id = $1",
+      [payment.id],
     );
     return {
-      kind: "activated",
-      subscriptionId: activated.subscriptionId,
-      invoiceId: activated.invoiceId,
-      refId: verdict.refId,
+      kind: "alreadySettled",
+      subscriptionId: sub.rows[0]?.id ?? null,
+      invoiceId: payment.invoice_id,
+      status: payment.status,
     };
+  }
+
+  if (payment.authority === null) {
+    return { kind: "unknown", message: "این پرداخت هنوز به درگاه نرسیده است." };
+  }
+
+  const verdict = await deps.gateway.verifyPayment({
+    authority: payment.authority,
+    amountRial: payment.amount_rial,
   });
+
+  if (verdict.status === "gatewayError") {
+    // ★ پاسخ ثبت می‌شود ولی `failure_code` **دست نمی‌خورد**: «درگاه جواب نداد» پاسخِ درگاه نیست، و
+    //   قاعده‌ی ADR-056 (هیچ ابطالی پیش از دستِ‌کم یک **پاسخ**) دقیقاً روی همین ستون می‌ایستد.
+    await tx.query("UPDATE payments SET verify_payload = $2::jsonb WHERE id = $1", [
+      payment.id,
+      verifyPayloadOf(verdict),
+    ]);
+    return { kind: "unknown", message: verdict.message };
+  }
+
+  if (verdict.status === "notPaid") {
+    // ★★ **«هنوز پرداخت نشده» پایانِ کار نیست.** کدِ `-51`ِ زرین‌پال دقیقاً وقتی می‌آید که
+    //    کاربر هنوز روی صفحه‌ی بانک است. نگارشِ اول ردیف را `failed` می‌کرد و چون ایندکسِ
+    //    sweep روی `status='pending'` است، آن پرداخت **برای همیشه نامرئی** می‌شد — پول
+    //    گرفته می‌شد و هیچ‌کس دیگر سراغش نمی‌رفت. پس وضعیت `pending` می‌مانَد و فقط آخرین
+    //    کدِ شکست ثبت می‌شود؛ کهنه‌بودن را **سنِ ردیف** در sweepِ فاز ۷ تعیین می‌کند.
+    await tx.query(
+      `UPDATE payments SET failure_code = $2, verified_at = now(), verify_payload = $3::jsonb
+         WHERE id = $1`,
+      [payment.id, verdict.code === null ? null : String(verdict.code), verifyPayloadOf(verdict)],
+    );
+    return { kind: "notPaid", code: verdict.code, message: verdict.message };
+  }
+
+  const activated = await activateFromPayment(tx, payment);
+  await tx.query(
+    `UPDATE payments SET status = 'paid', ref_id = $2, card_pan_masked = $3, card_hash = $4,
+            fee_rial = $5, paid_at = now(), verified_at = now(), failure_code = NULL,
+            verify_payload = $6::jsonb
+       WHERE id = $1`,
+    [
+      payment.id,
+      verdict.refId,
+      verdict.cardPanMasked,
+      verdict.cardHash,
+      verdict.feeRial,
+      verifyPayloadOf(verdict),
+    ],
+  );
+  return {
+    kind: "activated",
+    subscriptionId: activated.subscriptionId,
+    invoiceId: activated.invoiceId,
+    refId: verdict.refId,
+  };
 }
 
 /** فاکتور را `paid` می‌کند، کوپن را **حالا** مصرف می‌کند، و اشتراک را می‌سازد/تمدید. */
@@ -200,14 +327,25 @@ async function activateFromPayment(
   //    تراکنشِ checkout درج می‌کرد که **چه پول بیاید چه نیاید** commit می‌شد؛ پس یک اختلالِ
   //    درگاه کوپن را برای همیشه می‌سوزاند و کاربر دیگر نمی‌توانست همان خرید را کامل کند.
   if (intent.couponCode !== null) {
-    await tx.query(
+    const redeemed = await tx.query(
       `INSERT INTO coupon_redemptions (coupon_code, team_id, invoice_id) VALUES ($1, $2, $3)
-       ON CONFLICT (coupon_code, team_id) DO NOTHING`,
+       ON CONFLICT (coupon_code, team_id) DO NOTHING
+       RETURNING coupon_code`,
       [intent.couponCode, payment.team_id, invoiceId],
     );
-    await tx.query("UPDATE coupons SET redeemed_count = redeemed_count + 1 WHERE code = $1", [
-      intent.couponCode,
-    ]);
+    // ★★ **شمارنده فقط وقتی بالا می‌رود که واقعاً ردیفی درج شده باشد** (یافته‌ی بازبینیِ ۶٫۵).
+    //
+    // ⚠️ نگارشِ اول بی‌قید `+1` می‌زد. سناریوی پول‌سوز: تیم با یک کوپنِ `max_redemptions=1` **دو**
+    //    checkout می‌سازد و هر دو را پرداخت می‌کند (resolveCoupon هر دو را قبول می‌کند، چون مصرف سرِ
+    //    فعال‌سازی است). تسویه‌ی دوم ردیفِ مصرف را `DO NOTHING` رد می‌کند ولی شمارنده را ۲ می‌کرد ⇒
+    //    `coupons_redemptions_ck` با ۲۳۵۱۴ می‌شکست ⇒ **کلِ تسویه rollback** ⇒ پرداختِ **پرداخت‌شده**
+    //    `pending` می‌مانْد و هر verifyِ بعدی (کدِ ۱۰۱) دوباره به همان CHECK می‌خورد: پول گرفته شده و
+    //    اشتراک **هرگز** فعال نمی‌شود. گیت‌ها نمی‌دیدندش چون هیچ سنجه‌ای کوپن نمی‌سازد.
+    if (redeemed.rowCount === 1) {
+      await tx.query("UPDATE coupons SET redeemed_count = redeemed_count + 1 WHERE code = $1", [
+        intent.couponCode,
+      ]);
+    }
   }
 
   const subscriptionId = await upsertSubscription(tx, payment.team_id, payment.id, intent);
@@ -530,4 +668,213 @@ async function resolveCoupon(
   return c.percent_off !== null
     ? { kind: "percent", percentOff: c.percent_off }
     : { kind: "amount", amountOffRial: c.amount_off_rial ?? 0 };
+}
+
+// ── استرداد (M6 فاز ۶٫۴، ADR-068) ────────────────────────────────────────
+
+/** از کجا پول برگشت: پنلِ درگاه (دستی) یا پورتِ `PaymentGateway.refund`. */
+export type RefundSource =
+  | { channel: "manual"; refundRef: string }
+  | { channel: "gateway" };
+
+export interface RefundOutcomeRows {
+  paymentId: string;
+  refundRef: string;
+  amountRial: number;
+  /** اشتراکی که همین پرداخت فعالش کرده بود و حالا `canceled` شد — یا `null`. */
+  subscriptionCanceled: string | null;
+  /**
+   * کدِ کوپنی که این خرید با آن انجام شده بود — یا `null`.
+   *
+   * ⚠️ **آزاد نمی‌شود** (سیاستِ ثبت‌شده‌ی فاز ۶): ردیفِ `coupon_redemptions` و شمارنده دست‌نخورده می‌مانند، پس
+   * همان تیم نمی‌تواند دوباره با همان کد بخرد. این مقدار در `metadata`ی ردیفِ audit می‌نشیند تا پشتیبانی
+   * بداند چه چیزی را باید دستی آزاد کند (یافته‌ی بازبینیِ ۶٫۵).
+   */
+  couponCode: string | null;
+  /**
+   * اشتراکِ **جایگزین‌شده‌ی قبلی** که دوباره `active` شد — یا `null`.
+   *
+   * ★★ چرا اصلاً وجود دارد (یافته‌ی منتقدِ فاز ۶): `upsertSubscription` در تمدید، ردیفِ زنده را
+   * `expired` می‌کند **هرچند دوره‌اش هنوز تمام نشده** و ردیفِ نو را از پایانِ همان دوره لنگر می‌اندازد.
+   * پس استردادِ پرداختِ **تمدید**، اگر فقط ردیفِ نو را لغو کند، روزهای **پرداخت‌شده‌ی** دوره‌ی قبلی را هم
+   * دور می‌ریزد و تیم فوراً `free` می‌شود. این‌جا آن ردیف برمی‌گردد — و فقط وقتی پرداختِ **خودش** هنوز
+   * `paid` است (اگر آن هم مسترد شده، چیزی برای برگرداندن نیست).
+   */
+  subscriptionRestored: string | null;
+}
+
+export interface RefundDeps {
+  gateway: PaymentGateway;
+}
+
+interface RefundRow {
+  id: string;
+  team_id: string;
+  invoice_id: string | null;
+  amount_rial: number;
+  status: string;
+  authority: string | null;
+  gateway: string;
+  gateway_mode: string;
+  /** نیّتِ خریدِ منجمد — فقط برای دانستنِ اینکه کوپنی در کار بوده (که **آزاد نمی‌شود**). */
+  request_payload: unknown;
+}
+
+/**
+ * ★★ **تنها نویسنده‌ی وضعیتِ `refunded`** — قرینه‌ی «`settlePayment` تنها مسیرِ فعال‌سازی است»
+ * ([ADR-068](../../../../ARCHITECTURE_DECISIONS.md#adr-068) §۱).
+ *
+ * تراکنش را **فراخوان** باز می‌کند (مسیرِ `/admin`)، تا ردیفِ audit در همان تراکنش بنشیند (ADR-067 §۱).
+ *
+ * ترتیب عمدی است: قفلِ ردیف → assertِ درگاه/حالت → فقط از `paid` → کانال → نوشتن. و idempotency در
+ * **دیتابیس** است (`status='paid'` زیرِ `FOR UPDATE`)، نه در میان‌افزارِ `Idempotency-Key` (ADR-050).
+ *
+ * ⚠️ **پنجره‌ی صادقانه:** اگر درگاه پول را برگرداند و commitِ ما بشکند، ردیف `paid` می‌مانَد در حالی که
+ * پول برگشته. همان کلاسِ ریسکِ `settlePayment` است و همان درمان: staff با «ثبتِ استردادِ دستی» و همان
+ * شماره‌ی مرجع می‌بنددش.
+ */
+export async function refundPayment(
+  tx: Executor,
+  deps: RefundDeps,
+  paymentId: string,
+  source: RefundSource,
+): Promise<RefundOutcomeRows> {
+  const { rows } = await tx.query<RefundRow>(
+    `SELECT id, team_id, invoice_id, amount_rial, status, authority, gateway, gateway_mode,
+            request_payload
+       FROM payments WHERE id = $1 FOR UPDATE`,
+    [paymentId],
+  );
+  const payment = rows[0];
+  if (payment === undefined) throw new HttpError(404, "PAYMENT_NOT_FOUND", "پرداخت یافت نشد.");
+  assertGatewayMatches(payment, deps.gateway);
+
+  if (payment.status !== "paid") {
+    throw new HttpError(
+      409,
+      "INVALID_TRANSITION",
+      `فقط پرداختِ «paid» مسترد می‌شود؛ این ردیف «${payment.status}» است.`,
+    );
+  }
+
+  const refundRef = await resolveRefundRef(deps, payment, source);
+
+  await tx.query(
+    `UPDATE payments
+        SET status = 'refunded', refunded_at = now(), refund_ref = $2,
+            refund_amount_rial = amount_rial
+      WHERE id = $1`,
+    [payment.id, refundRef],
+  );
+  // ★ `paid_at` **پاک نمی‌شود** (ADR-052: رکوردِ مالی می‌مانَد) — CHECKِ نوِ ۰۰۰۹ همین را اجبار می‌کند.
+  if (payment.invoice_id !== null) {
+    await tx.query(
+      "UPDATE invoices SET status = 'refunded', refunded_at = now() WHERE id = $1 AND status = 'paid'",
+      [payment.invoice_id],
+    );
+  }
+
+  const target = await tx.query<{ id: string; current_period_start: Date }>(
+    `SELECT id, current_period_start FROM subscriptions
+      WHERE activated_by_payment_id = $1 AND status = ANY($2::text[]) FOR UPDATE`,
+    [payment.id, [...LIVE_SUBSCRIPTION_STATUSES]],
+  );
+  const canceled = target.rows[0];
+  const canceledId = canceled?.id ?? null;
+  if (canceled !== undefined) {
+    await tx.query(
+      "UPDATE subscriptions SET status = 'canceled', canceled_at = now(), updated_at = now() WHERE id = $1",
+      [canceled.id],
+    );
+  }
+
+  // ★★ بازگرداندنِ دوره‌ی قبلی — **فقط همانی که همین پرداخت جایگزینش کرده بود**.
+  //
+  // ⚠️ نگارشِ اول «آخرین `expired`ِ تیم با پایانِ آینده» را برمی‌گرداند و `sdk:contract` همان اجرای اول
+  //    قرمز شد: روی تیمی که چند اجرای قبلی هم داشت، یک اشتراکِ **بی‌ربطِ کهنه** زنده شد. پیوندِ دقیق در
+  //    خودِ داده هست و ستونِ تازه نمی‌خواهد — `upsertSubscription` دوره‌ی نو را از `current_period_end`ِ
+  //    ردیفِ جایگزین‌شده لنگر می‌اندازد، پس:
+  //
+  //        اشتراکِ جایگزین‌شده.current_period_end === اشتراکِ لغوشده.current_period_start
+  //
+  // ★ و سه شرطِ دیگر: هنوز `expired` باشد، دوره‌اش واقعاً تمام نشده باشد، و **پرداختِ خودش هنوز `paid`**
+  //   باشد (اگر آن هم مسترد شده، چیزی برای برگرداندن نیست).
+  //
+  // ⚠️⚠️ **`FOR UPDATE OF s, p` و نه فقط `s`** (یافته‌ی بازبینیِ ۶٫۵): بدونِ قفلِ `p`، آن شرطِ
+  //    `p.status = 'paid'` مقدارِ **commit‌شده‌ی قبلی** را می‌خوانَد. دو استردادِ هم‌زمان (این‌یکی روی
+  //    پرداختِ تمدید، آن‌یکی روی پرداختِ قبلی) می‌توانستند تیم را با اشتراکی زنده بگذارند که **هیچ
+  //    پرداختِ تسویه‌شده‌ای پشتش نیست**. ترتیبِ قفل همچنان payments→subscriptions است (زنجیره‌ی تمدید
+  //    خطی است) پس چرخه‌ای نمی‌سازد. چکِ ۱۱ی `billing:refund` دقیقاً همین هم‌پوشانی را اجبار می‌کند.
+  // ⚠️ محدودیتِ صادقانه: اگر تمدید با **پلنِ دیگری** بوده، `upsertSubscription` از `now()` لنگر می‌اندازد
+  //   و این پیوند وجود ندارد ⇒ چیزی برنمی‌گردد و `subscriptionRestored` در audit `null` می‌مانَد.
+  let restoredId: string | null = null;
+  if (canceled !== undefined) {
+    const restored = await tx.query<{ id: string }>(
+      `UPDATE subscriptions SET status = 'active', updated_at = now()
+        WHERE id = (
+          SELECT s.id FROM subscriptions s
+            JOIN payments p ON p.id = s.activated_by_payment_id
+           WHERE s.team_id = $1 AND s.status = 'expired'
+             AND s.current_period_end = $2 AND s.current_period_end > now()
+             AND p.status = 'paid'
+           ORDER BY s.current_period_end DESC
+           LIMIT 1
+           FOR UPDATE OF s, p
+        )
+        RETURNING id`,
+      [payment.team_id, canceled.current_period_start],
+    );
+    restoredId = restored.rows[0]?.id ?? null;
+  }
+
+  const intent = payment.request_payload as { couponCode?: unknown } | null;
+  return {
+    paymentId: payment.id,
+    couponCode:
+      intent !== null && typeof intent.couponCode === "string" ? intent.couponCode : null,
+    refundRef,
+    amountRial: payment.amount_rial,
+    subscriptionCanceled: canceledId,
+    subscriptionRestored: restoredId,
+  };
+}
+
+/** شماره‌ی مرجعِ استرداد — از بدنه (دستی) یا از درگاه؛ هر ردِ درگاه کدِ خودش را می‌گیرد. */
+async function resolveRefundRef(
+  deps: RefundDeps,
+  payment: RefundRow,
+  source: RefundSource,
+): Promise<string> {
+  if (source.channel === "manual") return source.refundRef;
+
+  if (deps.gateway.refund === undefined) {
+    throw new HttpError(
+      409,
+      "REFUND_UNAVAILABLE",
+      "این درگاه کانالِ استرداد ندارد؛ پول را در پنلِ درگاه برگردان و «ثبتِ استردادِ دستی» بزن.",
+    );
+  }
+  if (payment.authority === null) {
+    throw new HttpError(
+      409,
+      "INVALID_TRANSITION",
+      "این پرداخت authority ندارد؛ استردادِ درگاهی ممکن نیست.",
+    );
+  }
+  const outcome = await deps.gateway.refund({
+    authority: payment.authority,
+    amountRial: payment.amount_rial,
+  });
+  if (outcome.status === "refunded") return outcome.refundRef;
+  if (outcome.status === "unavailable") {
+    throw new HttpError(409, "REFUND_UNAVAILABLE", outcome.message);
+  }
+  // ★ ردِ **قطعیِ** درگاه ۴۰۹ است نه ۵۰۲: «دوباره تلاش کن» جوابِ «قبلاً مسترد شده» نیست (یافته‌ی منتقد).
+  if (outcome.status === "rejected") {
+    throw new HttpError(409, "REFUND_REJECTED", outcome.message, {
+      gatewayCode: outcome.code,
+    });
+  }
+  // «نمی‌دانیم» ⇒ تراکنش rollback و ردیف دست‌نخورده می‌مانَد.
+  throw new HttpError(502, "GATEWAY_UNAVAILABLE", outcome.message, { gatewayCode: outcome.code });
 }

@@ -6,6 +6,7 @@ import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
 
+import { auditActor } from "../audit.ts";
 import { requireSub } from "../auth-guard.ts";
 import {
   BOARD_FULL_SELECT,
@@ -17,7 +18,12 @@ import {
 import { HttpError } from "../errors.ts";
 import { withTransaction } from "../plugins/db.ts";
 import { assertUuid, createBoardBody, parseBody, patchBoardBody } from "../schemas.ts";
-import { assertDeletedBoardOwner, requireBoardRole } from "../services/boards.ts";
+import {
+  assertDeletedBoardOwner,
+  isStaffOnlyAccess,
+  recordSupportView,
+  requireBoardRole,
+} from "../services/boards.ts";
 import { assertQuota } from "../services/quota.ts";
 
 export interface BoardRouteDeps {
@@ -79,6 +85,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
         access_mode: BoardAccessMode;
         is_board_owner: boolean;
         is_staff: boolean | null;
+        user_status: string | null;
         direct_role: BoardRole | null;
         team_role: TeamRole | null;
         has_valid_link: boolean;
@@ -86,7 +93,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     >(
       `SELECT DISTINCT b.id, b.title, b.folder_id, b.last_activity_at,
               (fav.board_id IS NOT NULL) AS is_favorite,
-              b.access_mode, (b.created_by = $1) AS is_board_owner, u.is_staff,
+              b.access_mode, (b.created_by = $1) AS is_board_owner, u.is_staff, u.status AS user_status,
               bm.role AS direct_role, tm.role AS team_role,
               (lg.link_token_hash IS NOT NULL AND b.link_token_hash IS NOT NULL
                AND lg.link_token_hash = b.link_token_hash) AS has_valid_link
@@ -110,6 +117,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
           ? "owner"
           : effectiveBoardRole({
               isStaff: r.is_staff ?? false,
+              isSuspended: r.user_status === "suspended", // ★ M6 ۵٫۲ — همان reader، همین‌جا inline
               isBoardOwner: r.is_board_owner,
               accessMode: r.access_mode,
               directRole: r.direct_role,
@@ -187,6 +195,8 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
 
     const role = effectiveBoardRole(input);
     if (role === null) throw new HttpError(403, "FORBIDDEN", "به این بورد دسترسی ندارید.");
+    // ★ M6 ۵٫۳: این مسیر reader را مستقیم می‌خوانَد (نه requireBoardRole) ⇒ نمای پشتیبانی همین‌جا.
+    if (isStaffOnlyAccess(input)) await recordSupportView(deps.pool, auditActor(req), id);
 
     const { rows } = await deps.pool.query<BoardRow>(BOARD_FULL_SELECT, [sub, id]);
     if (rows.length === 0) throw new HttpError(404, "BOARD_NOT_FOUND", "بورد یافت نشد.");
@@ -202,7 +212,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     if (!UUID_RE.test(id)) {
       throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
     }
-    await requireBoardRole(deps.pool, sub, id, "viewer");
+    await requireBoardRole(deps.pool, sub, id, "viewer", auditActor(req));
 
     const { rows } = await deps.pool.query<{ storage_key: string }>(
       "SELECT storage_key FROM board_snapshots WHERE board_id = $1 ORDER BY seq_upto DESC LIMIT 1",
@@ -334,7 +344,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     const { id } = req.params as { id: string };
     if (!UUID_RE.test(id))
       throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
-    await requireBoardRole(deps.pool, sub, id, "viewer");
+    await requireBoardRole(deps.pool, sub, id, "viewer", auditActor(req));
     await deps.pool.query(
       "INSERT INTO board_favorites (user_id, board_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
       [sub, id],
@@ -347,7 +357,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     const { id } = req.params as { id: string };
     if (!UUID_RE.test(id))
       throw new HttpError(400, "BOARD_ID_MALFORMED", "شناسه‌ی بورد بدشکل است.");
-    await requireBoardRole(deps.pool, sub, id, "viewer");
+    await requireBoardRole(deps.pool, sub, id, "viewer", auditActor(req));
     await deps.pool.query("DELETE FROM board_favorites WHERE user_id = $1 AND board_id = $2", [
       sub,
       id,
@@ -369,6 +379,14 @@ export function registerBoardRoutes(app: FastifyInstance, deps: BoardRouteDeps):
     if (input === null) throw new HttpError(404, "BOARD_NOT_FOUND", "بورد یافت نشد.");
     const role = effectiveBoardRole(input);
     if (role === null) throw new HttpError(403, "FORBIDDEN", "به این بورد دسترسی ندارید.");
+
+    // ★★ نمای پشتیبانی (M6 ۵٫۳، ADR-066 §۱): اگر نقش **فقط** از staff آمده (بدونِ staff هیچ دسترسی
+    //    نبود)، همین mint ردیفِ `support.board.view` می‌نویسد — هیچ توکنی برای کاربرِ هدف ساخته نمی‌شود،
+    //    staff با توکنِ خودش و نقشِ viewer وارد می‌شود. کلاینت هر ۴۵s توکن می‌گیرد (`authRefreshMs`)
+    //    ⇒ ردیف‌ها با پنجره‌ی `SUPPORT_VIEW_WINDOW_MINUTES` de-dupe می‌شوند (یک ردیف = یک بازه‌ی نمایش).
+    if (isStaffOnlyAccess(input)) {
+      await recordSupportView(deps.pool, auditActor(req), id);
+    }
 
     // ★ signRtToken تنها امضاکننده است؛ `exp` را خودش از ثانیه می‌سازد (قفلِ exp، ADR-011).
     const token = await signRtToken(

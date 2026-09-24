@@ -8,8 +8,14 @@ import {
 } from "@hamboom/billing-core";
 import type pg from "pg";
 
+import { recordAudit, type AuditActor } from "../audit.ts";
 import { withTransaction, type Executor } from "../plugins/db.ts";
-import { LIVE_SUBSCRIPTION_STATUSES, settlePayment } from "./billing.ts";
+import {
+  lockPaymentForSettle,
+  settleLocked,
+  settlePayment,
+  LIVE_SUBSCRIPTION_STATUSES,
+} from "./billing.ts";
 
 /**
  * اجرای آشتی‌دهی — [ADR-014](../../../../ARCHITECTURE_DECISIONS.md#adr-014) قاعده ۳،
@@ -89,7 +95,17 @@ export interface ReconcileDeps {
   gateway: PaymentGateway;
   /** تزریق‌پذیر برای سنجه؛ در runtime `new Date()`. */
   now?: () => Date;
+  /**
+   * کیست که این sweep را اجرا کرد — M6 فاز ۶٫۳.
+   *
+   * ★ پیش‌فرض **سیستم** (`userId: null`): تایمرِ پلاگین و اسکریپتِ اپراتور هیچ‌کدام درخواستِ HTTP نیستند.
+   * مسیرِ `/admin/payments/reconcile` actorِ staff را می‌دهد، پس ردیف‌های `payment.expire`/`payment.adopt`
+   * می‌گویند دستیِ چه کسی بوده — همان تفکیکی که پرونده‌ی «چرا این پرداخت باطل شد» لازم دارد.
+   */
+  actor?: AuditActor;
 }
+
+const SYSTEM_ACTOR: AuditActor = { userId: null, ip: null, userAgent: null };
 
 /**
  * ★★ **گیتِ B-3 — اولین کاری که این اجرا می‌کند.**
@@ -144,15 +160,34 @@ export async function runReconcile(
   // ⚠️ **فیلترِ `gateway` اختیاری نیست.** ردیفِ `mock` را با درگاهِ زرین‌پال verify کردن یعنی
   //    پرسیدنِ یک authorityِ بیگانه از درگاهِ واقعی؛ و برعکس، mock به هر authority «پرداخت
   //    شد» می‌گوید. ایندکسِ `payments_pending_idx` هم روی همین مسیر می‌نشیند.
+  //
+  // ⚠️⚠️ **و `gateway_mode` هم، از فاز ۶٫۵** (یافته‌ی بازبین): `assertGatewayMatches` حالا روی حالتِ
+  //    ناهم‌خوان **پیش از هر کاری** پرتاب می‌کند. چون دسته «قدیمی‌ترین N ردیف» است، چند ردیفِ
+  //    به‌جامانده‌ی sandbox بعد از رفتن به production می‌توانستند هر نوبت کلِ دسته را پر کنند و
+  //    آشتی‌دهی را **برای همیشه** از دیدنِ پرداخت‌های واقعی بازدارند. حالا اصلاً وارد دسته نمی‌شوند —
+  //    ولی **نامرئی هم نمی‌شوند**: شمارششان در `errors` گزارش می‌شود.
   const { rows } = await deps.pool.query<PendingRow>(
     `SELECT id, authority, amount_rial, requested_at, failure_code
        FROM payments
-      WHERE status = 'pending' AND gateway = $1
+      WHERE status = 'pending' AND gateway = $1 AND gateway_mode = $3
       ORDER BY requested_at ASC
       LIMIT $2`,
-    [deps.gateway.name, policy.batchSize],
+    [deps.gateway.name, policy.batchSize, deps.gateway.mode],
   );
   report.scanned = rows.length;
+
+  const foreign = await deps.pool.query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM payments
+      WHERE status = 'pending' AND gateway = $1 AND gateway_mode <> $2`,
+    [deps.gateway.name, deps.gateway.mode],
+  );
+  const foreignCount = Number(foreign.rows[0]?.n ?? 0);
+  if (foreignCount > 0) {
+    report.errors.push(
+      `${String(foreignCount)} ردیفِ pending با حالتِ درگاهِ دیگر (نه ${deps.gateway.mode}) نادیده گرفته شد — ` +
+        "با همان حالت اجرا کن یا وضعیتشان را دستی روشن کن.",
+    );
+  }
 
   const snapshots = rows.map(toSnapshot);
   const decisions = planSweep(snapshots, {
@@ -179,7 +214,7 @@ export async function runReconcile(
 
     try {
       if (decision.action === "expire") {
-        if (await expireAbandonedPayment(deps.pool, decision.paymentId)) report.expired += 1;
+        tallyExpire(report, await expireStalePayment(deps, decision.paymentId, "sweep"));
       } else {
         tallySettle(report, await settleOne(deps, decision.paymentId));
       }
@@ -208,8 +243,44 @@ async function settleOne(deps: ReconcileDeps, paymentId: string): Promise<Settle
   const outcome = await settlePayment(
     { pool: deps.pool, gateway: deps.gateway },
     { by: "id", id: paymentId },
+    { onSettled: (tx, result) => auditSweepSettle(tx, deps, paymentId, result, "reconcile") },
   );
   return outcome.kind;
+}
+
+/**
+ * ★★ **فعال‌سازی از مسیرِ sweep هم ردِ خودش را می‌گذارد** — M6 فاز ۶٫۵ (یافته‌ی بازبین).
+ *
+ * قرینه‌ی مسیرِ دستی: آن‌جا هر outcome ردیفِ `payment.verify` می‌گیرد، این‌جا جا مانده بود — یعنی یک
+ * اشتراک **فعال** می‌شد (پولِ واقعی) و هیچ ردیفی نمی‌گفت چه چیزی فعالش کرد. `via` می‌گوید کدام مسیر، و
+ * actor یا staffِ sweepِ دستی است یا **سیستم** (تایمر/اسکریپت).
+ *
+ * ⚠️ فقط برای نتیجه‌های **تغییردهنده**: یک `notPaid`ِ تکراری در هر نوبتِ تایمر یعنی انباشتنِ ردیفِ بی‌خبر.
+ */
+async function auditSweepSettle(
+  tx: Executor,
+  deps: ReconcileDeps,
+  paymentId: string,
+  outcome: { kind: string },
+  via: string,
+): Promise<void> {
+  if (outcome.kind !== "activated") return;
+  await recordAudit(tx, {
+    actor: deps.actor ?? SYSTEM_ACTOR,
+    action: "payment.verify",
+    target: { type: "payment", id: paymentId },
+    metadata: { via, outcome: outcome.kind },
+  });
+}
+
+/** نتیجه‌ی یک تلاشِ انقضا — «باطل شد» فقط یکی از چهار حالت است. */
+export type ExpireKind = "expired" | "activated" | "alreadySettled" | "unknown";
+
+function tallyExpire(report: ReconcileReport, kind: ExpireKind): void {
+  if (kind === "expired") report.expired += 1;
+  else if (kind === "activated") report.activated += 1;
+  else if (kind === "alreadySettled") report.alreadySettled += 1;
+  else report.unknown += 1;
 }
 
 function tallySettle(report: ReconcileReport, kind: SettleKind): void {
@@ -220,35 +291,71 @@ function tallySettle(report: ReconcileReport, kind: SettleKind): void {
 }
 
 /**
- * پرداختِ رهاشده را می‌بندد: ردیف `canceled` و فاکتور `void`.
+ * ★★ **انقضا = اول یک پرسشِ تازه از درگاه، بعد شاید ابطال** — M6 فاز ۶٫۳ (یافته‌ی منتقد).
  *
- * ⚠️ **چرا `voidFailedCheckout` را دوباره استفاده نمی‌کنیم:** آن تابع برای شکستِ **همان
- * لحظه‌ی** checkout است و دو `UPDATE`ِ جدا می‌زند. این‌جا ردیف ممکن است **همین حالا**
- * توسطِ callbackِ کاربر تسویه شود؛ پس اول قفل، بعد بازبینیِ وضعیت، و همه در یک تراکنش.
- * بدونِ آن، یک فاکتورِ **پرداخت‌شده** می‌توانست `void` شود.
+ * نگارشِ M4 فقط وضعیتِ ردیف را زیرِ قفل می‌دید و `canceled` می‌کرد. ولی `failure_code` می‌تواند
+ * ساعت‌ها پیش نوشته شده باشد؛ کاربر ممکن است **بعدش** پرداخت را کامل کرده باشد. آن‌وقت ابطال ردیف را
+ * از ایندکسِ `payments_pending_idx` بیرون می‌برد و پول **برای همیشه** پیشِ درگاه می‌مانْد. حالا:
+ *
+ *   قفل → `settleLocked` (همان هسته‌ی تسویه، نه کپیِ دوم) → `paid` ⇒ **فعال‌سازی**، `notPaid` ⇒ ابطال،
+ *   `gatewayError` ⇒ **هیچ** (نمی‌دانیم؛ ردیف `pending` می‌مانَد و نوبتِ بعد).
+ *
+ * ⚠️ **چرا `voidFailedCheckout` را دوباره استفاده نمی‌کنیم:** آن تابع برای شکستِ **همان لحظه‌ی**
+ * checkout است و دو `UPDATE`ِ جدا می‌زند. این‌جا ردیف ممکن است **همین حالا** توسطِ callbackِ کاربر
+ * تسویه شود؛ پس اول قفل، بعد پرسش، و همه در یک تراکنش. بدونِ آن، یک فاکتورِ **پرداخت‌شده** `void` می‌شد.
  *
  * ★ وضعیت `canceled` است نه `failed`: کاربر پولی نداد و رها کرد — این شکستِ سیستم نیست.
  */
-async function expireAbandonedPayment(pool: pg.Pool, paymentId: string): Promise<boolean> {
-  return withTransaction(pool, async (tx) => {
-    const { rows } = await tx.query<{ status: string; invoice_id: string | null }>(
-      "SELECT status, invoice_id FROM payments WHERE id = $1 FOR UPDATE",
-      [paymentId],
-    );
-    const payment = rows[0];
-    if (payment === undefined || payment.status !== "pending") return false;
+export async function expireStalePayment(
+  deps: ReconcileDeps,
+  paymentId: string,
+  reason: string,
+): Promise<ExpireKind> {
+  return withTransaction(deps.pool, async (tx) => {
+    const payment = await lockPaymentForSettle(tx, deps.gateway, { by: "id", id: paymentId });
+    if (payment.status !== "pending") return "alreadySettled";
 
-    await tx.query(
-      `UPDATE payments SET status = 'canceled', failure_code = 'EXPIRED', verified_at = now()
-        WHERE id = $1`,
-      [paymentId],
-    );
-    if (payment.invoice_id !== null) {
-      await tx.query("UPDATE invoices SET status = 'void' WHERE id = $1 AND status = 'open'", [
-        payment.invoice_id,
-      ]);
-    }
-    return true;
+    const outcome = await settleLocked(tx, { gateway: deps.gateway }, payment);
+    await auditSweepSettle(tx, deps, paymentId, outcome, "expire");
+    if (outcome.kind === "activated") return "activated";
+    if (outcome.kind === "alreadySettled") return "alreadySettled";
+    if (outcome.kind === "unknown") return "unknown";
+
+    await applyExpiry(tx, { id: payment.id, invoice_id: payment.invoice_id }, deps.actor ?? SYSTEM_ACTOR, {
+      reason,
+      failureCode: outcome.code === null ? null : String(outcome.code),
+    });
+    return "expired";
+  });
+}
+
+/**
+ * ابطالِ ردیفِ `pending`ِ **از قبل قفل‌شده و از قبل پرسیده‌شده** + ردیفِ audit، همه در همان تراکنش.
+ *
+ * ★ مسیرِ دستیِ `/admin/payments/:id/expire` و sweepِ خودکار **همین** را صدا می‌زنند — یک تعریف از
+ * «باطل»، دو فراخوان؛ وگرنه روزی یکی‌شان فاکتور را `void` نمی‌کند و کسی سال‌ها نمی‌فهمد.
+ */
+export async function applyExpiry(
+  tx: Executor,
+  payment: { id: string; invoice_id: string | null },
+  actor: AuditActor,
+  meta: { reason: string; failureCode: string | null },
+): Promise<void> {
+  await tx.query(
+    `UPDATE payments SET status = 'canceled', failure_code = 'EXPIRED', verified_at = now()
+      WHERE id = $1`,
+    [payment.id],
+  );
+  if (payment.invoice_id !== null) {
+    await tx.query("UPDATE invoices SET status = 'void' WHERE id = $1 AND status = 'open'", [
+      payment.invoice_id,
+    ]);
+  }
+  await recordAudit(tx, {
+    actor,
+    action: "payment.expire",
+    target: { type: "payment", id: payment.id },
+    metadata: { reason: meta.reason, lastGatewayCode: meta.failureCode },
   });
 }
 
@@ -282,11 +389,23 @@ async function adoptOrphans(
     try {
       // ⚠️ شرطِ `authority IS NULL` نگهبانِ مسابقه است: اگر بینِ تصمیم و نوشتن، خودِ
       //    checkout بالاخره authority را نشانده باشد، این UPDATE هیچ ردیفی نمی‌گیرد.
-      const updated = await deps.pool.query(
-        "UPDATE payments SET authority = $2 WHERE id = $1 AND authority IS NULL",
-        [decision.paymentId, decision.authority],
-      );
-      if (updated.rowCount === 0) continue;
+      // ★ نشاندنِ authority و ردیفِ auditش در **یک** تراکنش (ADR-067 §۱): فرزندخواندگی یک حدسِ
+      //   قاعده‌مند است و باید ردِ خودش را داشته باشد، وگرنه «این authority از کجا آمد؟» جواب ندارد.
+      const adopted = await withTransaction(deps.pool, async (tx) => {
+        const updated = await tx.query(
+          "UPDATE payments SET authority = $2 WHERE id = $1 AND authority IS NULL",
+          [decision.paymentId, decision.authority],
+        );
+        if (updated.rowCount === 0) return false;
+        await recordAudit(tx, {
+          actor: deps.actor ?? SYSTEM_ACTOR,
+          action: "payment.adopt",
+          target: { type: "payment", id: decision.paymentId },
+          metadata: { authority: decision.authority },
+        });
+        return true;
+      });
+      if (!adopted) continue;
       report.adopted += 1;
       tallySettle(report, await settleOne(deps, decision.paymentId));
     } catch (error) {

@@ -161,6 +161,10 @@ const GATES = [
   //   همان grep است که **هر بار** اجرا می‌شود، با فهرستِ مجازِ دلیل‌دار و استثنای مرده‌گیر.
   { name: "p2", run: "node scripts/check-p2.ts --self-test" },
   { name: "p2 (بدونِ سرویسِ خارجی)", run: "node scripts/check-p2.ts" },
+  // ★★ گیتِ ۱۶ — M6 فاز ۳٫۷ (ADR-067 §۲): هر POST/PATCH/PUT/DELETE زیرِ `/admin` باید با
+  //   `audited(action)` اعلام شده باشد. خودآزمون (مسیرِ عمداً بی‌اعلام ⇒ قرمز) و چک در **یک**
+  //   اجرا؛ منبعِ حقیقت collectorِ `onRoute`ِ خودِ اپ است. ~۱ ثانیه، بدونِ سرویس.
+  { name: "admin audit (هر جهشِ /admin ممیزی‌شده)", run: "node scripts/check-admin-audit.ts" },
 ];
 
 const results = [];

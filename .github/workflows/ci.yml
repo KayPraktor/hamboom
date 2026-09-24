@@ -91,26 +91,27 @@ jobs:
         run: pnpm db:fk-test
       - name: db:store-test
         run: pnpm db:store-test
+      # ★ M6 فاز ۳٫۴ — تنها نویسنده‌ی `is_staff`: پرچم + audit در یک تراکنش، شکستِ audit پرچم را
+      #   برنمی‌گردانَد. روی PGِ واقعی داخلِ تراکنشِ rollback‌شونده (الگوی db:fk-test).
+      - name: ★ admin-grant-staff — خودآزمون (اتمیک‌بودنِ پرچم + audit)
+        run: pnpm admin:grant-staff -- --self-test
+      # ★ M6 فاز ۴٫۴ — نگهداشتِ audit_logs: مرزِ SQLِ واقعی + «بدونِ عدد بالا نمی‌آید». حذف می‌کند،
+      #   پس خودآزمونش این‌جاست (همان دلیلِ purge/sweep).
+      - name: ★ purge-audit — خودآزمون
+        run: pnpm infra:purge-audit -- --self-test
       - name: storage + assets
         run: pnpm storage:smoke && pnpm assets:smoke
 
       - name: billing — probeها
         run: pnpm billing:probe-db && pnpm billing:probe-idem && pnpm billing:probe-math
-      - name: billing — سنجه‌های تسویه/ظرفیت/آشتی‌دهی
-        run: pnpm billing:settle && pnpm billing:quota && pnpm billing:probe-reconcile
+      - name: billing — سنجه‌های تسویه/ظرفیت/آشتی‌دهی/استرداد
+        # ★ M6 فاز ۶: `billing:refund` کنارِ بقیه — مدلِ استرداد کدِ پول است و یک مشقِ دستی
+        #   همان `lint:css`ِ هیچ‌وقت-اجرانشده می‌شود.
+        run: pnpm billing:settle && pnpm billing:quota && pnpm billing:probe-reconcile && pnpm billing:refund
       - name: قراردادِ sdk
         run: pnpm sdk:contract
       - name: advisory lock (ADR-060)
         run: pnpm infra:probe-lock
-
-      # ★★ M5 فاز ۷ — دوامِ داده. عمداً **داخلِ** CI: مشقِ بازیابی‌ای که فقط دستی
-      #    اجرا شود، همان گیتی است که هیچ‌وقت اجرا نمی‌شود (درسِ `lint:css` و
-      #    `db:smoke`ی ماه‌ها-قرمز). این‌جا هر push یک پشتیبانِ واقعی می‌سازد و
-      #    **برش می‌گرداند**.
-      - name: پشتیبانِ دیتابیس + آینه‌ی Object Storage
-        run: pnpm infra:backup && pnpm infra:backup-storage
-      - name: ★★ مشقِ بازیابی + خودآزمونش
-        run: pnpm infra:restore-drill && pnpm infra:restore-drill -- --self-test
 
       # ★★ M5 فاز ۸ — نگهداشت. هر دو **حذف** می‌کنند، پس هر دو خودآزمونشان این‌جا
       #    می‌آید: خطای این‌ها یک گزارشِ غلط نیست، پاک‌شدنِ داده‌ی یک کاربرِ زنده است.
@@ -123,6 +124,26 @@ jobs:
         run: >
           pnpm rt:durability && pnpm rt:compaction && pnpm rt:permission &&
           pnpm rt:presence && pnpm rt:cluster && pnpm rt:shutdown && pnpm rt:reconnect
+
+      # ★★ M6 فاز ۵ (ADR-066): همان probeِ فاز ۱ با انتظارِ برعکس، روی api+realtime‌ی واقعی —
+      #    staff ⇒ viewer (نوشتن رد)، تعلیق fail-closed در refresh/rt-token/OTP/دست‌دادنِ نو، و
+      #    «WSِ باز هنوز می‌نویسد» به‌عنوانِ محدودیتِ **مستند** assert می‌شود (نه پنهان).
+      - name: سنجه‌ی دسترسیِ ادمین (staff→viewer، تعلیق)
+        run: pnpm admin:access
+
+      # ★★ M5 فاز ۷ / M6 فاز ۲ — دوامِ داده. عمداً **داخلِ** CI: مشقِ بازیابی‌ای که فقط دستی
+      #    اجرا شود، همان گیتی است که هیچ‌وقت اجرا نمی‌شود (درسِ `lint:css` و
+      #    `db:smoke`ی ماه‌ها-قرمز). این‌جا هر push یک پشتیبانِ واقعی می‌سازد و
+      #    **برش می‌گرداند**.
+      # ⚠️ M6: عمداً **بعد از** سنجه‌های realtime — `rt:compaction` اولین snapshotهای واقعی را
+      #    می‌نویسد؛ پیش از آن `board_snapshots` خالی است و چکِ `bytes`ِ مشق و چکِ `catalog`ِ
+      #    بازیابیِ storage روی «هیچ» vacuous می‌ماندند (یافته‌ی بازبینِ خصمانه‌ی نقشه‌ی M6).
+      - name: ★ پشتیبانِ جفت (dump + آینه‌ی Object Storage) + خودآزمونِ آینه
+        run: pnpm infra:backup-all && pnpm infra:backup-storage -- --self-test
+      - name: ★★ مشقِ بازیابی (۶ چک) + خودآزمونش
+        run: pnpm infra:restore-drill && pnpm infra:restore-drill -- --self-test
+      - name: ★★ بازیابیِ Object Storage (۶ چک) + خودآزمونش
+        run: pnpm infra:restore-storage && pnpm infra:restore-storage -- --self-test
 
       - name: لاگِ سرویس‌ها در صورتِ شکست
         if: failure()

@@ -12,6 +12,11 @@ import type pg from "pg";
  *
  * ⚠️ **DP-4:** `hasValidLink` از `board_link_grants` می‌آید — گرنتی که مهمانِ لینک هنگامِ `resolve` گرفت،
  * **فقط اگر** `link_token_hash`ش با توکنِ **فعلیِ** بورد بخواند (ابطالِ خودکار). `null` = بورد وجود ندارد.
+ *
+ * ★ **M6 ([ADR-066](../../../ARCHITECTURE_DECISIONS.md#adr-066) §۴):** `u.status` هم خوانده می‌شود ⇒ `isSuspended`.
+ * چون همین یک reader را api **و** realtime می‌سازند، تعلیق با یک تغییر در هر دو fail-closed شد — دقیقاً همان
+ * دلیلی که این پکیج مشترک است. کاربرِ ناموجود (`u.*` NULL) `isSuspended=false` می‌گیرد و با بقیه‌ی منابعِ
+ * خالی به `null` می‌رسد (fail-closed از راهِ `effectiveBoardRole`).
  */
 
 /** هرچیزی که `.query` دارد — `Pool` یا `PoolClient` (تراکنش)؛ اپ نمونه‌اش را تزریق می‌کند. */
@@ -24,6 +29,7 @@ export function createPgBoardAccessReader(db: Queryable): BoardAccessReader {
         access_mode: BoardAccessMode;
         is_board_owner: boolean;
         is_staff: boolean | null;
+        user_status: string | null;
         direct_role: BoardRole | null;
         team_role: TeamRole | null;
         has_valid_link: boolean;
@@ -31,6 +37,7 @@ export function createPgBoardAccessReader(db: Queryable): BoardAccessReader {
         `SELECT b.access_mode,
                 (b.created_by = $1) AS is_board_owner,
                 u.is_staff,
+                u.status AS user_status,
                 bm.role AS direct_role,
                 tm.role AS team_role,
                 (lg.link_token_hash IS NOT NULL
@@ -48,6 +55,7 @@ export function createPgBoardAccessReader(db: Queryable): BoardAccessReader {
       const r = rows[0]!;
       return {
         isStaff: r.is_staff ?? false,
+        isSuspended: r.user_status === "suspended",
         isBoardOwner: r.is_board_owner,
         accessMode: r.access_mode,
         directRole: r.direct_role ?? null,

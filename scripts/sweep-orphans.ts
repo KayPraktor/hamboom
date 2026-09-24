@@ -37,10 +37,11 @@
  */
 import { backupEnvSchema, databaseEnvSchema, loadEnv, s3EnvSchema } from "@hamboom/config";
 import { createS3ObjectStore } from "@hamboom/storage";
-import pg from "pg";
+import type pg from "pg";
 
 import { createDbPool } from "../apps/api/src/plugins/db.ts";
-import { deleteOrphans, planSweep, WARN_OBJECTS, type SweepPlan } from "./sweep-orphans-core.ts";
+import { deleteOrphans, planSweep } from "./sweep-orphans-core.ts";
+import type { SweepPlan } from "./sweep-orphans-core.ts";
 
 /** همه‌ی کلیدهایی که دیتابیس می‌شناسد — **شاملِ ردیف‌های حذف‌نرم‌شده**. */
 async function referencedKeys(
@@ -139,17 +140,6 @@ async function main(): Promise<void> {
           console.log(`  ✔ ${String(removed.length)} شیء از «${bucket}» پاک شد.`);
         }
       }
-    }
-
-    const totalObjects = plans.reduce(
-      (n, p) => n + p.referenced + p.tooYoung.length + p.unknownAge.length + p.orphans.length,
-      0,
-    );
-    if (totalObjects > WARN_OBJECTS) {
-      console.warn(
-        `\n⚠️ ${String(totalObjects)} شیء فهرست شد و همه در حافظه نگه داشته شدند. ` +
-          "بالای این مقیاس باید صفحه‌به‌صفحه شود — سقف در TODOی M5 ثبت است.",
-      );
     }
 
     const totalOrphans = plans.reduce((n, p) => n + p.orphans.length, 0);

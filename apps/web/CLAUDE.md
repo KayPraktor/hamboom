@@ -234,3 +234,46 @@ pnpm --filter @hamboom/web build       # tsc --noEmit سپس vite build
 
 > **پورتِ dev = 15380** (بیرونِ بازه‌ی dynamic portِ ویندوز؛ مثلِ canvas-core=15180،
 > canvas-sync=15280). هوکِ `predev` با `check-dev-port.mjs` بررسی‌اش می‌کند.
+
+## ★ پنلِ ادمین — `/panel` (M6 فاز ۳، [ADR-065](../../ARCHITECTURE_DECISIONS.md#adr-065)/[ADR-066](../../ARCHITECTURE_DECISIONS.md#adr-066))
+
+`src/panel/`: [`PanelLayout`](src/panel/PanelLayout.tsx) (ریلِ ناوبری با همان کلاس‌های `folder-nav`/`nav-item`) ·
+[`PanelHome`](src/panel/PanelHome.tsx) («کیستم» + step-up) · [`PanelAudit`](src/panel/PanelAudit.tsx) (ممیزی، فاز ۴) · `PanelUsers`/`PanelUser`/`PanelTeam` (فاز ۵) · [`PanelTable`](src/panel/PanelTable.tsx) (جدولِ پایه، مشتقِ
+`invoice-table`) · [`panel-queries`](src/panel/panel-queries.ts) (`sdk.admin.*`، کلیدهای `["admin", …]`).
+
+- ★★ **تنها `React.lazy`ِ اپ.** هر دو صفحه از **یک** ماژول (`panel-chunk.ts`) lazy می‌شوند ⇒ یک chunk (~۴٫۴KB).
+  اندازه‌گیریِ ۳٫۶ روی chunkِ ورودی: **+۷۲۳ B** برای خودِ پنل (route + دو `lazy` + `Suspense` + `RequireStaff`؛
+  معیار < ۱KB) و +۴۲۶ B برای لینکِ سایدبار و متنِ «۳۰ روز» که مالِ ورودی‌اند. گاردها **بیرونِ** chunk‌اند.
+- **مسیرِ SPA `/panel` است، نه `/admin`** — آن یکی پیشوندِ API است و در dev/nginx پروکسی می‌شود (همان
+  قاعده‌ی `/pricing`≠`/billing`).
+- [`RequireStaff`](src/auth/RequireStaff.tsx) فقط `User.isStaff`ِ نشست را می‌خوانَد و غیرِ staff را با `Navigate` به
+  داشبورد برمی‌گردانَد (کارت نه — برای اینکه در chunkِ ورودی کوچک بماند). **راحتیِ UI** است؛ گیتِ واقعی
+  `requireStaff`ِ سرور است (۴۰۳ از DB در هر درخواست). لینکِ «پنلِ ادمین» در سایدبارِ داشبورد (`FolderNav`، بخشِ
+  «مدیریت») فقط با `isStaff`.
+- **step-up:** «درخواستِ کد» → `POST /admin/step-up/request` (کد به شماره‌ی خودِ staff، mock در dev = لاگِ api) →
+  کد → `verify` → `stepUpVerifiedAt` تازه در کشِ `adminMe` (بدونِ refetch). «تازه بودن» را سرور تصمیم می‌گیرد (۴۲۸
+  `STEP_UP_REQUIRED` روی عملِ مخرب)؛ عددِ پنجره به کلاینت نمی‌رسد.
+- **صفحه‌بندیِ cursor — [`PanelAudit`](src/panel/PanelAudit.tsx) (فاز ۴٫۳):** `useInfiniteQuery` با `nextCursor`ِ سرور به‌عنوانِ
+  `pageParam` (keyset، نه offset)؛ «بیشتر» صفحه‌ی بعد را می‌چسبانَد، `null` = پایان. فیلترِ پیشوندیِ action کلیدِ کوئری را
+  عوض می‌کند و از نو شروع می‌شود. `ipMasked` همان‌طور که از سرور می‌آید — این صفحه IPِ کامل را نمی‌بیند. ⚠️ فرمِ فیلتر دکمه‌ی
+  submitِ صریح دارد (درسِ ۸٫۳): Enter از ابزارِ مرورگرِ این محیط submit نکرد.
+- **کاربران و تیم‌ها (فاز ۵):** [`PanelUsers`](src/panel/PanelUsers.tsx) (جست‌وجو؛ **POST**، عبارت در state نه URL — ۵٫۵: شماره در تاریخچه/لاگ نمی‌نشیند) ·
+  [`PanelUser`](src/panel/PanelUser.tsx) (جزئیات، «نمایشِ کامل»ِ شماره = POSTِ ممیزی‌شده، **تعلیق/رفعِ تعلیق**، تیم‌ها، بوردها با
+  «بازکردن (فقط‌خواندنی)» = همان `/b/:id` با نقشِ viewerِ staff) · [`PanelTeam`](src/panel/PanelTeam.tsx) (سقف/مصرفِ گیتِ ظرفیت) ·
+  [`StepUpForm`](src/panel/StepUpForm.tsx) (از خانه جدا شد). `STATUS_FA` در `status-fa.ts` (نه در فایلِ کامپوننت — Fast Refresh).
+- ★★ **اولین عملِ مخرب — دو الگو (۵٫۲):** تاییدِ مخرب با `window.confirm` + دلیلِ اجباری (در `metadata`ی audit)؛ و
+  **۴۲۸ در جا**: `STEP_UP_REQUIRED` همان `StepUpForm` را زیرِ عمل باز می‌کند، بعد از تایید staff **دوباره** می‌زند (confirm
+  دوباره می‌آید — عمدی). `useSuspend`/`useUnsuspend` جزئیات را invalidate می‌کنند (شمارشِ نشست‌ها در summary نیست).
+- ★ **نشستِ `suspended`** ([`session.tsx`](src/auth/session.tsx)): `onSessionEnded(reason)`ِ sdk با `USER_SUSPENDED` ⇒
+  `status="suspended"` و [`SuspendedNotice`](src/auth/SuspendedNotice.tsx) در **هر سه** نقطه‌ی ورود (`RequireAuth`، `IndexRedirect`،
+  `LoginPage`) — نه `Navigate` به `/login` (آن‌جا OTPِ بی‌صدا «کد فرستاده شد» می‌گوید و هرگز نمی‌آید؛ ۵٫۵ همین را در `/` گرفت).
+  handler **پیش از** refreshِ اول وصل می‌شود تا علتِ همان refresh گم نشود.
+- **پرداخت‌ها (فاز ۶، [ADR-068](../../ARCHITECTURE_DECISIONS.md#adr-068)):** [`PanelPayments`](src/panel/PanelPayments.tsx) (فهرستِ keyset با «بیشتر» + فیلترها
+  **در state نه URL** — شناسه‌های مالیِ مشتری در تاریخچه/لاگ ننشینند؛ و «آشتی‌دهیِ دستی» با دو دکمه: فقط‌گزارش و واقعی) ·
+  [`PanelPayment`](src/panel/PanelPayment.tsx) (payloadها در `<details>`ِ بسته؛ سه عملِ مخرب: verify/ابطال/استرداد). ★ دکمه‌ی ابطال با
+  **`expireBlocked`ِ سرور** غیرفعال می‌شود، نه با محاسبه‌ی رابط (سقفش configی است — ADR-056). `PAYMENT_STATUS_FA`/`toman` در
+  [`payment-fa.ts`](src/panel/payment-fa.ts) و `isStepUpRequired` در [`step-up.ts`](src/panel/step-up.ts) (سومین مصرف‌کننده آمد ⇒ از کامپوننت بیرون کشیده شد).
+- اندازه‌گیریِ فاز ۶: chunkِ ورودی **+۳۴۴ B** (دو lazy + دو route)؛ chunkِ پنل ۱۸٫۵ → **۳۰٫۱KB**.
+- اندازه‌گیریِ فاز ۵: chunkِ ورودی **+۲٬۹۵۳ B** (سه route/lazy + کارتِ معلق + متدهای نوی sdk که در ورودی می‌نشینند)؛ chunkِ پنل ۷٫۶ → **۱۸٫۵KB**.
+- ⚠️ **«خروج» نشست را در سرور نمی‌بندد** (ارثیه‌ی M3: `signOut` فقط توکنِ حافظه را پاک می‌کند، کوکیِ refresh می‌مانَد و بارگذاریِ
+  بعدی همان کاربر را برمی‌گردانَد) — یافته‌ی ۵٫۵، بیرونِ M6؛ برای تعویضِ کاربر در یک مرورگر باید ورودِ نو کوکی را بازنویسی کند.

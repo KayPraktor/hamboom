@@ -323,3 +323,73 @@ describe("ZarinpalGateway.listUnverified — بازیابیِ پنجره‌ی س
     await expect(gw.listUnverified()).resolves.toEqual([]);
   });
 });
+
+describe("refund / reverse — M6 فاز ۶ (ADR-068 §۲)", () => {
+  const mock = (): MockGateway => new MockGateway({ checkoutBaseUrl: "http://localhost/pay" });
+  const paid = async (gw: MockGateway, amountRial = 10_000): Promise<string> => {
+    const { authority } = await gw.createPayment({
+      amountRial,
+      description: "t",
+      callbackUrl: "http://localhost/cb",
+    });
+    await gw.verifyPayment({ authority, amountRial });
+    return authority;
+  };
+
+  it("mock: پرداختِ verify‌شده ⇒ refunded با مرجع؛ بارِ دوم rejected (نه refunded)", async () => {
+    const gw = mock();
+    const authority = await paid(gw);
+    const first = await gw.refund({ authority, amountRial: 10_000 });
+    expect(first).toEqual({ status: "refunded", refundRef: `MOCKRF${authority.slice(-8)}` });
+    expect((await gw.refund({ authority, amountRial: 10_000 })).status).toBe("rejected");
+  });
+
+  it("★★ mock: authorityِ ناشناخته ⇒ rejected — نه یک مرجعِ ساختگی برای پولی که ندیده", async () => {
+    const out = await mock().refund({ authority: "NOT-MINE", amountRial: 10_000 });
+    expect(out).toMatchObject({ status: "rejected", code: -51 });
+  });
+
+  it("mock: پرداختِ verify‌نشده استرداد ندارد؛ مبلغِ ناهم‌خوان هم rejected", async () => {
+    const gw = mock();
+    const { authority } = await gw.createPayment({
+      amountRial: 10_000,
+      description: "t",
+      callbackUrl: "http://localhost/cb",
+    });
+    expect((await gw.refund({ authority, amountRial: 10_000 })).status).toBe("rejected");
+    const settled = await paid(gw, 20_000);
+    expect(await gw.refund({ authority: settled, amountRial: 19_999 })).toMatchObject({
+      status: "rejected",
+      code: -50,
+    });
+  });
+
+  it("mock: reverse فقط پرداختِ verify‌نشده را می‌بندد — و بعدش verify «پرداخت نشد» می‌گوید", async () => {
+    const gw = mock();
+    const { authority } = await gw.createPayment({
+      amountRial: 10_000,
+      description: "t",
+      callbackUrl: "http://localhost/cb",
+    });
+    expect(await gw.reverse({ authority })).toEqual({ status: "reversed" });
+    expect((await gw.reverse({ authority })).status).toBe("rejected");
+    expect(await gw.verifyPayment({ authority, amountRial: 10_000 })).toMatchObject({
+      status: "notPaid",
+    });
+    const settled = await paid(gw, 30_000);
+    expect((await gw.reverse({ authority: settled })).status).toBe("rejected");
+  });
+
+  it("★★ زرین‌پال: refund ⇒ unavailable **بدونِ هیچ تماسی** (ADR-068 §۲)", async () => {
+    let calls = 0;
+    const gw = zarinpal(() => {
+      calls += 1;
+      return Promise.resolve(reply(200, {}));
+    });
+    const out = await gw.refund({ authority: "A1", amountRial: 10_000 });
+    expect(out.status).toBe("unavailable");
+    expect(calls).toBe(0);
+    // ★ `reverse` اصلاً روی این آداپتور پیاده نشده — پورت اختیاریش کرده تا شکل بماند، نه اینکه ساخته شود.
+    expect((gw as { reverse?: unknown }).reverse).toBeUndefined();
+  });
+});

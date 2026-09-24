@@ -28,9 +28,23 @@
  *     `--prod` نصب می‌شود و `devDependencies` اصلاً نمی‌آید. ادعای «الف» به‌تنهایی
  *     نقصِ فاز ۲ را **نمی‌گرفت**.
  *
+ * ── ★★ M6 فاز ۲٫۷: ادعای «ب» **بازگشتی** شد ──────────────────────────────
+ *
+ * تا M6 فقط importهای **مستقیمِ** فایل‌های `PRODUCTION_SCRIPTS` دیده می‌شدند؛ importِ نسبی
+ * (`./restore-storage-core.ts`) نادیده گرفته می‌شد و دنبال نمی‌شد. یعنی یک اسکریپتِ production
+ * می‌توانست از راهِ یک فایلِ کمکی به `yjs`ی که فقط `devDependency` بود برسد — CI (نصبِ کاملِ
+ * dev) سبز، و بوتِ اسکریپت روی VM `ERR_MODULE_NOT_FOUND` (بازبینِ خصمانه‌ی نقشه‌ی M6 گرفتش).
+ * حالا بستارِ importهای نسبی دنبال می‌شود و هر فایل به‌ازای **صاحبش** سنجیده می‌شود:
+ *   • فایلِ `scripts/` ⇒ `dependencies`ِ ریشه؛
+ *   • فایلِ داخلِ ورک‌اسپیسی که در ایمیجِ api نصب می‌شود (`apps/api` و بستارِ `workspace:*`ش +
+ *     `dependencies`ِ ریشه) ⇒ `dependencies`ِ همان ورک‌اسپیس؛
+ *   • فایلِ داخلِ ورک‌اسپیسی که در ایمیج **نیست** (`apps/realtime`، `apps/web`، …) ⇒ قرمز، هرچه
+ *     import کند — چون خودِ آن فایل روی VM نیست.
+ *
  * ── ★ خودآزمون ───────────────────────────────────────────────────────────
  *
- * `--self-test` هر دو ادعا را با منیفستِ ساختگیِ خراب می‌راند و انتظارِ **قرمز** دارد.
+ * `--self-test` هر دو ادعا را با منیفستِ ساختگیِ خراب می‌راند و انتظارِ **قرمز** دارد — از جمله
+ * سه سناریوی بستارِ نسبی با یک فایل‌سیستمِ ساختگی.
  *
  * اجرا: `pnpm deps:check` · ★ داخلِ `pnpm verify` هم هست.
  */
@@ -68,6 +82,18 @@ const PRODUCTION_SCRIPTS = [
   "scripts/sweep-orphans.ts",
   "scripts/sweep-orphans-core.ts",
   "scripts/purge-deleted.ts",
+  // ★ M6 فاز ۲ — پشتیبانِ جفت و **بازیابیِ Object Storage**؛ خودآزمون‌ها هم از داخلِ ایمیج اجرا
+  //   می‌شوند (images.yml) تا «ایمیج می‌تواند بارشان کند» ادعا نباشد.
+  "scripts/backup-all.ts",
+  "scripts/backup-run.ts",
+  "scripts/backup-storage.self-test.ts",
+  "scripts/restore-storage.ts",
+  "scripts/restore-storage-core.ts",
+  "scripts/restore-storage.self-test.ts",
+  // ★ M6 فاز ۳ — تنها نویسنده‌ی `is_staff` (ADR-066 §۲)، از داخلِ ایمیج با compose `grant-staff`.
+  "scripts/admin-grant-staff.ts",
+  // ★ M6 فاز ۴ — نگهداشتِ audit_logs (ADR-067 §۴)، cronِ ماهانه از همان VM.
+  "scripts/purge-audit.ts",
 ];
 
 const BUILTINS = new Set([...builtinModules, ...builtinModules.map((m) => `node:${m}`)]);
@@ -132,6 +158,137 @@ export function importsIn(rawSource: string): string[] {
     }
   }
   return [...found].sort();
+}
+
+/** شناسه‌های **نسبیِ** import یک فایل (`./x.ts`, `../apps/api/…`) — برای بستارِ ادعای ب. */
+export function relativeImportsIn(rawSource: string): string[] {
+  const source = stripComments(rawSource);
+  const found = new Set<string>();
+  const patterns = [
+    /(?:^|\n)\s*import\s[^;]*?from\s*["']([^"']+)["']/g,
+    /(?:^|\n)\s*import\s*["']([^"']+)["']/g,
+    /(?:^|\n)\s*export\s[^;]*?from\s*["']([^"']+)["']/g,
+    /\bimport\(\s*["']([^"']+)["']\s*\)/g,
+  ];
+  for (const re of patterns) {
+    for (const m of source.matchAll(re)) {
+      const spec = m[1] ?? "";
+      if (spec.startsWith("./") || spec.startsWith("../")) found.add(spec);
+    }
+  }
+  return [...found].sort();
+}
+
+/** فایل‌سیستمِ تزریقی — تا بستار بدونِ دیسک هم آزمون‌پذیر باشد. */
+export interface ClosureFs {
+  read(path: string): string | null;
+}
+
+/**
+ * بستارِ importهای نسبی از چند ورودی. مسیرها **نرمالِ posix** (نسبت به ریشه) هستند.
+ * فایلِ نبودن یک import نسبی خطای این گیت نیست (tsc می‌گیردش) — فقط دنبال نمی‌شود.
+ */
+export function closureOf(entries: string[], fs: ClosureFs): string[] {
+  const seen = new Set<string>();
+  const queue = [...entries];
+  while (queue.length > 0) {
+    const file = queue.shift()!;
+    if (seen.has(file)) continue;
+    const source = fs.read(file);
+    if (source === null) continue;
+    seen.add(file);
+    const dir = file.split("/").slice(0, -1);
+    for (const spec of relativeImportsIn(source)) {
+      const parts = [...dir];
+      for (const seg of spec.split("/")) {
+        if (seg === "..") parts.pop();
+        else if (seg !== ".") parts.push(seg);
+      }
+      queue.push(parts.join("/"));
+    }
+  }
+  return [...seen].sort();
+}
+
+/**
+ * صاحبِ یک فایل: `root` برای `scripts/…`، نامِ ورک‌اسپیس برای `apps/<x>/…`/`packages/<x>/…`.
+ */
+export function ownerOf(file: string): { kind: "root" } | { kind: "workspace"; dir: string } {
+  const m = /^(apps|packages)\/([^/]+)\//.exec(file);
+  return m ? { kind: "workspace", dir: `${m[1]!}/${m[2]!}` } : { kind: "root" };
+}
+
+/**
+ * ورک‌اسپیس‌هایی که در ایمیجِ api نصب می‌شوند: `apps/api` + بستارِ `workspace:*`ش + آن‌هایی که
+ * `dependencies`ِ ریشه اعلام کرده (`--filter @hamboom/api... --filter hamboom` در Dockerfile).
+ */
+export function imageWorkspaces(
+  manifests: ReadonlyMap<string, Manifest>,
+  rootManifest: Manifest,
+): Set<string> {
+  const byName = new Map<string, string>();
+  for (const [dir, m] of manifests) if (m.name !== undefined) byName.set(m.name, dir);
+  const result = new Set<string>();
+  const queue: string[] = ["apps/api"];
+  for (const dep of Object.keys(rootManifest.dependencies ?? {})) {
+    const dir = byName.get(dep);
+    if (dir !== undefined) queue.push(dir);
+  }
+  while (queue.length > 0) {
+    const dir = queue.shift()!;
+    if (result.has(dir)) continue;
+    result.add(dir);
+    const m = manifests.get(dir);
+    for (const dep of Object.keys(m?.dependencies ?? {})) {
+      const depDir = byName.get(dep);
+      if (depDir !== undefined) queue.push(depDir);
+    }
+  }
+  return result;
+}
+
+/**
+ * ★ ادعای ب (بازگشتی): هر فایلِ بستار در برابرِ `dependencies`ِ **صاحبش**؛ فایلِ ورک‌اسپیسِ
+ * خارج از ایمیج قرمز است.
+ */
+export function checkProductionClosure(
+  files: string[],
+  fs: ClosureFs,
+  rootManifest: Manifest,
+  manifests: ReadonlyMap<string, Manifest>,
+): Problem[] {
+  const inImage = imageWorkspaces(manifests, rootManifest);
+  const problems: Problem[] = [];
+  for (const file of files) {
+    const source = fs.read(file);
+    if (source === null) continue;
+    const owner = ownerOf(file);
+    let prod: Set<string>;
+    let label: string;
+    if (owner.kind === "root") {
+      prod = new Set(Object.keys(rootManifest.dependencies ?? {}));
+      label = "ریشه";
+    } else if (!inImage.has(owner.dir)) {
+      problems.push({
+        claim: `اسکریپتِ production به فایلی خارج از ایمیجِ api می‌رسد: ${file}`,
+        detail: `${owner.dir} در نصبِ \`--filter @hamboom/api...\` نیست؛ روی VM این فایل اصلاً وجود ندارد`,
+      });
+      continue;
+    } else {
+      const m = manifests.get(owner.dir);
+      prod = new Set(Object.keys(m?.dependencies ?? {}));
+      label = m?.name ?? owner.dir;
+    }
+    for (const pkg of importsIn(source)) {
+      if (prod.has(pkg)) continue;
+      if (owner.kind === "workspace" && pkg === manifests.get(owner.dir)?.name) continue;
+      problems.push({
+        claim: `اسکریپتِ production به وابستگیِ dev-scope تکیه دارد: ${pkg}`,
+        detail: `${file} داخلِ ایمیج اجرا می‌شود (صاحب: ${label})، ولی نصبِ \`--prod\` هرگز devDependencies را نمی‌آورد`,
+      });
+    }
+  }
+  return problems;
 }
 
 /** فایل‌های سورسِ یک پوشه (بدونِ زیرپوشه‌های تولیدی). */
@@ -262,6 +419,62 @@ function selfTest(): boolean {
     ok: packageOf(String.raw`G:\x`) === null && packageOf("file:///a") === null,
   });
 
+  // ★ M6: بستارِ نسبی — سه سناریو روی یک فایل‌سیستمِ ساختگی.
+  const kw2 = "im" + "port";
+  const fakeFs = (files: Record<string, string>): ClosureFs => ({
+    read: (p) => files[p] ?? null,
+  });
+  const manifests = new Map<string, Manifest>([
+    ["apps/api", { name: "@hamboom/api", dependencies: { pg: "*", "@hamboom/config": "*" } }],
+    ["apps/realtime", { name: "@hamboom/realtime", dependencies: { ws: "*" } }],
+    ["packages/config", { name: "@hamboom/config", dependencies: { zod: "*" } }],
+  ]);
+  const root: Manifest = {
+    name: "hamboom",
+    dependencies: { pg: "*" },
+    devDependencies: { yjs: "*" },
+  };
+  const fsA = fakeFs({
+    "scripts/entry.ts": `${kw2} { x } from "./helper.ts";`,
+    "scripts/helper.ts": `${kw2} * as Y from "yjs";`,
+  });
+  cases.push({
+    name: "★ M6: importِ نسبی دنبال می‌شود — کمکی به yjsِ dev-scope می‌رسد ⇒ قرمز",
+    ok:
+      checkProductionClosure(closureOf(["scripts/entry.ts"], fsA), fsA, root, manifests).length ===
+      1,
+  });
+  cases.push({
+    name: "همان بستار با yjs در dependenciesِ ریشه ⇒ سبز",
+    ok:
+      checkProductionClosure(
+        closureOf(["scripts/entry.ts"], fsA),
+        fsA,
+        { ...root, dependencies: { pg: "*", yjs: "*" } },
+        manifests,
+      ).length === 0,
+  });
+  const fsB = fakeFs({
+    "scripts/entry.ts": `${kw2} { db } from "../apps/api/src/plugins/db.ts";`,
+    "apps/api/src/plugins/db.ts": `${kw2} pg from "pg";`,
+  });
+  cases.push({
+    name: "★ M6: فایلِ apps/api در بستار با pg در dependenciesِ خودش ⇒ سبز",
+    ok:
+      checkProductionClosure(closureOf(["scripts/entry.ts"], fsB), fsB, root, manifests).length ===
+      0,
+  });
+  const fsC = fakeFs({
+    "scripts/entry.ts": `${kw2} { r } from "../apps/realtime/src/room.ts";`,
+    "apps/realtime/src/room.ts": `${kw2} { WebSocket } from "ws";`,
+  });
+  cases.push({
+    name: "★ M6: فایلِ apps/realtime در بستار ⇒ قرمز (در ایمیجِ api نصب نمی‌شود)",
+    ok:
+      checkProductionClosure(closureOf(["scripts/entry.ts"], fsC), fsC, root, manifests).length ===
+      1,
+  });
+
   for (const c of cases) console.log(`${c.ok ? "✔" : "✖"} خودآزمون: ${c.name}`);
   return cases.every((c) => c.ok);
 }
@@ -296,7 +509,29 @@ function main(): void {
   const prodUsage = usageOf(PRODUCTION_SCRIPTS.map((p) => join(ROOT, p)));
   problems.push(...checkProductionScope(rootManifest, prodUsage));
 
-  console.log(`پکیج‌های بررسی‌شده: ${checked} · اسکریپتِ production: ${PRODUCTION_SCRIPTS.length}`);
+  // ── ★ M6: ادعای ب روی **بستارِ** importهای نسبی، هر فایل در برابرِ صاحبش ──
+  const diskFs: ClosureFs = {
+    read: (p) => {
+      try {
+        return readFileSync(join(ROOT, p), "utf8");
+      } catch {
+        return null;
+      }
+    },
+  };
+  const manifests = new Map<string, Manifest>();
+  for (const dir of workspaceDirs()) {
+    manifests.set(
+      relative(ROOT, dir).replaceAll("\\", "/"),
+      JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as Manifest,
+    );
+  }
+  const closure = closureOf(PRODUCTION_SCRIPTS, diskFs);
+  problems.push(...checkProductionClosure(closure, diskFs, rootManifest, manifests));
+
+  console.log(
+    `پکیج‌های بررسی‌شده: ${checked} · اسکریپتِ production: ${PRODUCTION_SCRIPTS.length} · بستارِ نسبی: ${closure.length} فایل`,
+  );
   if (problems.length > 0) {
     for (const p of problems) console.error(`✖ ${p.claim}\n    ${p.detail}`);
     console.error("\n✖ وابستگیِ اعلام‌نشده — نصبِ production این را در بوت می‌شکند.");

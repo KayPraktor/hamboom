@@ -20,6 +20,7 @@ function reader(map: Record<string, BoardAccessInput | null>): BoardAccessReader
 function access(over: Partial<BoardAccessInput> = {}): BoardAccessInput {
   return {
     isStaff: false,
+    isSuspended: false,
     isBoardOwner: false,
     accessMode: "team",
     directRole: null,

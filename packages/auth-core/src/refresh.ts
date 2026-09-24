@@ -35,6 +35,12 @@ export interface SessionStore {
   markUsed(tokenHash: string): Promise<void>;
   /** ★★ کلِ خانواده را باطل کن (نشانه‌ی دزدی). */
   burnFamily(familyId: string): Promise<void>;
+  /**
+   * ★★ **همه‌ی** خانواده‌های یک کاربر را باطل کن — تعلیق (M6،
+   * [ADR-066](../../../ARCHITECTURE_DECISIONS.md#adr-066) §۴). تعدادِ نشست‌های **زنده**‌ی باطل‌شده را
+   * برمی‌گرداند (نچرخیده و منقضی‌نشده — نه هر ردیفی که دست خورد؛ برای `metadata`ی audit). idempotent: بارِ دوم صفر.
+   */
+  revokeAllForUser(sub: string): Promise<number>;
 }
 
 export class RefreshError extends Error {
@@ -133,6 +139,16 @@ export function createMemorySessionStore(): SessionStore {
     burnFamily: (fam) => {
       for (const [h, r] of byHash) if (r.familyId === fam) byHash.delete(h);
       return Promise.resolve();
+    },
+    revokeAllForUser: (sub) => {
+      let n = 0;
+      const now = Math.floor(Date.now() / 1000);
+      for (const [h, r] of byHash)
+        if (r.sub === sub) {
+          byHash.delete(h);
+          if (!r.used && r.expiresAt > now) n += 1;
+        }
+      return Promise.resolve(n);
     },
   };
 }

@@ -12,6 +12,7 @@ const OWNER_READER: BoardAccessReader = {
   read: () =>
     Promise.resolve({
       isStaff: false,
+      isSuspended: false,
       isBoardOwner: true,
       accessMode: "private",
       directRole: null,

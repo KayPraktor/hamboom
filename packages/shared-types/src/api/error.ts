@@ -33,6 +33,13 @@ export const apiErrorCodes = [
   "PAYMENT_FAILED",
   "GATEWAY_UNAVAILABLE",
   "QUOTA_EXCEEDED", // عبور از سقفِ پلن (ADR-053) — نه ۴۰۳ی مبهم، نه ۵۰۰
+  // ── M6 (admin)، فاز ۰ (تاییدِ مالک ۱۴۰۵/۰۶/۲۱) — به **انتها**، طبقِ قاعده‌ی بالا ──
+  "USER_SUSPENDED", // refresh/ورودِ کاربرِ معلق (ADR-066)
+  "STEP_UP_REQUIRED", // ۴۲۸ — عملِ مخربِ ادمین بدونِ OTPِ تازه (ADR-066)
+  "REFUND_UNAVAILABLE", // کانالِ استردادِ واقعی هنوز نیست (ADR-068)
+  "INVALID_TRANSITION", // چرخشِ وضعیتِ نامجاز روی payment/subscription (ADR-068)
+  // ── M6 فاز ۶ (تاییدِ مالک ۱۴۰۵/۰۷/۰۱) ──
+  "REFUND_REJECTED", // درگاه استرداد را **قطعی** رد کرد (نه «در دسترس نیست») — کد/پیامش در details
 ] as const;
 export const apiErrorCode = z.enum(apiErrorCodes);
 export type ApiErrorCode = z.infer<typeof apiErrorCode>;

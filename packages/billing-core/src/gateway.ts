@@ -77,6 +77,40 @@ export interface UnverifiedPayment {
   amountRial: number;
 }
 
+export interface RefundInput {
+  authority: string;
+  /** ★ همیشه `payments.amount_rial`، هرگز بازمحاسبه (ADR-068 §۱ و CHECKِ `payments_refund_full_ck`). */
+  amountRial: number;
+  /** توضیحِ کوتاهِ فارسی برای پنلِ درگاه — دلیلِ staff، بدونِ PII. */
+  description?: string;
+}
+
+/**
+ * نتیجه‌ی استرداد — چهار حالتِ **متمایز**، به همان دلیلی که `VerifyOutcome` سه‌تاست.
+ *
+ * ★★ `unavailable` از `rejected` جداست و این تفاوتِ مرکزیِ ADR-068 است: اولی یعنی «این درگاه
+ * کانالِ استرداد ندارد» (کارِ staff: ثبتِ دستی)، دومی یعنی «درگاه پرسید و **نه** گفت» (مثلاً قبلاً
+ * مسترد شده، یا بیرونِ پنجره) — و آن یکی با تلاشِ دوباره درست نمی‌شود. یکی‌کردنشان یعنی staff
+ * یک ردِ قطعی را ساعت‌ها retry کند، یا برعکس، نبودِ کانال را «خطای موقت» بفهمد.
+ *
+ * ⚠️ و `gatewayError` یعنی «نمی‌دانیم» (شبکه/۵xx) ⇒ تراکنش rollback و ردیف دست‌نخورده.
+ */
+export type RefundOutcome =
+  | { status: "refunded"; refundRef: string }
+  | { status: "unavailable"; message: string }
+  | { status: "rejected"; code: number | null; message: string }
+  | { status: "gatewayError"; code: number | null; message: string };
+
+export interface ReverseInput {
+  authority: string;
+}
+
+export type ReverseOutcome =
+  | { status: "reversed" }
+  | { status: "unavailable"; message: string }
+  | { status: "rejected"; code: number | null; message: string }
+  | { status: "gatewayError"; code: number | null; message: string };
+
 export interface PaymentGateway {
   /** در ستونِ `payments.gateway` می‌نشیند: `zarinpal` | `mock`. */
   readonly name: string;
@@ -101,10 +135,24 @@ export interface PaymentGateway {
   listUnverified?(): Promise<UnverifiedPayment[]>;
 
   /**
-   * ⚠️ **عمداً اختیاری و در M4 پیاده نمی‌شود** (ADR-049). استردادِ زرین‌پال اصلاً در REST
-   * نیست — GraphQL + OAuth2 روی میزبانِ دیگر — پس در توسعه اجراناپذیر است (P3). جایش M6.
+   * استردادِ **کاملِ** یک پرداختِ تسویه‌شده — M6 فاز ۶ ([ADR-068](../../../ARCHITECTURE_DECISIONS.md#adr-068) §۲).
+   *
+   * ⚠️ **نوعش در M4 غلط بود** (`Promise<VerifyOutcome>`): استرداد و verify دو سوالِ متفاوت‌اند و
+   * `VerifyOutcome` جایی برای «این درگاه اصلاً کانالِ استرداد ندارد» نداشت — همان حالتی که امروز
+   * **تنها** حالتِ زرین‌پال است. هیچ مصرف‌کننده‌ای نداشت، پس تصحیحش شکستنی نیست.
+   *
+   * ★ اختیاری می‌مانَد چون خاصیتِ هر درگاهی نیست؛ نبودش یعنی «ثبتِ استردادِ دستی» تنها مسیر است.
    */
-  refund?(input: { authority: string; amountRial: number }): Promise<VerifyOutcome>;
+  refund?(input: RefundInput): Promise<RefundOutcome>;
+
+  /**
+   * ابطالِ پرداختِ **verify‌نشده** — پول به حسابِ ما ننشسته و برمی‌گردد (پنجره‌ی کوتاهِ درگاه).
+   *
+   * ⚠️ **فقط Mock پیاده‌اش می‌کند** (ADR-068 §۲): زرین‌پالش پنجره‌ی ۳۰ دقیقه‌ای و whitelistِ IP
+   * می‌خواهد و با تماسِ زنده اثبات نشده — همان الگوی `listUnverified`. جایش روی پورت باز می‌شود
+   * تا شکلش بعداً اختراع نشود، ولی «قابلیتِ به‌زودی» ساخته نمی‌شود.
+   */
+  reverse?(input: ReverseInput): Promise<ReverseOutcome>;
 }
 
 /** وقتی درگاه در محیطِ اشتباه سیم‌کشی شود. */

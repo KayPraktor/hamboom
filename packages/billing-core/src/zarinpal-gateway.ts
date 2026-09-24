@@ -2,6 +2,8 @@ import type {
   CreatePaymentInput,
   CreatePaymentResult,
   PaymentGateway,
+  RefundInput,
+  RefundOutcome,
   UnverifiedPayment,
   VerifyOutcome,
   VerifyPaymentInput,
@@ -184,6 +186,26 @@ export class ZarinpalGateway implements PaymentGateway {
       out.push({ authority, amountRial: amount });
     }
     return out;
+  }
+
+  /**
+   * ★★ **استرداد این‌جا پیاده نمی‌شود و این یک تصمیم است، نه یک نقص** (ADR-068 §۲).
+   *
+   * استردادِ زرین‌پال در REST نیست: GraphQL + OAuth2 روی میزبانِ **دیگری** (`next.zarinpal.com`) که
+   * خودش P2 را فعال می‌کند و ADRِ جدا می‌خواهد، و بدونِ حسابِ واقعی در dev **اجراناپذیر** است — پس
+   * طبقِ ADR-049 «قابلیتِ به‌زودی» ساخته نمی‌شود.
+   *
+   * ⚠️ و **هیچ تماسی نمی‌گیرد**: یک پیاده‌سازیِ نیمه‌کاره که endpointِ اشتباه را بزند، بدترین حالتش
+   * این است که یک استردادِ واقعی را «شکست‌خورده» گزارش کند. `unavailable` صریح یعنی staff همان
+   * لحظه می‌داند که باید در پنلِ زرین‌پال برگرداند و شماره‌ی مرجع را **ثبتِ دستی** کند.
+   */
+  async refund(_input: RefundInput): Promise<RefundOutcome> {
+    return {
+      status: "unavailable",
+      message:
+        "کانالِ استردادِ زرین‌پال (GraphQL/OAuth) هنوز سیم‌کشی نشده. پول را در پنلِ زرین‌پال برگردان و " +
+        "با «ثبتِ استردادِ دستی» شماره‌ی مرجع را این‌جا ثبت کن.",
+    };
   }
 
   async verifyPayment(input: VerifyPaymentInput): Promise<VerifyOutcome> {

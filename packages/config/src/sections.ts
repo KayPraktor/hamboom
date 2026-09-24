@@ -168,6 +168,23 @@ export const retentionEnvSchema = z.object({
 export type RetentionEnv = z.infer<typeof retentionEnvSchema>;
 
 /**
+ * ── ★ نگهداشتِ ممیزی (M6 فاز ۴٫۴، [ADR-067](../../../ARCHITECTURE_DECISIONS.md#adr-067) §۴) ────
+ *
+ * «ردیفِ audit چند روز بماند؟» سیاست است (تصمیمِ مالک ۱۴۰۵/۰۶/۲۱: **۳۶۵**) و عمداً **بدونِ
+ * پیش‌فرض** در schema: `purge-audit` بدونِ آن اصلاً بالا نمی‌آید، تا یک `.env`ِ ناقص بی‌صدا
+ * پرونده‌ی استرداد/تعلیقِ پارسال را پاک نکند. بخشِ جداست (نه فیلدی در `retentionEnvSchema`)
+ * چون `purge-deleted` و envِ backup به این نیازی ندارند و نباید با نبودش بشکنند.
+ * مصرف‌کننده: فقط `scripts/purge-audit.ts`.
+ */
+export const auditRetentionEnvSchema = z.object({
+  AUDIT_RETENTION_DAYS: z.coerce
+    .number({ error: "AUDIT_RETENTION_DAYS لازم است — عددِ سیاستیِ مالک (۳۶۵)، بدونِ پیش‌فرض" })
+    .int()
+    .positive(),
+});
+export type AuditRetentionEnv = z.infer<typeof auditRetentionEnvSchema>;
+
+/**
  * ── احراز هویتِ M3 (`apps/api` فاز ۵) ───────────────────────────────────
  *
  * ★ رازِ HS256 (PLAN §۴): auth-core آن را **param** می‌گیرد، از `process.env` نمی‌خواند. حداقلِ ۳۲
@@ -248,6 +265,19 @@ export const rateLimitEnvSchema = z.object({
   RATE_LIMIT_OTP_MAX: envInt(5),
 });
 export type RateLimitEnv = z.infer<typeof rateLimitEnvSchema>;
+
+/**
+ * ── ★ پنلِ ادمین (M6 فاز ۳، [ADR-066](../../../ARCHITECTURE_DECISIONS.md#adr-066)) ─────────
+ *
+ * پنجره‌ی step-up: بعد از یک OTPِ تازه، staff تا این‌قدر ثانیه می‌تواند عملِ مخرب انجام دهد.
+ * **۶۰۰** تصمیمِ مالک است (۱۴۰۵/۰۶/۲۱)، نه حدسِ ما. ⚠️ **per-user است، نه per-session** —
+ * توکنِ دزدیده‌شده روی دستگاهِ دیگر هم داخلِ پنجره می‌افتد؛ per-session یعنی claim روی
+ * توکن و تغییرِ قرارداد، که عمداً نگرفتیم. مصرف‌کننده: فقط `apps/api` (`requireStepUp`).
+ */
+export const adminEnvSchema = z.object({
+  ADMIN_STEP_UP_SECONDS: envInt(600),
+});
+export type AdminEnv = z.infer<typeof adminEnvSchema>;
 
 /**
  * ── سقفِ آپلودِ دارایی (`apps/api` فاز ۵) ─────────────────────────────────

@@ -170,9 +170,12 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
 
       // ★ به `Status` **اعتماد نمی‌شود** (ADR-014 قاعده ۱). حتی روی `NOK` هم verifyِ
       //   سرور-به-سرور زده می‌شود: ممکن است پول capture شده باشد و مرورگر دروغ بگوید.
+      // ★ M6 فاز ۶: خودِ بازگشت در `callback_payload` ثبت می‌شود — ستونی که از M4 همیشه NULL بود و
+      //   اشکال‌زداییِ «کاربر می‌گوید پرداخت کردم» را بی‌سند می‌گذاشت.
       const outcome = await settlePayment(
         { pool: deps.pool, gateway: deps.gateway },
         { by: "authority", authority: query.data.Authority },
+        { callbackPayload: { Authority: query.data.Authority, Status: query.data.Status } },
       ).catch((error: unknown) => {
         if (error instanceof HttpError && error.code === "PAYMENT_NOT_FOUND") {
           return { kind: "notPaid" as const, code: null, message: "پرداخت یافت نشد." };
@@ -180,8 +183,14 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
         throw error;
       });
 
+      // ★★ `alreadySettled` فقط وقتی «موفق» است که ردیف واقعاً `paid` باشد (یافته‌ی منتقدِ فاز ۶):
+      //    پرداختی که باطل یا مسترد شده هم `alreadySettled` می‌دهد، و نگارشِ اول به کاربر صفحه‌ی
+      //    «پرداخت موفق» نشان می‌داد — بدترین جای ممکن برای یک دروغِ دلگرم‌کننده.
       const status =
-        outcome.kind === "activated" || outcome.kind === "alreadySettled" ? "ok" : "failed";
+        outcome.kind === "activated" ||
+        (outcome.kind === "alreadySettled" && outcome.status === "paid")
+          ? "ok"
+          : "failed";
       return reply.redirect(`${deps.webBaseUrl}/payment/result?status=${status}`);
     },
   );
@@ -210,6 +219,16 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     }
     if (outcome.kind === "unknown") {
       throw new HttpError(502, "GATEWAY_UNAVAILABLE", outcome.message);
+    }
+    // ★★ همان اصلاحِ callback، این‌بار در برادرش (یافته‌ی بازبینیِ ۶٫۵): `alreadySettled` روی ردیفِ
+    //    **باطل/مسترد** هم می‌آید، و `settled: true` گفتن به مالک همان دروغِ دلگرم‌کننده است — این‌بار
+    //    در پاسخِ API، جایی که رابط رویش تصمیم می‌گیرد.
+    if (outcome.kind === "alreadySettled" && outcome.status !== "paid") {
+      throw new HttpError(
+        409,
+        "INVALID_TRANSITION",
+        `این پرداخت در وضعیتِ «${outcome.status}» است و دیگر تسویه نمی‌شود.`,
+      );
     }
     return { settled: true, subscriptionId: outcome.subscriptionId };
   });

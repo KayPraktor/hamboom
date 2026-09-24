@@ -33,6 +33,7 @@
  * | بریده، با مانیفستِ هماهنگ | قرمز | کدِ خروجِ `pg_restore` — دیسکِ پرشده حینِ dump |
  * | ★★ داده‌ی **یک جدول** جا مانده | قرمز | **فقط شمارشِ ردیف** — چهار چکِ دیگر سبز می‌مانند |
  * | ‏`--schema-only` | قرمز | شمارشِ ردیف |
+ * | ★ M6: آینه‌ی snapshots یک کلید کم دارد | قرمز | **فقط** `bytes` — پنج چکِ دیگر سبز |
  *
  * ⚠️ سناریوی چهارم هسته‌ی این گیت است: `pg_restore` کدِ **صفر** می‌دهد، ledgerِ
  * migration درست است، و `db:fk-test` **سبز** می‌شود — و پشتیبان یک جدول را
@@ -43,6 +44,18 @@
  * صریح دارد که `free`/`pro`/`team` باید فعال باشند، یعنی به **seedِ جدولِ `plans`**
  * تکیه می‌کند. پس اتفاقی یک چکِ داده هم هست، ولی فقط برای یک جدول؛
  * خالی‌بودنِ `boards`/`payments` را نمی‌بیند. برای همین سناریوی چهارم لازم است.
+ *
+ * ── ★★ M6 فاز ۲٫۴: چکِ ششم، `bytes` ───────────────────────────────────────
+ *
+ * probe ۱٫۸ی M6 اندازه گرفت: این مشق با باکتِ snapshotsِ **کاملاً خالی** و ۱۴ ردیفِ
+ * `board_snapshots` سبز می‌مانْد — چون فقط ردیف می‌شمرد و هیچ بایتی نمی‌خواند. و بعد از
+ * فشرده‌سازی، محتوای بورد تا `seq_upto` **فقط** در آن بایت‌هاست. پس حالا هر
+ * `board_snapshots.storage_key`ِ دیتابیسِ بازیابی‌شده باید در **آینه‌ی پشتیبان**
+ * (`storage/<snapshots>/<key>`) شیئی با همان `byte_size` داشته باشد. ⚠️ آینه، نه باکتِ
+ * زنده: سوالِ مشق «از پشتیبان به‌تنهایی برمی‌گردد؟» است. گاردِ vacuous دارد: دیتابیسی که هیچ
+ * snapshotی ندارد چیزی را اثبات نمی‌کند (تا اولین فشرده‌سازی، این چک قرمز است و درست هم
+ * هست — هنوز هیچ محتوایی محافظت نمی‌شود). راستی‌آزماییِ sha و بازخوانیِ Y.Doc کارِ
+ * `infra:restore-storage` است، نه این‌جا.
  */
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -58,7 +71,7 @@ import {
   loadEnv,
   s3EnvSchema,
 } from "@hamboom/config";
-import { createS3ObjectStore } from "@hamboom/storage";
+import { createMemoryObjectStore, createS3ObjectStore, type ObjectStore } from "@hamboom/storage";
 
 import {
   BACKUP_PREFIX,
@@ -69,6 +82,7 @@ import {
   readMigrations,
   type BackupManifest,
 } from "./backup-common.ts";
+import { mirrorKeyOf } from "./backup-run.ts";
 import { parseDatabaseUrl, resolvePgTools, type PgConnection, type PgTools } from "./pg-tools.ts";
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -80,7 +94,7 @@ export interface CheckResult {
 }
 
 /** شناسه‌ی هر چک — خودآزمون با همین می‌گوید «کدام چک گرفتش». */
-export type CheckId = "sha256" | "restore" | "migrations" | "rows" | "fk";
+export type CheckId = "sha256" | "restore" | "migrations" | "rows" | "fk" | "bytes";
 
 interface Check extends CheckResult {
   id: CheckId;
@@ -130,6 +144,26 @@ export interface DrillInput {
   manifest: BackupManifest;
   /** نگه‌داشتنِ دیتابیسِ مشق برای بازرسیِ دستی. */
   keep: boolean;
+  /**
+   * ★ M6: آینه‌ی snapshots در باکتِ پشتیبان + نامِ باکتِ snapshots (کلیدِ آینه از آن ساخته می‌شود).
+   * چکِ `bytes` روی همین می‌رود.
+   */
+  mirror: { store: ObjectStore; snapshotsBucket: string };
+}
+
+/** ردیف‌های `board_snapshots`ِ یک دیتابیس به‌صورتِ `storage_key → byte_size`. */
+async function snapshotCatalog(tools: PgTools, database: string): Promise<Map<string, number>> {
+  const out = await tools.psql(
+    database,
+    "SELECT storage_key || '|' || byte_size::text FROM board_snapshots ORDER BY storage_key",
+  );
+  const map = new Map<string, number>();
+  for (const line of out.split(/\r?\n/)) {
+    const idx = line.lastIndexOf("|");
+    if (idx <= 0) continue;
+    map.set(line.slice(0, idx).trim(), Number(line.slice(idx + 1)));
+  }
+  return map;
 }
 
 /**
@@ -262,6 +296,35 @@ export async function runDrill(input: DrillInput): Promise<Check[]> {
         : `کدِ ${String(fk.code)} · ${fk.tail}`,
     );
 
+    // ── ۶: ★★ M6 — بایت‌های snapshot در آینه‌ی پشتیبان ───────────────────
+    let catalog = new Map<string, number>();
+    try {
+      catalog = await snapshotCatalog(tools, drillDb);
+    } catch (error) {
+      catalog = new Map();
+      void error;
+    }
+    const noBytes: string[] = [];
+    for (const [storageKey, byteSize] of catalog) {
+      const head = await input.mirror.store.headObject(
+        mirrorKeyOf(input.mirror.snapshotsBucket, storageKey),
+      );
+      if (head === null) noBytes.push(`${storageKey} (در آینه نیست)`);
+      else if (head.size !== byteSize)
+        noBytes.push(`${storageKey} (${String(head.size)}B ≠ ${String(byteSize)}B)`);
+    }
+    const bytesVacuous = catalog.size === 0;
+    add(
+      "bytes",
+      "★★ هر snapshotِ دیتابیسِ بازیابی‌شده در آینه‌ی پشتیبان بایت دارد (محتوای بورد، نه فقط ردیف)",
+      noBytes.length === 0 && !bytesVacuous,
+      bytesVacuous
+        ? "هیچ ردیفِ board_snapshots نیست — تا اولین فشرده‌سازی، این مشق محتوای هیچ بوردی را اثبات نمی‌کند"
+        : noBytes.length === 0
+          ? `${String(catalog.size)} snapshot، همه در آینه با همان اندازه`
+          : `${String(noBytes.length)} از ${String(catalog.size)} بی‌بایت: ${noBytes.slice(0, 3).join(" · ")}`,
+    );
+
     return checks;
   } finally {
     if (input.keep) {
@@ -330,6 +393,26 @@ async function selfTest(
     };
     const intactManifest = await manifestFor(tools, connection, intact, baseManifest);
 
+    // ★ M6: آینه‌ی ساختگی از ردیف‌های زنده — هر کلید با شیئی به همان اندازه (بایت‌ها موضوعِ
+    //   این مشق نیستند؛ sha و بازخوانی کارِ restore-storage است).
+    const SNAPSHOTS_BUCKET = "self-test-snapshots";
+    const liveCatalog = await snapshotCatalog(tools, connection.database);
+    const buildMirror = async (omit?: string): Promise<ObjectStore> => {
+      const store = createMemoryObjectStore();
+      for (const [key, size] of liveCatalog) {
+        if (key === omit) continue;
+        await store.putObject(mirrorKeyOf(SNAPSHOTS_BUCKET, key), new Uint8Array(size));
+      }
+      return store;
+    };
+    const fullMirror = { store: await buildMirror(), snapshotsBucket: SNAPSHOTS_BUCKET };
+    if (liveCatalog.size === 0) {
+      throw new Error(
+        "خودآزمونِ مشق به دستِ‌کم یک ردیفِ board_snapshots در دیتابیسِ مبدأ نیاز دارد " +
+          "(چکِ bytes وگرنه vacuous است). اول `pnpm rt:compaction` را بزن.",
+      );
+    }
+
     // ── سناریوی ۱: سالم ⇒ باید سبز شود ──────────────────────────────
     {
       const checks = await runDrill({
@@ -339,6 +422,7 @@ async function selfTest(
         dumpFile: intact,
         manifest: intactManifest,
         keep: false,
+        mirror: fullMirror,
       });
       const reds = checks.filter((c) => !c.ok);
       results.push({
@@ -365,6 +449,7 @@ async function selfTest(
         dumpFile: corrupt,
         manifest: intactManifest, // مانیفستِ فایلِ سالم — یعنی «خرابی بعد از آپلود»
         keep: false,
+        mirror: fullMirror,
       });
       const caught = checks.find((c) => !c.ok)?.id;
       results.push({
@@ -390,6 +475,7 @@ async function selfTest(
         dumpFile: cut,
         manifest: cutManifest,
         keep: false,
+        mirror: fullMirror,
       });
       const shaOk = checks.find((c) => c.id === "sha256")?.ok === true;
       const restoreRed = checks.some((c) => c.id === "restore" && !c.ok);
@@ -443,6 +529,7 @@ async function selfTest(
           dumpFile: partial,
           manifest: partialManifest,
           keep: false,
+          mirror: fullMirror,
         });
         const restoreOk = checks.find((c) => c.id === "restore")?.ok === true;
         const fkOk = checks.find((c) => c.id === "fk")?.ok === true;
@@ -483,6 +570,7 @@ async function selfTest(
         dumpFile: schemaOnly,
         manifest: soManifest,
         keep: false,
+        mirror: fullMirror,
       });
       const restoreOk = checks.find((c) => c.id === "restore")?.ok === true;
       const rowsRed = checks.some((c) => c.id === "rows" && !c.ok);
@@ -496,6 +584,32 @@ async function selfTest(
       });
     }
 
+    // ── سناریوی ۶: ★★ M6 — آینه یک snapshot کم دارد ⇒ فقط bytes ───────
+    //
+    // همان probe ۱٫۸ی M6، این‌بار به‌عنوانِ گیت: dump سالم، schema سالم، ردیف‌ها سالم، FK سالم —
+    // و یکی از snapshotهایی که دیتابیس می‌شناسد در آینه نیست. تا M6 این مشق سبز می‌مانْد.
+    {
+      const omitted = [...liveCatalog.keys()][0]!;
+      const checks = await runDrill({
+        tools,
+        connection,
+        databaseUrl,
+        dumpFile: intact,
+        manifest: intactManifest,
+        keep: false,
+        mirror: { store: await buildMirror(omitted), snapshotsBucket: SNAPSHOTS_BUCKET },
+      });
+      const reds = checks.filter((c) => !c.ok).map((c) => c.id);
+      const ok = reds.length === 1 && reds[0] === "bytes";
+      results.push({
+        name: "★★ M6: آینه‌ی snapshots یک کلید کم دارد ⇒ **فقط** چکِ bytes می‌گیردش",
+        ok,
+        detail: ok
+          ? `پنج چکِ دیگر سبز ماندند و bytes قرمز شد (${omitted.slice(0, 20)}…) — همان چیزی که probe ۱٫۸ نشان داد این مشق تا M6 نمی‌دید`
+          : `قرمزها: ${reds.join(",") || "هیچ — مشق سبز مانْد!"}`,
+      });
+    }
+
     console.log("\n── خودآزمونِ مشقِ بازیابی ──");
     for (const r of results) console.log(`${r.ok ? "✔" : "✖"} ${r.name}\n    ${r.detail}`);
     const reds = results.filter((r) => !r.ok);
@@ -503,7 +617,7 @@ async function selfTest(
       console.error(`\n✖ خودآزمون شکست: ${String(reds.length)} سناریو — این گیت قابلِ اتکا نیست.`);
       process.exit(1);
     }
-    console.log("\n✔ هر چهار شکستِ عمدی را چکِ **درست** گرفت، و پشتیبانِ سالم سبز مانْد.");
+    console.log("\n✔ هر پنج شکستِ عمدی را چکِ **درست** گرفت، و پشتیبانِ سالم سبز مانْد.");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -536,6 +650,7 @@ async function main(): Promise<void> {
   }
 
   const store = createS3ObjectStore(backupStoreConfig(env));
+  const mirror = { store, snapshotsBucket: env.S3_BUCKET_SNAPSHOTS };
   let key = argValue(argv, "key");
   if (key === undefined) {
     const keys = (await store.listPrefix(BACKUP_PREFIX)).filter((k) => k.endsWith(".dump")).sort();
@@ -583,6 +698,7 @@ async function main(): Promise<void> {
       dumpFile,
       manifest,
       keep: argv.includes("--keep"),
+      mirror,
     });
     const reds = report(checks);
     if (reds > 0) {

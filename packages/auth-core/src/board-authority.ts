@@ -70,6 +70,7 @@ function roleToInput(role: BoardRole | null): BoardAccessInput | null {
   if (role === null) return null;
   const base = {
     isStaff: false,
+    isSuspended: false,
     accessMode: "private" as const,
     teamRole: null,
     hasValidLink: false,

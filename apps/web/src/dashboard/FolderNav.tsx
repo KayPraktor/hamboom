@@ -87,7 +87,7 @@ export function FolderNav({
   selection: Selection;
   onSelect: (s: Selection) => void;
 }) {
-  const { teams } = useSession();
+  const { teams, user } = useSession();
   return (
     <aside className="folder-nav" aria-label="پیمایشِ بوردها">
       <nav className="folder-nav__group">
@@ -119,6 +119,18 @@ export function FolderNav({
           {teams.map((team) => (
             <TeamFolders key={team.id} team={team} selection={selection} onSelect={onSelect} />
           ))}
+        </div>
+      )}
+      {/* ★ M6 فاز ۳ — لینکِ پنل فقط برای staff (`User.isStaff`ِ نشست). فقط راحتیِ UI: گیتِ واقعی
+          `requireStaff`ِ سرور است که در هر درخواست از DB می‌خوانَد. */}
+      {user?.isStaff === true && (
+        <div className="folder-nav__section">
+          <p className="folder-nav__section-label">مدیریت</p>
+          <nav className="folder-nav__group">
+            <Link to="/panel" className="nav-item">
+              <span className="nav-item__label">پنلِ ادمین</span>
+            </Link>
+          </nav>
         </div>
       )}
     </aside>

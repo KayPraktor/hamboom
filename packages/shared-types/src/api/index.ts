@@ -71,6 +71,61 @@ export type {
 export { apiErrorCodes, apiErrorCode, apiError } from "./error.ts";
 export type { ApiErrorCode, ApiError } from "./error.ts";
 
+// M6 (admin) — ADR-065/066/067؛ عمداً فقط آنچه فازِ جاری مصرف می‌کند (D12: هر فاز با تاییدِ مالک).
+export {
+  adminMe,
+  stepUpVerifyRequest,
+  auditLogEntry,
+  auditLogQuery,
+  userStatus,
+  adminSearchQuery,
+  adminUserSummary,
+  adminTeamSummary,
+  adminSearchResult,
+  adminUserDetail,
+  adminTeamDetail,
+  phoneRevealResult,
+  suspendRequest,
+  adminUserBoard,
+  // فاز ۶ — پرداخت‌ها و استرداد (ADR-068)
+  paymentStatus,
+  adminPaymentQuery,
+  adminPaymentSummary,
+  adminPaymentDetail,
+  paymentActionResult,
+  expireRequest,
+  refundRequest,
+  refundResult,
+  reconcileRequest,
+  reconcileReport,
+} from "./admin.ts";
+export type {
+  AdminMe,
+  StepUpVerifyRequest,
+  AuditLogEntry,
+  AuditLogQuery,
+  UserStatus,
+  AdminSearchQuery,
+  AdminUserSummary,
+  AdminTeamSummary,
+  AdminSearchResult,
+  AdminUserDetail,
+  AdminTeamDetail,
+  PhoneRevealResult,
+  SuspendRequest,
+  AdminUserBoard,
+  PaymentStatus,
+  AdminPaymentQuery,
+  AdminPaymentSummary,
+  AdminPaymentDetail,
+  PaymentActionResult,
+  ExpireRequest,
+  RefundRequest,
+  RefundResult,
+  ReconcileRequest,
+  ReconcileReport,
+} from "./admin.ts";
+
 export { rtTokenClaims } from "./rt-token.ts";
 export type { RtTokenClaims } from "./rt-token.ts";
 

@@ -93,7 +93,12 @@
                   "PAYMENT_NOT_FOUND",
                   "PAYMENT_FAILED",
                   "GATEWAY_UNAVAILABLE",
-                  "QUOTA_EXCEEDED"
+                  "QUOTA_EXCEEDED",
+                  "USER_SUSPENDED",
+                  "STEP_UP_REQUIRED",
+                  "REFUND_UNAVAILABLE",
+                  "INVALID_TRANSITION",
+                  "REFUND_REJECTED"
                 ]
               },
               "message": {
@@ -196,6 +201,9 @@
                 "type": "null"
               }
             ]
+          },
+          "isStaff": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -208,7 +216,8 @@
           "avatarUrl",
           "locale",
           "createdAt",
-          "lastSeenAt"
+          "lastSeenAt",
+          "isStaff"
         ],
         "additionalProperties": false
       },

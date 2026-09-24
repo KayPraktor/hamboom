@@ -1356,3 +1356,87 @@ body {
 .app-header__link:hover {
   color: var(--hb-fg);
 }
+
+/* ── پنلِ ادمین (M6 فاز ۳) ──────────────────────────────────────────────── */
+
+/* جدولِ پایه‌ی پنل — مشتقِ `invoice-table`، با caption و حالتِ خالی. */
+.panel-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-block-end: 24px;
+}
+
+.panel-table__caption {
+  text-align: start;
+  padding-block: 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--hb-muted);
+}
+
+.panel-table th,
+.panel-table td {
+  text-align: start;
+  padding: 0.5rem 0.25rem;
+  border-block-end: 1px solid var(--hb-border);
+}
+
+.panel-table th {
+  color: var(--hb-muted);
+  font-weight: 500;
+}
+
+/* شناسه/شماره/مبلغ: فقط جهتِ متن چپ‌به‌راست، تراز همچنان start (ADR-016). */
+.panel-table__ltr {
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+
+.panel-table__empty {
+  color: var(--hb-muted);
+  text-align: center;
+}
+
+.panel-stepup {
+  max-inline-size: 480px;
+  margin-inline: 0;
+}
+
+.panel-stepup h2 {
+  margin-block: 0 8px;
+  font-size: 16px;
+}
+
+/* فرمِ step-up که روی ۴۲۸ زیرِ عملِ ردشده باز می‌شود (فاز ۵٫۲). */
+/* فاز ۶ — payloadهای پرداخت: بسته پیش‌فرض، چون اشکال‌زدایی استثناست نه قاعده. */
+.panel-payload {
+  margin-block-start: 0.75rem;
+}
+.panel-payload > summary {
+  cursor: pointer;
+  color: var(--hb-muted);
+  font-size: 0.875rem;
+}
+.panel-payload pre {
+  margin-block-start: 0.5rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--hb-surface);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.panel-stepup__inline {
+  margin-block-start: 12px;
+  padding-block-start: 12px;
+  border-block-start: 1px solid var(--hb-border);
+}
+
+.btn--danger {
+  color: #fff;
+  background: var(--hb-danger);
+}

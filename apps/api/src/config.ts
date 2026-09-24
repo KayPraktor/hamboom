@@ -1,4 +1,5 @@
 import {
+  adminEnvSchema,
   apiServerEnvSchema,
   assertProductionConfig,
   appEnvSchema,
@@ -34,7 +35,9 @@ const apiEnvSchema = appEnvSchema
   .and(paymentEnvSchema)
   // ★★ M5 فازِ ۴٫۵ — فرستنده‌ی واقعیِ پیامک. تا امروز هیچ متغیرِ پیامکی وجود نداشت،
   //    چون تنها فرستنده mock بود و چیزی برای پیکربندی نداشت.
-  .and(smsEnvSchema);
+  .and(smsEnvSchema)
+  // ★ M6 فاز ۳ — پنجره‌ی step-upِ پنل (ADR-066). فقط api؛ آشتی‌دهی پایین این را ندارد.
+  .and(adminEnvSchema);
 
 export function loadApiConfig() {
   const config = loadEnv(apiEnvSchema);

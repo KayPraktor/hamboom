@@ -11,9 +11,6 @@
  */
 import type { ObjectStore } from "@hamboom/storage";
 
-/** ⚠️ بالای این تعداد شیء، فهرست‌کردنِ کامل در حافظه دیگر بی‌هزینه نیست. */
-export const WARN_OBJECTS = 200_000;
-
 export interface SweepPlan {
   bucket: string;
   /** اشیائی که ردیفِ مرجع دارند. */
@@ -40,9 +37,10 @@ export async function planSweep(
   minAgeHours: number,
 ): Promise<SweepPlan> {
   const plan: SweepPlan = { bucket, referenced: 0, tooYoung: [], unknownAge: [], orphans: [] };
-  const keys = await store.listPrefix("");
 
-  for (const key of keys) {
+  // ★ M6 فاز ۲ (ADR-069): صفحه‌به‌صفحه از انبار، نه `listPrefix("")` — تا M5 همه‌ی کلیدها در
+  //   حافظه بودند و فقط بالای ۲۰۰هزار شیء هشدار می‌داد، آن هم **بعد** از این‌که فهرست کامل شده بود.
+  for await (const key of store.iteratePrefix("")) {
     if (referencedKeys.has(key)) {
       plan.referenced += 1;
       continue;

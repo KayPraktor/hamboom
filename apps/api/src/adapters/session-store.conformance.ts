@@ -102,4 +102,44 @@ export const sessionStoreCases: StoreCase[] = [
       assert((await store.findByHash(tB)) !== null, "خانواده‌ی B باید دست‌نخورده بماند");
     },
   },
+  {
+    // ★ M6 ۵٫۲ (ADR-066 §۴): تعلیق همه‌ی خانواده‌های کاربر را می‌سوزاند — دو خانواده، دو دستگاه.
+    name: "★ revokeAllForUser: هر دو خانواده‌ی کاربر می‌سوزند، تعداد برمی‌گردد، بارِ دوم صفر",
+    run: async (store, sub) => {
+      // ★ وضعیتِ پاک: caseهای قبلی روی همان sub نشستِ زنده گذاشته‌اند؛ عددِ این case باید دقیق باشد.
+      await store.revokeAllForUser(sub);
+      const t1 = randomUUID();
+      const t2 = randomUUID();
+      await store.insert({
+        tokenHash: t1,
+        familyId: randomUUID(),
+        sub,
+        used: false,
+        expiresAt: nowSec() + 1000,
+      });
+      await store.insert({
+        tokenHash: t2,
+        familyId: randomUUID(),
+        sub,
+        used: false,
+        expiresAt: nowSec() + 1000,
+      });
+      // یک ردیفِ **چرخانده‌شده** هم هست: می‌سوزد ولی در عدد نمی‌آید (عدد = نشست‌های زنده، یافته‌ی ۵٫۵).
+      const t3 = randomUUID();
+      await store.insert({
+        tokenHash: t3,
+        familyId: randomUUID(),
+        sub,
+        used: false,
+        expiresAt: nowSec() + 1000,
+      });
+      await store.markUsed(t3);
+      const n = await store.revokeAllForUser(sub);
+      assert(n === 2, `باید دقیقاً ۲ نشستِ زنده شمرده شود، نه ردیفِ چرخانده (${String(n)})`);
+      assert((await store.findByHash(t1)) === null, "t1 بعد از revokeAll باید null");
+      assert((await store.findByHash(t2)) === null, "t2 بعد از revokeAll باید null");
+      assert((await store.findByHash(t3)) === null, "t3 (چرخانده) هم باید سوخته باشد");
+      assert((await store.revokeAllForUser(sub)) === 0, "بارِ دوم باید صفر باشد (idempotent)");
+    },
+  },
 ];

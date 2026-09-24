@@ -28,8 +28,13 @@ import { MockGateway, type PaymentGateway } from "@hamboom/billing-core";
 import { databaseEnvSchema, loadEnv } from "@hamboom/config";
 import pg from "pg";
 
+import { recordAudit } from "../apps/api/src/audit.ts";
 import { createDbPool, withTransaction } from "../apps/api/src/plugins/db.ts";
-import { createCheckout, settlePayment } from "../apps/api/src/services/billing.ts";
+import {
+  createCheckout,
+  refundPayment,
+  settlePayment,
+} from "../apps/api/src/services/billing.ts";
 
 interface CheckResult {
   name: string;
@@ -287,20 +292,36 @@ async function main(): Promise<void> {
       const gateway = slowGateway(inner);
       const { paymentId, authority } = await startCheckout(pool, inner, teamId, userId, planCode);
       await settlePayment({ pool, gateway }, { by: "authority", authority });
-      // پول برگشت داده شد (کارِ M6، ولی وضعیتش امروز هم مجاز است).
-      await pool.query("UPDATE payments SET status = 'refunded' WHERE id = $1", [paymentId]);
-      await pool.query("DELETE FROM subscriptions WHERE activated_by_payment_id = $1", [paymentId]);
+      // ★ پول از **مسیرِ واقعیِ M6** برمی‌گردد، نه با UPDATEِ خام: از migrationِ `0009` آن UPDATE اصلاً
+      //   نمی‌نشیند (`payments_refunded_ck` تاریخ و مبلغ می‌خواهد) — و همان درست است، چون تنها نویسنده‌ی
+      //   وضعیتِ `refunded` باید `refundPayment` باشد (ADR-068 §۱).
+      const refunded = await withTransaction(pool, (tx) =>
+        refundPayment(tx, { gateway: inner }, paymentId, {
+          channel: "manual",
+          refundRef: "REF-SETTLE-PROBE",
+        }),
+      );
 
       const again = await settlePayment({ pool, gateway }, { by: "id", id: paymentId });
       const c = await counts(pool, teamId);
-      const ok = again.kind === "alreadySettled" && c.subs === 0;
+      const canceled = Number(
+        (
+          await pool.query<{ n: string | number }>(
+            "SELECT count(*) n FROM subscriptions WHERE team_id = $1 AND status = 'canceled'",
+            [teamId],
+          )
+        ).rows[0]!.n,
+      );
+      // ⚠️ اشتراک **حذف نمی‌شود**، `canceled` می‌شود (M6): پاک‌کردنش همان بازنویسیِ تاریخِ مالی است.
+      const ok = again.kind === "alreadySettled" && c.subs === 1 && canceled === 1;
       results.push({
-        name: "★★ پرداختِ `refunded` دوباره فعال نمی‌شود",
+        name: "★★ پرداختِ `refunded` دوباره فعال نمی‌شود (استرداد از مسیرِ واقعیِ M6)",
         ok,
         detail: ok
-          ? "نتیجه=alreadySettled و صفر اشتراکِ تازه ⇒ خروجِ زودهنگام روی **هر** وضعیتِ " +
-            "غیر-pending است، نه فقط `paid`"
-          : `انتظار: alreadySettled و ۰ اشتراک. واقعی: ${again.kind}، اشتراک=${c.subs}`,
+          ? `نتیجه=alreadySettled · اشتراک‌ها=${c.subs} که ${canceled} لغوشده و صفر زنده · ` +
+            `لغوِ استرداد=${String(refunded.subscriptionCanceled).slice(0, 8)} ⇒ خروجِ زودهنگام روی **هر** ` +
+            "وضعیتِ غیر-pending است، نه فقط `paid`"
+          : `انتظار: alreadySettled و ۱ اشتراکِ canceled. واقعی: ${again.kind}، اشتراک=${c.subs}، لغوشده=${canceled}`,
       });
     } finally {
       await cleanup(pool, teamId, userId);
@@ -576,6 +597,157 @@ async function main(): Promise<void> {
     } finally {
       await nodeB.end().catch(() => undefined);
       await cleanup(pool, teamId, userId);
+    }
+  }
+
+  // ── ۱۰: ★★ دو verifyِ **ادمینِ** هم‌زمان ⇒ یک اشتراک و دو ردیفِ auditِ صادق ──
+  //
+  // ★ قلابِ `onSettled` داخلِ همان تراکنش است (M6 فاز ۶٫۲)، پس این چک هم‌زمان دو چیز را می‌سنجد:
+  //   قفلِ ردیف هنوز کار می‌کند **و** ممیزی هر دو تلاش را ثبت می‌کند — یکی `activated`، یکی
+  //   `alreadySettled`. اگر audit بیرونِ تراکنش بود، بازنده می‌توانست ردیفی بنویسد که هرگز رخ نداد.
+  {
+    const { userId, teamId } = await seedTeam(pool);
+    try {
+      const inner = new MockGateway({ checkoutBaseUrl: "http://localhost/pay" });
+      const gateway = slowGateway(inner);
+      const { paymentId } = await startCheckout(pool, inner, teamId, userId, planCode);
+      const withAudit = (n: number) =>
+        settlePayment(
+          { pool, gateway },
+          { by: "id", id: paymentId },
+          {
+            onSettled: async (tx, outcome) => {
+              await recordAudit(tx, {
+                actor: { userId, ip: null, userAgent: null },
+                action: "payment.verify",
+                target: { type: "payment", id: paymentId },
+                metadata: { n, outcome: outcome.kind },
+              });
+            },
+          },
+        );
+      const [a, b] = await Promise.all([withAudit(1), withAudit(2)]);
+      const c = await counts(pool, teamId);
+      const audits = await pool.query<{ metadata: { outcome: string } }>(
+        "SELECT metadata FROM audit_logs WHERE action = 'payment.verify' AND target_id = $1",
+        [paymentId],
+      );
+      const kinds = audits.rows.map((r) => r.metadata.outcome).sort();
+      const ok =
+        c.subs === 1 &&
+        audits.rows.length === 2 &&
+        kinds.join(",") === "activated,alreadySettled" &&
+        [a.kind, b.kind].sort().join(",") === "activated,alreadySettled";
+      results.push({
+        name: "★★ دو verifyِ **ادمینِ** هم‌زمان ⇒ یک اشتراک، و دو ردیفِ auditِ همان تراکنش‌ها",
+        ok,
+        detail: ok
+          ? `اشتراک=${c.subs} · ردیفِ audit=${String(audits.rows.length)} (${kinds.join("، ")}) ⇒ ` +
+            "قلابِ داخلِ تراکنش نه عملی را جا می‌اندازد نه عملِ نشده‌ای را ثبت می‌کند"
+          : `انتظار: ۱ اشتراک و ۲ ردیفِ [activated, alreadySettled]. واقعی: اشتراک=${c.subs}، ردیف=${String(audits.rows.length)} (${kinds.join("، ")})`,
+      });
+    } finally {
+      await pool.query(
+        "DELETE FROM audit_logs WHERE target_id IN (SELECT id::text FROM payments WHERE team_id = $1)",
+        [teamId],
+      );
+      await cleanup(pool, teamId, userId);
+    }
+  }
+
+  // ── ۱۱: ★★ دو پرداختِ **پرداخت‌شده** با یک کوپنِ سقف‌دار ⇒ هر دو تسویه می‌شوند ──
+  //
+  // یافته‌ی بازبینیِ ۶٫۵ (پول‌سوز): شمارنده‌ی کوپن بی‌قید `+1` می‌خورد، حتی وقتی ردیفِ مصرف با
+  // `ON CONFLICT DO NOTHING` درج **نشده** بود. با `max_redemptions=1`، تسویه‌ی دوم به
+  // `coupons_redemptions_ck` می‌خورد ⇒ کلِ تراکنش rollback ⇒ پرداختِ **پرداخت‌شده** `pending` می‌مانْد و
+  // هر تلاشِ بعدی هم می‌شکست: پول گرفته شده، اشتراک هرگز فعال نمی‌شود.
+  {
+    const { userId, teamId } = await seedTeam(pool);
+    const code = `CPN${String(Date.now()).slice(-9)}`;
+    try {
+      await pool.query(
+        "INSERT INTO coupons (code, percent_off, max_redemptions) VALUES ($1, 10, 1)",
+        [code],
+      );
+      const gateway = new MockGateway({ checkoutBaseUrl: "http://localhost/pay" });
+      const mkPaid = async (): Promise<string> => {
+        const draft = await withTransaction(pool, async (tx) =>
+          createCheckout(
+            tx,
+            {
+              teamId,
+              userId,
+              planCode,
+              period: "monthly",
+              seats: 1,
+              couponCode: code,
+              vatPercent: 0,
+              gatewayName: gateway.name,
+              gatewayMode: gateway.mode,
+            },
+            `${teamId}:${randomUUID()}`,
+          ),
+        );
+        const created = await gateway.createPayment({
+          amountRial: draft.amountRial,
+          description: "سنجه",
+          callbackUrl: "http://localhost/cb",
+        });
+        await pool.query("UPDATE payments SET authority = $2 WHERE id = $1", [
+          draft.paymentId,
+          created.authority,
+        ]);
+        return draft.paymentId;
+      };
+      // ★ هر دو checkout **پیش از** هر تسویه‌ای ساخته می‌شوند — همان پنجره‌ای که کاربر دو تبِ باز دارد.
+      const p1 = await mkPaid();
+      const p2 = await mkPaid();
+      const o1 = await settlePayment({ pool, gateway }, { by: "id", id: p1 });
+      let secondError: string | null = null;
+      let o2kind = "—";
+      try {
+        o2kind = (await settlePayment({ pool, gateway }, { by: "id", id: p2 })).kind;
+      } catch (error) {
+        secondError = String((error as Error).message).slice(0, 80);
+      }
+      const redeemed = Number(
+        (
+          await pool.query<{ redeemed_count: number | string }>(
+            "SELECT redeemed_count FROM coupons WHERE code = $1",
+            [code],
+          )
+        ).rows[0]!.redeemed_count,
+      );
+      const paidRows = Number(
+        (
+          await pool.query<{ n: string | number }>(
+            "SELECT count(*) n FROM payments WHERE team_id = $1 AND status = 'paid'",
+            [teamId],
+          )
+        ).rows[0]!.n,
+      );
+      const ok =
+        o1.kind === "activated" && o2kind === "activated" && redeemed === 1 && paidRows === 2;
+      results.push({
+        name: "★★ دو پرداختِ پرداخت‌شده با یک کوپنِ سقف‌دار ⇒ هر دو تسویه می‌شوند و شمارنده **یک** می‌مانَد",
+        ok,
+        detail: ok
+          ? `هر دو activated · redeemed_count=${String(redeemed)} · پرداختِ paid=${String(paidRows)} ⇒ ` +
+            "شمارنده به **درجِ واقعی** گره خورده، نه به وجودِ کد"
+          : `انتظار: دو activated، شمارنده=۱، دو paid. واقعی: ${o1.kind}/${o2kind}` +
+            `، شمارنده=${String(redeemed)}، paid=${String(paidRows)}` +
+            (secondError === null ? "" : ` · خطای دوم: ${secondError}`),
+      });
+    } catch (error) {
+      results.push({
+        name: "★★ دو پرداختِ پرداخت‌شده با یک کوپنِ سقف‌دار",
+        ok: false,
+        detail: `خودِ چک شکست: ${String((error as Error).message)}`,
+      });
+    } finally {
+      await pool.query("DELETE FROM coupon_redemptions WHERE coupon_code = $1", [code]);
+      await cleanup(pool, teamId, userId);
+      await pool.query("DELETE FROM coupons WHERE code = $1", [code]);
     }
   }
 

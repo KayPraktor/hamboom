@@ -6,6 +6,8 @@
  * می‌آید که مصرف‌کننده از `@hamboom/config` (`s3EnvSchema`) می‌سازد. این پکیج خودش
  * `process.env` را نمی‌خواند (PLAN §۴).
  */
+import type { Readable } from "node:stream";
+
 import {
   CreateBucketCommand,
   DeleteObjectCommand,
@@ -47,6 +49,20 @@ export function createS3ObjectStore(config: S3StorageConfig): ObjectStore {
     forcePathStyle: config.forcePathStyle,
   });
   const bucket = config.bucket;
+
+  /** صفحه‌های `ListObjectsV2` را یکی‌یکی می‌گیرد؛ هر صفحه بعد از yield رها می‌شود (M6/ADR-069). */
+  async function* iterate(prefix: string): AsyncGenerator<string, void, undefined> {
+    let token: string | undefined;
+    do {
+      const res = await client.send(
+        new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }),
+      );
+      for (const obj of res.Contents ?? []) {
+        if (obj.Key !== undefined) yield obj.Key;
+      }
+      token = res.IsTruncated ? res.NextContinuationToken : undefined;
+    } while (token !== undefined);
+  }
 
   return {
     async putObject(key, body, opts) {
@@ -95,16 +111,7 @@ export function createS3ObjectStore(config: S3StorageConfig): ObjectStore {
 
     async listPrefix(prefix) {
       const keys: string[] = [];
-      let token: string | undefined;
-      do {
-        const res = await client.send(
-          new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }),
-        );
-        for (const obj of res.Contents ?? []) {
-          if (obj.Key !== undefined) keys.push(obj.Key);
-        }
-        token = res.IsTruncated ? res.NextContinuationToken : undefined;
-      } while (token !== undefined);
+      for await (const key of iterate(prefix)) keys.push(key);
       return keys;
     },
 
@@ -126,6 +133,37 @@ export function createS3ObjectStore(config: S3StorageConfig): ObjectStore {
         Expires: opts.expiresIn ?? config.defaultPresignTtl,
       });
       return { url, fields };
+    },
+
+    // ── M6 / ADR-069 — افزایشی ───────────────────────────────────────────
+    async getObjectStream(key) {
+      try {
+        const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        if (!res.Body) return null;
+        // ★ در Node بدنه‌ی SDK همان `Readable`ِ node است (IncomingMessage + mixin)؛
+        //   `transformToByteArray` را عمداً صدا نمی‌زنیم — همان کپیِ سه‌برابریِ فاز ۱ است.
+        return res.Body as unknown as Readable;
+      } catch (e) {
+        if (isNotFound(e)) return null;
+        throw e;
+      }
+    },
+
+    async putObjectStream(key, body, opts) {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: body,
+          // ⚠️ بدونِ این، SDK با بدنه‌ی stream خطا می‌دهد (به `lib-storage` ارجاع می‌دهد).
+          ContentLength: opts.contentLength,
+          ContentType: opts.contentType,
+        }),
+      );
+    },
+
+    iteratePrefix(prefix) {
+      return iterate(prefix);
     },
   };
 }

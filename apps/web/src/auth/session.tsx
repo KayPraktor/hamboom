@@ -19,10 +19,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionValue["user"]>(null);
   const [teams, setTeams] = useState<SessionValue["teams"]>([]);
 
-  const applyAnonymous = (): void => {
+  const applyAnonymous = (reason?: { code: string }): void => {
     setUser(null);
     setTeams([]);
-    setStatus("anonymous");
+    // ★ M6 ۵٫۲: refreshِ ردشده با USER_SUSPENDED یعنی «حساب معلق»، نه «دوباره وارد شو» (ADR-066 §۴).
+    setStatus(reason?.code === "USER_SUSPENDED" ? "suspended" : "anonymous");
   };
 
   const loadMe = async (): Promise<void> => {
@@ -44,6 +45,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     void (async () => {
       // بازگرداندنِ نشست از کوکیِ HttpOnly. (اگر کوکی نباشد، refresh داخلاً
       // onSessionEnded را صدا می‌زند ولی هنوز handlerی وصل نیست — بی‌اثر.)
+      // ⚠️ handler پیش از refreshِ اول وصل می‌شود تا علتِ ردِ همان refresh (مثلاً USER_SUSPENDED) گم نشود.
+      let firstReason: { code: string } | undefined;
+      setSessionEndedHandler((reason) => {
+        firstReason = reason;
+      });
       const restored = await api.auth.refresh();
       if (restored) {
         try {
@@ -52,10 +58,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           applyAnonymous();
         }
       } else {
-        applyAnonymous();
+        applyAnonymous(firstReason);
       }
       // حالا که وضعیتِ اولیه معلوم شد، مرگِ نشستِ بعدی را گوش بده.
-      setSessionEndedHandler(() => applyAnonymous());
+      setSessionEndedHandler((reason) => applyAnonymous(reason));
     })();
   }, []);
 

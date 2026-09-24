@@ -23,7 +23,7 @@ import { RefreshError, rotateSession, startSession } from "@hamboom/auth-core";
 import { databaseEnvSchema, loadEnv } from "@hamboom/config";
 
 import { createPgOtpStore } from "../apps/api/src/adapters/otp-store.ts";
-import { otpStoreCases } from "../apps/api/src/adapters/otp-store.conformance.ts";
+import { otpPurposeCases, otpStoreCases } from "../apps/api/src/adapters/otp-store.conformance.ts";
 import { createPgSessionStore } from "../apps/api/src/adapters/session-store.ts";
 import { sessionStoreCases } from "../apps/api/src/adapters/session-store.conformance.ts";
 import { createDbPool } from "../apps/api/src/plugins/db.ts";
@@ -173,6 +173,18 @@ async function main(): Promise<void> {
         results.push({ name: `otp/${c.name}`, ok: true, detail: "" });
       } catch (error) {
         results.push({ name: `otp/${c.name}`, ok: false, detail: String(error) });
+      }
+    }
+
+    // ★★ M6 فاز ۳ — دو هدف روی **یک جدول**: فقط ستونِ `purpose` جدایشان می‌کند.
+    const loginStore = createPgOtpStore(pool, "login");
+    const stepUpStore = createPgOtpStore(pool, "admin_step_up");
+    for (const c of otpPurposeCases) {
+      try {
+        await c.run(loginStore, stepUpStore);
+        results.push({ name: `otp-purpose/${c.name}`, ok: true, detail: "" });
+      } catch (error) {
+        results.push({ name: `otp-purpose/${c.name}`, ok: false, detail: String(error) });
       }
     }
 

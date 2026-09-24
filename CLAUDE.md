@@ -9,6 +9,7 @@
 |---|---|
 | [PLAN.md](PLAN.md) | ساختار مونوریپو، قرارداد API، schema دیتابیس، مدل Yjs، شرح ۶ ماژول |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | ۶۴ تصمیم فنی با دلیل. **تغییر هر کدام نیاز به تایید مالک دارد.** |
+| ★★ [TODO-M6-admin.md](TODO-M6-admin.md) · [PROGRESS-M6-admin.md](PROGRESS-M6-admin.md) | **ماژولِ جاری: M6 (`admin`)** — دوازده تصمیمِ مرزیِ تاییدشده، ADR-065…069، فازهای ۰–۹ با معیارِ پذیرش؛ دفترِ کار |
 | ★ [docs/m6-handoff.md](docs/m6-handoff.md) | **نقطه‌ی ورودِ M6** — هفت چیزِ بی‌صدا‌شکننده، گپِ بازیابیِ Object Storage، تصمیم‌های باز، درس‌های روشیِ M5 |
 | ★★ [infra/RUNBOOK.md](infra/RUNBOOK.md) | **دفترچه‌ی اپراتور** — روزِ صفر، استقرارِ نو، rollback، بازیابی، «چه کنم اگر…»، cron |
 | [TODO-M5-infra.md](TODO-M5-infra.md) · [PROGRESS-M5-infra.md](PROGRESS-M5-infra.md) | بایگانیِ M5 (`infra`، **تمام‌شده** ۱۴۰۵/۰۶/۱۹) — مرجعِ تاریخی |
@@ -47,7 +48,7 @@
 
 ```bash
 pnpm install
-pnpm verify           # ★ گیت نهایی — تنها «سبز»ی که قابل استناد است (۱۵ گیت)
+pnpm verify           # ★ گیت نهایی — تنها «سبز»ی که قابل استناد است (۱۶ گیت)
 pnpm dev              # turbo: همه‌ی اپ‌ها
 pnpm typecheck        # tsc روی scripts + turbo روی پکیج‌ها
 pnpm lint
@@ -89,15 +90,25 @@ pnpm billing:probe-gateway -- --verify    #   بعد از پرداختِ دست�
 pnpm billing:settle          # ★★ فاز ۵: ۸ چک — دو تسویه‌ی هم‌زمان ⇒ یک اشتراک، کوپن، تمدید
 pnpm billing:quota           # ★★ فاز ۶: ۶ چک — سقف، همزمانی، سنتینلِ -1، فضای شخصی، staff
 pnpm billing:probe-reconcile # ★★ فاز ۷: ۹ چک — callbackِ گم‌شده، یتیم، فرزندخواندگی، دو sweepِ هم‌زمان
+pnpm billing:refund          # ★★ M6 فاز ۶: ۱۰ چک — استرداد↔تسویه‌ی هم‌زمان، بازگشتِ دوره‌ی تمدید، zarinpal ⇒ REFUND_UNAVAILABLE بدونِ fetch
 pnpm billing:reconcile       # ★ ابزارِ اپراتور (نه سنجه): همان کدِ پلاگین، دستی
 pnpm infra:probe-lock        # ★★ M5 فاز ۱: ۴ چک — انحصار، مرگِ نشست، تله‌ی اتصالِ استخر
 pnpm infra:probe-metrics     # ★★ M5 فاز ۵: ۳ چک — ضریبِ حافظه با heapِ واقعی + هر دو /metrics زنده
 pnpm infra:probe-leader      # ★★ M5 فاز ۶: ۳ چک — دو نود ⇒ یک رهبر، با هم‌پوشانیِ واقعی
-pnpm infra:backup            # ★ M5 فاز ۷: pg_dump → باکتِ **جدا** + مانیفست + راستی‌آزمایی
-pnpm infra:backup-storage    # ★ M5 فاز ۷: آینه‌ی افزایشیِ snapshots/assets + مانیفستِ تاریخ‌دار
-pnpm infra:restore-drill     # ★★★ M5 فاز ۷: **گیتِ اصلی** — پشتیبان را واقعاً برمی‌گرداند (۵ چک)
-#   -- --self-test   چهار شکستنِ عمدی، هرکدام باید چکِ **درستش** را قرمز کند
+pnpm admin:access            # ★★ M6 فاز ۵: staff ⇒ viewer، تعلیق fail-closed در نقاطِ ورود، WSِ باز = محدودیتِ مستند — ۸ انتظار روی api+realtime‌ی واقعی (probeِ فاز ۱ با انتظارِ برعکس)
+pnpm admin:grant-staff -- --phone=09XXXXXXXXX   # ★★ M6 فاز ۳: **تنها** راهِ staff‌شدن (پرچم + audit در یک تراکنش)
+#   -- --revoke   سلب (step-up هم پاک می‌شود) · -- --self-test   ۶ چک روی PGِ زنده (شکستِ عمدیِ audit ⇒ پرچم برنمی‌گردد)
+pnpm admin:check-audit       # ★ M6 فاز ۳: گیتِ ۱۶ — هر جهشِ /admin با audited() اعلام شده — **داخلِ verify هم هست**
+pnpm infra:purge-audit       # ★★ M6 فاز ۴: نگهداشتِ audit_logs — AUDIT_RETENTION_DAYS (۳۶۵) **بدونِ پیش‌فرض**؛ پیش‌فرض گزارش
+#   -- --delete   ⚠️ واقعاً پاک می‌کند · --days=N   overrideِ یک اجرا · --self-test   ۴ چک روی PGِ زنده
+pnpm infra:backup-all        # ★★ M6 فاز ۲: dump + آینه در یک اجرا، یک stamp، دو مانیفستِ پیوندخورده — cronِ شبانه
+pnpm infra:backup            # M5 فاز ۷: فقط pg_dump (استریمی) → باکتِ **جدا** + مانیفست
+pnpm infra:backup-storage    # M5 فاز ۷ / M6: فقط آینه‌ی افزایشی + مانیفست با **sha256** · -- --self-test (۵ سناریو)
+pnpm infra:restore-drill     # ★★★ M5 فاز ۷ / M6: **گیتِ اصلی** — پشتیبان را واقعاً برمی‌گرداند (**۶ چک**، ششمی بایت‌های snapshot در آینه)
+#   -- --self-test   پنج شکستنِ عمدی، هرکدام باید چکِ **درستش** را قرمز کند
 #   -- --key=… --keep --prune=N
+pnpm infra:restore-storage   # ★★★ M6 فاز ۲: آینه را روی باکت‌های <bucket>-restore-drill برمی‌گرداند — ۶ چک (count/size/integrity/catalog/opens/vacuous)
+#   -- --self-test   هفت سناریو، پنج شکستنِ عمدی · --to-live ⚠️ بازیابیِ واقعی · --prefix=<boardId>/ · --database=<db>
 pnpm sms:probe -- --to=09XXXXXXXXX   # ★★ M5 فازِ ۴٫۵: یک پیامکِ **واقعی** (بدنه‌ی خام را چاپ می‌کند)
 #   -- --dry-run   بدنه‌ی درخواست را می‌سازد و چیزی نمی‌فرستد
 pnpm infra:ship              # ★★ M5-D10/ADR-063: docker save → ssh → راستی‌آزمایی در مقصد
@@ -206,6 +217,10 @@ threshold گذاشت؛ گذاشتنشان بیرونِ گیت یعنی تکرا�
 > داشت. اگر شد، `netsh interface ipv4 show excludedportrange protocol=tcp` را ببین و پورتِ
 > بیرونِ رنج بگذار.
 >
+> ⚠️⚠️ **و در M6 فاز ۶ دوباره خورد: ۳۴۱۰ داخلِ رنجِ ۳۳۷۶–۳۴۷۵ افتاد** («Port is reserved by the OS»).
+> **api حالا ۱۵۴۰۲ است** (`.env`: `PORT`/`VITE_API_TARGET`/`ZARINPAL_CALLBACK_URL`/`MOCK_CHECKOUT_PATH` ·
+> `apps/web/.env.local` · `.claude/launch.json`). همان الگوی همیشگی: **بالای ۱۵۰۰۰ تا امروز امن بوده.**
+>
 > ⚠️⚠️ **و در M5 فاز ۵ واقعاً خورد:** رنج به **۳۰۰۱–۳۲۰۰** رسید و
 > `RT_PORT=3001` با `EACCES: permission denied 0.0.0.0:3001` بالا نیامد. برای اجرای دستی از
 > **۱۵۴۰۱ (realtime) و ۱۵۴۰۲ (api)** استفاده شد — بالای ۱۵۰۰۰ تا امروز همیشه امن بوده.
@@ -273,6 +288,80 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 این تفکیک را حدس نزن؛ همان درسِ سبزِ دروغینِ گام ۱٫۲.
 
 ## وضعیت فعلی
+
+- **★★ M6 (`admin`) — فاز ۰–۶ تمام و **تایید شده** (۶: ۱۴۰۵/۰۷/۰۲)؛ ⏭ قدمِ بعد فاز ۷ (آمار و وضعیتِ سیستم) — هنوز شروع نشده، با تاییدِ مالک.**
+  ★★ **فاز ۶:** migrationِ **[`0009`](apps/api/migrations/0009_refunds.sql)** (ADR-068؛ `paid_at` با استرداد **پاک نمی‌شود** — CHECKِ جایگزین) ·
+  [`refundPayment(tx)`](apps/api/src/services/billing.ts) **تنها نویسنده‌ی `refunded`**: قفل → assertِ `gateway`**و**`gateway_mode` → فقط از `paid` →
+  کانالِ `manual`/`gateway` → ردیف+فاکتور مسترد → اشتراکِ هدف `canceled` → **بازگرداندنِ دوره‌ی جایگزین‌شده** (پیوندِ لنگر: پایانِ دوره‌ی قبلی = شروعِ دوره‌ی لغوشده) ·
+  **انقضای دستی = پله‌ی ۳ی ADR-056 کامل** (۷۲ ساعت **و** یک پاسخِ درگاه) و بعد **verifyِ تازه زیرِ قفل** — در مرورگر «activated» داد، نه ابطال ·
+  sweepِ دستی زیرِ همان advisory lock (`batchSize ≤ ۱۰`، پیش‌فرض ۵) · `payment.{search,verify,expire,refund,adopt,reconcile}` در audit ·
+  جست‌وجوی پرداخت **POST** (شماره‌ی پیگیری در لاگ/URL ننشیند — همان قاعده‌ی فاز ۵) · پنل `/panel/payments` (+`:id`) ·
+  [`billing:refund`](scripts/billing-probe-refund.ts) **۱۱/۱۱** · `sdk:contract` **۴۳/۴۳** ·
+  ★ **۶٫۵ (بازبینیِ خصمانه‌ی پول): ۱۰ یافته، ۸ رفع** — از جمله یک **پول‌سوزِ M4** که هیچ گیتی نمی‌دیدش (شمارنده‌ی کوپن بی‌قید `+1` ⇒ تسویه‌ی دوم برای همیشه rollback)،
+  بازگردانیِ اشتراک بدونِ قفلِ پرداخت، و دسته‌ی sweep که با ردیف‌های حالتِ ناهم‌خوان پر می‌مانْد. جدول در [TODO فاز ۶](TODO-M6-admin.md).
+  ⚠️ سه **سبزِ دروغین** خودمان گرفتیم (سنجه بدونِ `FOR UPDATE` سبز مانْد؛ انقضایی که فعال می‌کرد audit نمی‌نوشت؛ چکِ استردادِ هم‌پوشان که قفلِ اشتباه را نمی‌سنجید).
+  ★★ **فاز ۵:** staff ⇒ **viewer** در `effectiveBoardRole` و `isSuspended` **اجباری** و مقدم (auth-core، لمسِ تاییدشده؛ realtime بی‌لمس) ·
+  **تعلیق** = یک تراکنش (`FOR UPDATE` + `revokeAllForUser` + مصرفِ چالشِ ورود + audit با دلیل) پشتِ `requireStepUp` — **اولین ۴۲۸ روی
+  استکِ واقعی** · نقاطِ ورود fail-closed: OTP ۲۰۰ی بی‌صدا، `otp/verify` و refresh با چکِ status **داخلِ تراکنش** (`FOR SHARE`) ⇒ `401
+  USER_SUSPENDED` + کوکی پاک، rt-token ۴۰۳، دست‌دادنِ نو رد؛ **WSِ باز تا reconnect می‌نویسد = محدودیتِ مستند و assert‌شده** ·
+  [`admin:access`](scripts/admin-access-gauge.ts) ۸/۸ (probeِ فاز ۱ با انتظارِ برعکس، در CI) · نمای پشتیبانی: `support.board.view` روی هر
+  خواندنِ staff-only (de-dupe ۱۰ دقیقه) · جست‌وجو **POST** و ممیزی‌شده، شماره فقط کامل و **ماسک** (`phoneMasked`؛ کامل فقط با `phone/reveal`) ·
+  سریالایزرِ req بدونِ query string · پنل: `/panel/users`، `/panel/users/:id` (تعلیق با confirm + دلیل، **۴۲۸ در جا** با فرمِ step-up)، `/panel/teams/:id`،
+  کارتِ «حساب معلق شده است» · `sdk:contract` **۳۵/۳۵** · ★ بازبینیِ خصمانه‌ی ۵٫۵: **۱۴ یافته، ۷ رفع** (`otp/verify` بی‌چکِ status، مسابقه‌ی suspend↔refresh،
+  پیشوندِ شماره = بازسازیِ ماسک، شماره در لاگِ `?q=`، …) — جدول در PROGRESS. ⚠️ ردکننده‌های workflow به سقفِ نشست خوردند؛ راستی‌آزمایی دستی.
+  ★★ **فاز ۴:** `GET /admin/audit` (internal؛ keyset + `maskIp`؛ DTOی `auditLogEntry` با تاییدِ D12) + `sdk.admin.audit` + [`/panel/audit`](apps/web/src/panel/PanelAudit.tsx)
+  (`useInfiniteQuery` روی `nextCursor` — در مرورگر ۲۵ → «بیشتر» → ۳۳) · `sdk:contract` **۲۵/۲۵** · [`recordAudit(tx)`](apps/api/src/audit.ts) تنها نویسنده، **همان تراکنش** (اثبات روی PG: عمل می‌شکند ⇒ هیچ
+  ردیفی؛ `sdk:contract` ۲۲/۲۲) · redactِ `ip/phone/user_agent/email` تا **دو سطح** (تستِ نشتِ عمدی اول قرمز شد — wildcardِ pino
+  یک‌سطحی است) · [`purge-audit`](scripts/purge-audit.ts) با `AUDIT_RETENTION_DAYS=365` **بدونِ پیش‌فرض** (بی‌عدد ConfigError؛ ⚠️ `:?`ِ
+  compose کلِ استک را می‌انداخت ⇒ `:-`) · خواندنِ keyset + `maskIp` در [`services/audit-log.ts`](apps/api/src/services/audit-log.ts).
+  ★★ **فاز ۳:** `/admin` پشتِ nginx با ناحیه‌ی `hb_admin` در **همان** بلوک (مولد ادغام می‌کند؛ `nginx -t` سه حالت + بلوکِ دومِ عمدی
+  ⇒ `duplicate location`) · [`requireStaff`](apps/api/src/admin-guard.ts) از **DB** در هر درخواست (۴۰۱/۴۰۳/۴۰۳ روی ایمیجِ واقعی) +
+  `requireStepUp` (۴۲۸؛ در تست با مسیرِ عمدی — روی استک در ۵٫۲ با اولین مسیرِ مخرب) · step-up روی storeِ OTP با `purpose`
+  (auth-core دست‌نخورده؛ conformance روی PG) · `internal` در OpenAPI با سه شکستنِ عمدی و چک روی سندِ واقعی ·
+  [`admin-grant-staff`](scripts/admin-grant-staff.ts) **تنها** نویسنده‌ی `is_staff` (اتمیک با audit؛ از ایمیج اجرا شد) ·
+  `/panel`ِ lazy (**+۷۲۳ B** روی chunkِ ورودی) · ★ **گیتِ ۱۶** (`admin audit`) با شکستنِ عمدیِ واقعی.
+  ✅ `audited()` از فاز ۴ پشتوانه دارد — هر دو مسیرِ step-up با `recordAudit` در همان تراکنش می‌نویسند.
+  ★★ **فاز ۲ گپِ M5 را بست:** پورتِ storage افزایشی (stream با طولِ اجباری + `iteratePrefix`)، آینه با sha256، [`infra:restore-storage`](scripts/restore-storage.ts)
+  با ۶ چک و ۵ شکستنِ عمدی، چکِ ششمِ مشق (`bytes` — probe ۱٫۸ حالا قرمز می‌شود)، [`backup-all`](scripts/backup-all.ts) (پنجره‌ی
+  compactor کوتاه، نه بسته)، sweep صفحه‌بندی‌شده، گیتِ deps با **بستارِ importهای نسبی** (yjs از همین راه به `dependencies` رفت)،
+  و خودآزمون‌ها **از داخلِ ایمیجِ واقعی**. ★ اولین اجرای واقعیِ restore-storage دو ردیفِ زباله‌ی دستیِ M3 را گرفت (`catalog` + `opens`).
+  ⚠️ **۱٫۰ قرمز:** `.env`ِ محلی هنوز پیشوندِ لو‌رفته‌ی کلیدِ sms.ir را دارد (تطبیقِ hash، بدونِ چاپ) — مالک باطل‌شدن را
+  تایید و کلیدِ تازه را بگذارد. ★ فاز ۱ همه‌ی ادعاهای فاز ۰ را **با عدد روی سیمِ واقعی** ثابت کرد
+  (probeِ `admin-probe-access` — حالا سنجه‌ی [`admin:access`](scripts/admin-access-gauge.ts) با انتظارِ برعکس: staff = owner و می‌نویسد؛
+  تعلیق روی refresh/rt-token/OTP/WSِ باز **هیچ اثری** ندارد) — جدول در [`TODO-M6`](TODO-M6-admin.md) فاز ۱.
+  TODO در [`TODO-M6-admin.md`](TODO-M6-admin.md)، دفترِ کار در [`PROGRESS-M6-admin.md`](PROGRESS-M6-admin.md).
+  - **دامنه:** پنلِ ادمین **داخلِ `apps/web`** (lazy، `/panel`) + `apps/api` زیرِ `/admin` · staff + step-up ·
+    اولین نویسنده‌ی `audit_logs` · **تعلیق** · نمای پشتیبانیِ فقط‌خواندنی · اشکال‌زداییِ پرداخت + **مدلِ استرداد**
+    · آمار (SQL) · وضعیتِ سیستم · **بازیابیِ Object Storage** + پورتِ stream/pagination + چکِ بایت در مشق.
+    ⛔ **بیرون:** کتابخانه‌ی قالب (صفر قالب) · استردادِ واقعیِ زرین‌پال (حساب ندارد) · **حذفِ حساب** · feature
+    flags (صفر مصرف‌کننده) · `RT_CLUSTER=false` و بستنِ WS روی تعلیق (M2، ADR جدا).
+  - **دوازده تصمیمِ مرزی → پنج ADR (تاییدِ مالک ۱۴۰۵/۰۶/۲۱):**
+    [ADR-065](ARCHITECTURE_DECISIONS.md#adr-065) (پنل هم‌مبدأ؛ API `/admin`، رابط `/panel` — انحرافِ ثبت‌شده از
+    PLAN §۲) · [ADR-066](ARCHITECTURE_DECISIONS.md#adr-066) (★★ **staff از `owner` به `viewer`** — جایگزینِ بخشی از
+    ADR-012؛ `requireStaff` با لوک‌آپِ DB؛ step-upِ **per-user**؛ تعلیق fail-closed در نقاطِ ورود و **صادقانه بی‌اثر
+    روی WSِ باز** تا reconnect) · [ADR-067](ARCHITECTURE_DECISIONS.md#adr-067) (`recordAudit(tx)` در همان تراکنش؛
+    گیتِ ۱۶ «هر جهشِ ادمین ممیزی‌شده»؛ `AUDIT_RETENTION_DAYS=365` بدونِ پیش‌فرض؛ پرچمِ `internal` + `INTERNAL_SCHEMAS`؛
+    `GET /admin/system` به‌جای عمیق‌کردنِ `/readyz`) · [ADR-068](ARCHITECTURE_DECISIONS.md#adr-068) (مدلِ استرداد در
+    migrationِ **جدای** `0009`؛ `refundPayment(tx)` status را در همان تراکنش می‌چرخاند؛ Zarinpal refund ⇒
+    `REFUND_UNAVAILABLE`؛ «ثبتِ استردادِ دستی» تنها مسیرِ اجرایی؛ `reverse` فقط Mock) ·
+    [ADR-069](ARCHITECTURE_DECISIONS.md#adr-069) (پورتِ `ObjectStore` **افزایشی**: stream با طولِ اجباری، `iteratePrefix`،
+    `copyObject`؛ `infra:restore-storage` با ۶ چک و ۵ شکستنِ عمدی؛ `yjs` → `dependencies`).
+
+  ### ★★ دوازده واقعیتِ فاز ۰ که نقشه را شکل دادند (اندازه‌گیری‌شده، در TODO §۰)
+
+  **`is_staff` امروز یعنی `owner` روی هر بورد** ([`roles.ts:65`](packages/auth-core/src/roles.ts)) ⇒ «impersonationِ
+  فقط‌خواندنی» ناممکن و یک staffِ لو‌رفته = نوشتن روی کلِ پلتفرم · **`users.status='suspended'` صفر جا enforce می‌شود**
+  · `audit_logs`/`feature_flags`/`templates` جدول دارند و صفر کد · استرداد هیچ پیاده‌سازی ندارد و `invoices_paid_at_ck`
+  مانعِ چرخشِ وضعیت است · **مشقِ بازیابیِ M5 با باکتِ snapshotsِ خالی سبز می‌مانَد** · `last_seen_at` هرگز نوشته
+  نمی‌شود · مسیرِ SPA و پیشوندِ API نمی‌توانند هر دو `/admin` باشند · `components.schemas`ِ OpenAPI همه‌ی schemaها را
+  بی‌توجه به مسیر لو می‌دهد · `apps/api` هیچ Redis ندارد · `yjs` فقط devDependency است.
+
+  ★★ **و یک ادعای خودِ نقشه غلط بود و بازبینِ خصمانه گرفت:** «تعلیق در ≤ ۶۰s WSِ باز را قطع می‌کند» — سرور روی
+  refreshِ ردشده سوکت را نمی‌بندد (ADR-038) و کلاینت اگر توکنِ تازه نگیرد فقط لاگ می‌کند
+  ([`websocket-transport.ts:387`](packages/canvas-sync/src/websocket-transport.ts)). نقشه به گزینه‌ی راست‌گو عوض شد و
+  سنجه‌ی ۵٫۲ دقیقاً همین محدودیت را assert می‌کند. **روشِ فاز ۰:** ۷ خواننده‌ی موازی + ۱ بازبینِ خصمانه روی نقشه
+  (۱۸ یافته، همه وارد شد). ⚠️ خواننده‌های موازی دو بار به سقفِ نشست خوردند (~۲٫۵M توکن هر دور) — منتقدِ
+  تک‌عاملی (~۳۴۰k) کافی بود.
 
 - **★★ M5 (`infra`) تمام و تحویل شد** (۱۴۰۵/۰۶/۱۹) — فاز ۰ تا ۱۰ + ۴٫۵. TODO در
   [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).

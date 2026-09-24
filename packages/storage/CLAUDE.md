@@ -25,6 +25,12 @@ abstraction روی Object Storage سازگار با S3. **بخشِ P4 ماژول
 4. **هیچ نامِ سرویسی (`minio`/`arvan`) در امضا** — سوییچ فقط با env (`S3_ENDPOINT`/کلیدها). `S3_FORCE_PATH_STYLE`
    متغیرِ مستقل است (MinIO لازمش دارد؛ آروان هم `true`).
 5. **`getObject`/`headObject` روی کلیدِ غایب `null` می‌دهند، نه throw** — قراردادِ `SnapshotStore` همین را می‌خواهد.
+6. ★ **M6 / [ADR-069](../../ARCHITECTURE_DECISIONS.md#adr-069): سه متدِ افزایشی** — `getObjectStream`،
+   `putObjectStream(key, body, { contentLength, contentType? })` و `iteratePrefix`. **طول اجباری است**:
+   `PutObject` با بدنه‌ی stream بدونِ `ContentLength` خطا می‌دهد و `lib-storage` یک وابستگیِ نو است. متدهای
+   قبلی دست نخورده‌اند (اندازه‌گیریِ فاز ۱ی M6: `getObject` روی ۲۰۰MB لحظه‌ای ≈۳× شیء، استریم +۱۴٫۵MB).
+   هر بدلِ کاملِ `ObjectStore` باید این سه را هم داشته باشد؛ بدلی که روی `createMemoryObjectStore` spread
+   می‌کند خودبه‌خود دارد.
 
 ## ★ تله: پسوندِ `.ts` روی importهای نسبی
 

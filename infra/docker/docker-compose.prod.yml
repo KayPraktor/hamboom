@@ -72,6 +72,8 @@ x-api-env: &api-env
   RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
   RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
   RATE_LIMIT_OTP_MAX: ${RATE_LIMIT_OTP_MAX:-5}
+  # ★ M6 فاز ۳ (ADR-066): پنجره‌ی step-upِ پنلِ ادمین — فقط api.
+  ADMIN_STEP_UP_SECONDS: ${ADMIN_STEP_UP_SECONDS:-600}
   S3_ENDPOINT: ${S3_ENDPOINT}
   S3_REGION: ${S3_REGION}
   S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
@@ -323,15 +325,20 @@ services:
         condition: service_healthy
     environment: *reconcile-env
 
-  # ── ★★ دوامِ داده (M5 فاز ۷) — سه کانتینرِ یک‌بارمصرفِ همان ایمیجِ api ─────
+  # ── ★★ دوامِ داده (M5 فاز ۷ + M6 فاز ۲) — کانتینرهای یک‌بارمصرفِ همان ایمیجِ api ───
   #
-  #   $C --profile ops run --rm backup node scripts/backup-db.ts --prune=14   # شبانه، از cronِ VM
-  #   $C --profile ops run --rm backup-storage         # شبانه
-  #   $C --profile ops run --rm restore-drill          # ★ هفتگی — **گیتِ واقعی**
+  #   $C --profile ops run --rm backup-all node scripts/backup-all.ts --prune=14   # ★ شبانه، از cronِ VM
+  #   $C --profile ops run --rm restore-drill          # ★ هفتگی — **گیتِ واقعی** (۶ چک)
+  #   $C --profile ops run --rm restore-storage        # ★ هفتگی — آینه واقعاً برمی‌گردد؟ (۶ چک، روی باکتِ drill)
+  #   $C --profile ops run --rm backup                 # فقط dump (M5) — backup-all جایگزینش است
+  #   $C --profile ops run --rm backup-storage         # فقط آینه (M5) — backup-all جایگزینش است
   #
-  # ⚠️ سومی تزئینی نیست: **یک پشتیبانِ بازیابی‌نشده پشتیبان نیست.** روی یک دیتابیسِ
-  #    موقتِ `<db>_restore_drill` بازیابی می‌کند (به دیتابیسِ اصلی دست نمی‌زند) و در
-  #    پایان پاکش می‌کند.
+  # ⚠️ مشق‌ها تزئینی نیستند: **یک پشتیبانِ بازیابی‌نشده پشتیبان نیست.** restore-drill روی یک
+  #    دیتابیسِ موقتِ `<db>_restore_drill` بازیابی می‌کند و restore-storage روی باکت‌های
+  #    `<bucket>-restore-drill` — هیچ‌کدام به داده‌ی زنده دست نمی‌زنند و در پایان پاک می‌کنند.
+  # ★ M6: `backup-all` dump و آینه را در **یک** اجرا و با یک stamp می‌گیرد تا پنجره‌ی بینِ آن دو
+  #    (که compactor می‌تواند در آن snapshotِ قدیمی را پاک کند) به چند ثانیه برسد و دو مانیفست به هم
+  #    پیوند بخورند؛ بازیابیِ واقعیِ storage = `run --rm restore-storage node scripts/restore-storage.ts --to-live`.
   backup:
     profiles: ["ops"]
     image: hamboom/api:${IMAGE_TAG:-local}
@@ -370,6 +377,94 @@ services:
       postgres:
         condition: service_healthy
     environment: *backup-env
+
+  # ★ M6 فاز ۲٫۵ — پشتیبانِ جفت (جایگزینِ دو خطِ cronِ M5)
+  backup-all:
+    profiles: ["ops"]
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    command: ["node", "scripts/backup-all.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *backup-env
+
+  # ★★ M6 فاز ۲٫۳ — بازیابیِ Object Storage (پیش‌فرض: باکتِ drill؛ `--to-live` صریح)
+  restore-storage:
+    profiles: ["ops"]
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    command: ["node", "scripts/restore-storage.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *backup-env
+
+  # ── ★ اعطا/سلبِ staff (M6 فاز ۳، ADR-066 §۲) — تنها نویسنده‌ی `users.is_staff` ──────────
+  #
+  #   $C --profile ops run --rm grant-staff node scripts/admin-grant-staff.ts --phone=09XXXXXXXXX
+  #   $C --profile ops run --rm grant-staff node scripts/admin-grant-staff.ts --phone=09XXXXXXXXX --revoke
+  #
+  # ⚠️ بدونِ `--phone` بالا نمی‌آید. کاربر باید یک‌بار وارد شده باشد (ردیفِ users). پرچم و ردیفِ
+  #    audit (`staff.grant`/`staff.revoke`) در **یک** تراکنش نوشته می‌شوند؛ envش همان envِ
+  #    باریکِ migrate است (فقط دیتابیس — نه JWT، نه S3، نه پیامک).
+  grant-staff:
+    profiles: ["ops"]
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    command: ["node", "scripts/admin-grant-staff.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_ENV: ${APP_ENV}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
+
+  # ── ★ نگهداشتِ ممیزی (M6 فاز ۴، ADR-067 §۴) ────────────────────────────────
+  #
+  #   $C --profile ops run --rm purge-audit                                   # فقط گزارش
+  #   $C --profile ops run --rm purge-audit node scripts/purge-audit.ts --delete
+  #
+  # ⚠️ `AUDIT_RETENTION_DAYS` **بدونِ پیش‌فرض**: نه در schema، نه این‌جا. با `:-` خالی می‌رسد و
+  #    خودِ اسکریپت با ConfigError می‌افتد — پرونده‌ی تعلیق/استرداد با یک .envِ ناقص پاک نمی‌شود.
+  #    ⚠️ `:?` **نه**: compose کلِ فایل را در بوت interpolate می‌کند، پس یک متغیرِ ماهانه‌ی گم‌شده
+  #    `up -d`ِ کلِ استک را می‌انداخت (آزموده شد).
+  purge-audit:
+    profiles: ["ops"]
+    image: hamboom/api:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    command: ["node", "scripts/purge-audit.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_ENV: ${APP_ENV}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-}
 
   # ── نگهداشت و پاک‌سازی (M5 فاز ۸) ─────────────────────────────────────────
   #

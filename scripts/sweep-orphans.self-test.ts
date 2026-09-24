@@ -43,10 +43,17 @@ function fakeStore(objects: Record<string, FakeObject>): ObjectStore {
     getObject: () => Promise.resolve(null),
     deleteObject: () => Promise.resolve(),
     headObject: (key) => Promise.resolve(head(key)),
-    listPrefix: (prefix) =>
-      Promise.resolve(Object.keys(objects).filter((k) => k.startsWith(prefix))),
+    // ★ M6 فاز ۲: جاروب باید صفحه‌به‌صفحه بخوانَد (ADR-069). `listPrefix` عمداً **throw** می‌کند
+    //   تا اگر کسی planSweep را به فهرستِ کاملِ در-حافظه برگرداند، همین خودآزمون قرمز شود.
+    listPrefix: () =>
+      Promise.reject(new Error("planSweep نباید listPrefix صدا بزند — iteratePrefix (ADR-069)")),
     presignGet: () => Promise.reject(new Error("بدلِ تست")),
     presignUpload: () => Promise.reject(new Error("بدلِ تست")),
+    getObjectStream: () => Promise.resolve(null),
+    putObjectStream: () => Promise.reject(new Error("بدلِ تست")),
+    async *iteratePrefix(prefix) {
+      for (const k of Object.keys(objects).filter((k) => k.startsWith(prefix))) yield k;
+    },
   };
 }
 

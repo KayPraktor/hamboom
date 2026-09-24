@@ -1,7 +1,9 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 
 import { LoginPage } from "./auth/LoginPage.tsx";
 import { RequireAuth } from "./auth/RequireAuth.tsx";
+import { RequireStaff } from "./auth/RequireStaff.tsx";
 import { PaymentResultPage } from "./billing/PaymentResultPage.tsx";
 import { PricingPage } from "./billing/PricingPage.tsx";
 import { TeamBillingPage } from "./billing/TeamBillingPage.tsx";
@@ -118,6 +120,102 @@ const boardRoute = createRoute({
   ),
 });
 
+/**
+ * ★★ پنلِ ادمین — **lazy** (M6 فاز ۳، [ADR-065](../../../ARCHITECTURE_DECISIONS.md#adr-065)).
+ *
+ * تنها `React.lazy`ِ اپ: کاربرِ عادی هیچ بایتی از پنل را دانلود نمی‌کند. probe ۱٫۴ عدد داد
+ * (stubِ lazy + route = +۱۸۹ B روی chunkِ ورودی) و معیارِ ۳٫۶ همان است: رشدِ ورودی < ۱KB.
+ * گاردها (`RequireAuth` → `RequireStaff`) عمداً **بیرونِ** chunkِ lazy‌اند تا غیرِ staff
+ * حتی درخواستِ آن chunk را هم نزند. مسیرِ SPA `/panel` است، نه `/admin` — آن یکی پیشوندِ
+ * API است و پروکسی می‌بَردش (`api-prefixes.ts`).
+ */
+const PanelLayout = lazy(() =>
+  import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelLayout })),
+);
+const PanelHome = lazy(() =>
+  import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelHome })),
+);
+const PanelAudit = lazy(() =>
+  import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelAudit })),
+);
+// فاز ۵ — کاربران و تیم‌ها؛ همان chunk.
+const PanelUsers = lazy(() =>
+  import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelUsers })),
+);
+const PanelUser = lazy(() =>
+  import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelUser })),
+);
+const PanelTeam = lazy(() =>
+  import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelTeam })),
+);
+// فاز ۶ — پرداخت‌ها و استرداد؛ همان chunk.
+const PanelPayments = lazy(() =>
+  import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelPayments })),
+);
+const PanelPayment = lazy(() =>
+  import("./panel/panel-chunk.ts").then((m) => ({ default: m.PanelPayment })),
+);
+const panelFallback = <div className="loader">در حال بارگذاری…</div>;
+
+const panelRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/panel",
+  component: () => (
+    <RequireAuth>
+      <RequireStaff>
+        <Suspense fallback={panelFallback}>
+          <PanelLayout />
+        </Suspense>
+      </RequireStaff>
+    </RequireAuth>
+  ),
+});
+
+// ★ بدونِ Suspenseِ دوم: مرزِ Suspenseِ والد (بالای PanelLayout) هر lazyِ زیرِ Outlet را هم می‌گیرد،
+//   و هر دو از یک chunk‌اند — بعد از اولین بارگذاری، دومی فوری resolve می‌شود.
+const panelIndexRoute = createRoute({
+  getParentRoute: () => panelRoute,
+  path: "/",
+  component: PanelHome,
+});
+
+// فاز ۴٫۳ — ممیزی (اولین مصرف‌کننده‌ی صفحه‌بندیِ cursor در پنل). همان chunk، همان Suspenseِ والد.
+const panelAuditRoute = createRoute({
+  getParentRoute: () => panelRoute,
+  path: "/audit",
+  component: PanelAudit,
+});
+
+// فاز ۵ — عبارتِ جست‌وجو عمداً در URL **نیست** (یافته‌ی ۵٫۵: `?q=<شماره>` در تاریخچه/لاگ می‌نشست)؛ stateِ صفحه است.
+const panelUsersRoute = createRoute({
+  getParentRoute: () => panelRoute,
+  path: "/users",
+  component: PanelUsers,
+});
+const panelUserRoute = createRoute({
+  getParentRoute: () => panelRoute,
+  path: "/users/$userId",
+  component: PanelUser,
+});
+const panelTeamRoute = createRoute({
+  getParentRoute: () => panelRoute,
+  path: "/teams/$teamId",
+  component: PanelTeam,
+});
+
+// فاز ۶ — فیلترها مثلِ جست‌وجوی کاربران **در URL نیستند**: شماره‌ی پیگیری و authority شناسه‌های مالیِ یک
+// مشتری‌اند و جایشان در تاریخچه‌ی مرورگر و لاگِ nginx نیست (همان یافته‌ی ۵٫۵).
+const panelPaymentsRoute = createRoute({
+  getParentRoute: () => panelRoute,
+  path: "/payments",
+  component: PanelPayments,
+});
+const panelPaymentRoute = createRoute({
+  getParentRoute: () => panelRoute,
+  path: "/payments/$paymentId",
+  component: PanelPayment,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -128,6 +226,15 @@ const routeTree = rootRoute.addChildren([
   pricingRoute,
   teamBillingRoute,
   paymentResultRoute,
+  panelRoute.addChildren([
+    panelIndexRoute,
+    panelAuditRoute,
+    panelUsersRoute,
+    panelUserRoute,
+    panelTeamRoute,
+    panelPaymentsRoute,
+    panelPaymentRoute,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });

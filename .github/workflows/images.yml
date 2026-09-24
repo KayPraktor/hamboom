@@ -102,6 +102,28 @@ jobs:
             esac
           done
 
+      # ★★ M6 فاز ۲٫۷ — اسکریپت‌های پشتیبان/بازیابی **از داخلِ ایمیجِ واقعی** بارگذاری و
+      #    خودآزمونشان اجرا می‌شود. jobِ `services` همین‌ها را با نصبِ **کاملِ dev** (pnpm) می‌راند،
+      #    پس یک وابستگیِ dev-scope آن‌جا هرگز دیده نمی‌شود — همان کلاسِ نقصِ فاز ۲ی M5
+      #    (`migrate.ts` → `@hamboom/config`) و همان چیزی که بازبینِ خصمانه‌ی نقشه‌ی M6 برای
+      #    `yjs` پیش‌بینی کرد. هر دو خودآزمون بدونِ سرویس (انبارِ حافظه‌ای) اجرا می‌شوند.
+      - name: ★★ خودآزمونِ آینه و بازیابیِ Object Storage از داخلِ ایمیجِ api
+        run: |
+          set -euo pipefail
+          for script in backup-storage restore-storage; do
+            docker run --rm hamboom/api:ci node "scripts/$script.ts" --self-test
+          done
+      # ★ M6 فاز ۳٫۴ — `admin-grant-staff` از داخلِ ایمیج بارگذاری می‌شود و **بدونِ --phone بالا
+      #    نمی‌آید** (پیش از خواندنِ env، پس بدونِ DATABASE_URL هم همین پیام). exit ≠ 1 یا پیامِ
+      #    دیگری (مثلاً ERR_MODULE_NOT_FOUND) یعنی ایمیج نمی‌تواند این ورودی را اجرا کند.
+      - name: ★ admin-grant-staff از داخلِ ایمیج — گاردِ --phone
+        run: |
+          set -uo pipefail
+          out=$(docker run --rm hamboom/api:ci node scripts/admin-grant-staff.ts 2>&1); code=$?
+          [ "$code" = "1" ] || { echo "✖ exit=$code (انتظار ۱)"; echo "$out"; exit 1; }
+          echo "$out" | grep -q -- "--phone" || { echo "✖ بالا نیامد، ولی به دلیلِ دیگری"; echo "$out"; exit 1; }
+          echo "✔ بدونِ --phone ⇒ exit 1 با پیامِ درست"
+
       # ★★ مسیرِ انتقالِ ADR-063 — یک گیت، نه یک اسکریپتِ دستی.
       #    این job از قبل هر سه ایمیج را دارد، پس save→load→راستی‌آزمایی این‌جا رایگان
       #    است؛ و مسیری که فقط دستی اجرا شود، همان مسیری است که روزِ استقرار خراب

@@ -5,6 +5,7 @@ import { effectiveBoardRole, type BoardAccessInput } from "./roles.ts";
 function input(over: Partial<BoardAccessInput> = {}): BoardAccessInput {
   return {
     isStaff: false,
+    isSuspended: false,
     isBoardOwner: false,
     accessMode: "team",
     directRole: null,
@@ -15,8 +16,30 @@ function input(over: Partial<BoardAccessInput> = {}): BoardAccessInput {
 }
 
 describe("effectiveBoardRole", () => {
-  it("staff → owner (مستقل از access_mode)", () => {
-    expect(effectiveBoardRole(input({ isStaff: true, accessMode: "private" }))).toBe("owner");
+  it("★★ staff → viewer، نه owner (ADR-066 §۱؛ مستقل از access_mode)", () => {
+    expect(effectiveBoardRole(input({ isStaff: true, accessMode: "private" }))).toBe("viewer");
+  });
+
+  describe("★★ تعلیق — مقدم بر همه (ADR-066 §۴)", () => {
+    it("مالکِ بورد اگر معلق باشد → null", () => {
+      expect(effectiveBoardRole(input({ isSuspended: true, isBoardOwner: true }))).toBeNull();
+    });
+    it("staffِ معلق → null", () => {
+      expect(effectiveBoardRole(input({ isSuspended: true, isStaff: true }))).toBeNull();
+    });
+    it("عضوِ مستقیم + تیم + لینک، همه با هم، اگر معلق → null", () => {
+      expect(
+        effectiveBoardRole(
+          input({
+            isSuspended: true,
+            accessMode: "link_edit",
+            directRole: "editor",
+            teamRole: "owner",
+            hasValidLink: true,
+          }),
+        ),
+      ).toBeNull();
+    });
   });
 
   it("مالکِ بورد → owner (مستقل از access_mode)", () => {
@@ -78,10 +101,13 @@ describe("effectiveBoardRole", () => {
     ).toBe("editor");
   });
 
-  it("★ بیشترین برنده: staff + هر چیزِ کم‌تر → owner", () => {
-    expect(
-      effectiveBoardRole(input({ isStaff: true, directRole: "viewer", teamRole: "guest" })),
-    ).toBe("owner");
+  it("★ staff + عضویتِ مستقیمِ بالاتر → همان عضویت (staff فقط کف را می‌گذارد)", () => {
+    expect(effectiveBoardRole(input({ isStaff: true, directRole: "editor" }))).toBe("editor");
+    expect(effectiveBoardRole(input({ isStaff: true, isBoardOwner: true }))).toBe("owner");
+  });
+
+  it("★ staff روی بوردِ team بدونِ عضویت → viewer (نه editor از مسیرِ تیم)", () => {
+    expect(effectiveBoardRole(input({ isStaff: true, accessMode: "team" }))).toBe("viewer");
   });
 
   it("★★ fail-closed: هیچ منبعی → null", () => {

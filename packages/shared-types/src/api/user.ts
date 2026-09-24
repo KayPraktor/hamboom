@@ -30,5 +30,11 @@ export const user = z.object({
   locale,
   createdAt: isoDateTime,
   lastSeenAt: isoDateTime.nullable(),
+  /**
+   * staffِ پلتفرم — M6 ([ADR-066](../../../../ARCHITECTURE_DECISIONS.md#adr-066)). فقط روی DTOی
+   * **کامل** (که فقط به خودِ کاربر می‌رسد: `/auth/otp/verify` و `/me`)، عمداً نه روی `userPublic`.
+   * مصرف‌کننده‌اش لینکِ «پنل» در رابط است؛ **گیتِ** `/admin` این فیلد را نمی‌خواند، از DB می‌خواند.
+   */
+  isStaff: z.boolean(),
 });
 export type User = z.infer<typeof user>;

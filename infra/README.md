@@ -107,10 +107,25 @@ $C run --rm migrate
 $C --profile ops run --rm reconcile
 $C --profile ops run --rm reconcile node scripts/billing-reconcile.ts --dry-run
 
-# ★★ دوامِ داده (فاز ۷) — شبانه، و مشق **هفتگی**
-$C --profile ops run --rm backup node scripts/backup-db.ts --prune=14
-$C --profile ops run --rm backup-storage
-$C --profile ops run --rm restore-drill
+# ★★ دوامِ داده (M5 فاز ۷ + M6 فاز ۲) — پشتیبانِ جفت شبانه، دو مشق **هفتگی**
+$C --profile ops run --rm backup-all node scripts/backup-all.ts --prune=14   # dump + آینه، یک stamp
+$C --profile ops run --rm restore-drill                                      # ۶ چک روی دیتابیسِ drill
+$C --profile ops run --rm restore-storage                                    # ۶ چک روی باکتِ drill؛ --to-live = بازیابیِ واقعی
+
+# ★ staff (M6 فاز ۳، ADR-066) — تنها راهِ اعطا/سلب؛ پرچم + ردیفِ audit در یک تراکنش
+$C --profile ops run --rm grant-staff node scripts/admin-grant-staff.ts --phone=09XXXXXXXXX
+$C --profile ops run --rm grant-staff node scripts/admin-grant-staff.ts --phone=09XXXXXXXXX --revoke
+# ⛔ تعلیقِ حساب اسکریپت ندارد و عمداً از پنل است (M6 فاز ۵، RUNBOOK §۷٫۲): step-up + یک تراکنش + audit با دلیل؛
+#    سنجه‌اش از ماشینِ توسعه: pnpm admin:access (staff ⇒ viewer، تعلیق fail-closed در نقاطِ ورود)
+# ⛔ و از M6 فاز ۶، **استرداد/ابطال/verifyِ دستیِ پرداخت هم اسکریپت ندارند** و از پنل‌اند (RUNBOOK §۵ و §۷٫۳):
+#    هر چهار عمل step-up و ردیفِ ممیزی دارند، ابطال پیش از باطل‌کردن یک verifyِ تازه می‌زند، و استردادِ زرین‌پال
+#    امروز REFUND_UNAVAILABLE است (ADR-068) ⇒ «ثبتِ استردادِ دستی» با شماره‌ی مرجعِ پنلِ درگاه.
+#    ⚠️ `UPDATE payments` دستی جواب نمی‌دهد: CHECKهای migrationِ 0009 ردش می‌کنند و ردیفِ audit نمی‌مانَد.
+#    سنجه‌اش از ماشینِ توسعه: pnpm billing:refund (۱۰ چک، در CI)
+
+# ★ نگهداشتِ ممیزی (M6 فاز ۴، ADR-067 §۴) — AUDIT_RETENTION_DAYS=۳۶۵ بدونِ پیش‌فرض؛ پیش‌فرض فقط گزارش
+$C --profile ops run --rm purge-audit
+$C --profile ops run --rm purge-audit node scripts/purge-audit.ts --delete
 
 # نگهداشت و پاک‌سازی (فاز ۸) — ⚠️ ترتیب اجباری است
 $C --profile ops run --rm purge node scripts/purge-deleted.ts --delete   # مرز: TRASH_RETENTION_DAYS=۳۰
@@ -131,8 +146,8 @@ $C --profile ops run --rm sweep-orphans node scripts/sweep-orphans.ts --delete
 [`docs/backup-restore.md`](../docs/backup-restore.md).
 
 ⚠️ **فقط این ورودی‌ها از `scripts/` در ایمیج پشتیبانی می‌شوند** — `migrate.ts`،
-`billing-reconcile.ts`، `backup-db.ts`، `backup-storage.ts`، `restore-drill.ts`،
-`sweep-orphans.ts` و `purge-deleted.ts` (به‌همراهِ کمکی‌هایشان). بقیه ابزارِ dev/CI اند و وابستگی‌هایشان در نصبِ `--prod` نیستند.
+`billing-reconcile.ts`، `backup-db.ts`، `backup-storage.ts`، `backup-all.ts`، `restore-drill.ts`،
+`restore-storage.ts`، `sweep-orphans.ts`، `purge-deleted.ts`، `admin-grant-staff.ts` و `purge-audit.ts` (به‌همراهِ کمکی‌هایشان). بقیه ابزارِ dev/CI اند و وابستگی‌هایشان در نصبِ `--prod` نیستند.
 ★ فهرست در `PRODUCTION_SCRIPTS`ِ [`check-workspace-deps.ts`](../scripts/check-workspace-deps.ts)
 است و گیتِ `deps` جداافتادنش از Dockerfile را قرمز می‌کند.
 
@@ -250,5 +265,5 @@ pnpm infra:check-proxy -- --write   # بازتولید بعد از افزودن�
 | انتخابِ منبعِ گواهی (آروان یا certbot) | روزِ استقرار — nginx به هر دو بی‌اعتناست (ADR-064)؛ فقط دو فایل |
 | CDN جلوی WebSocket | باید از VM اندازه گرفته شود؛ پیشنهاد: WS مستقیم روی VM، CDN فقط جلوی فایلِ ایستا |
 | CSP | بومِ Excalidraw استایلِ inline/workerِ blob: دارد — فقط با E2E در مرورگر تنظیم می‌شود |
-| بازیابیِ Object Storage | `backup-storage` آینه‌ی یک‌طرفه است؛ برگرداندنش اسکریپت ندارد — **M6** ([`m6-handoff`](../docs/m6-handoff.md)) |
+| بازیابیِ Object Storage | ✅ M6 فاز ۲: `restore-storage` (۶ چک، خودآزمون با ۵ شکستنِ عمدی) — [`RUNBOOK §۴٫۱`](RUNBOOK.md)؛ ⏳ `--to-live` روی داده‌ی واقعی هنوز اجرا نشده |
 

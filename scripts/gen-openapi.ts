@@ -19,7 +19,12 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { buildOpenApiDocument } from "../apps/api/src/openapi.ts";
+import {
+  buildOpenApiDocument,
+  internalOpenApiPaths,
+  internalSchemaNames,
+  publicSpecProblems,
+} from "../apps/api/src/openapi.ts";
 
 interface Operation {
   tags?: string[];
@@ -34,6 +39,20 @@ interface Doc {
 }
 
 const doc = buildOpenApiDocument() as unknown as Doc;
+
+// ★★ M6 فاز ۳ (ADR-067 §۵): سندِ عمومی نباید هیچ مسیر/schema/تگِ پنلِ ادمین را داشته باشد.
+//    همان سه ادعایی که `openapi.test.ts` با شکستنِ عمدی قرمز می‌کند — این‌جا روی سندِ **واقعی**
+//    و در همان گیتِ `docs (openapi)`ِ verify، تا فقط یک تست نباشد.
+const leaks = publicSpecProblems(
+  doc as unknown as Record<string, unknown>,
+  internalOpenApiPaths(),
+  internalSchemaNames(),
+);
+if (leaks.length > 0) {
+  for (const l of leaks) console.error(`✖ ${l}`);
+  console.error("✖ سندِ عمومیِ OpenAPI چیزی از پنلِ ادمین را لو می‌دهد (ADR-067 §۵).");
+  process.exit(1);
+}
 const METHODS = ["get", "post", "patch", "put", "delete"];
 
 const lines: string[] = [];

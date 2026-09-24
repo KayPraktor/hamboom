@@ -15,6 +15,10 @@ import type { Executor } from "../plugins/db.ts";
  *
  * نگاشتِ مدل: `used` = `rotated_at IS NOT NULL`؛ `burnFamily` = `revoked_at` روی کلِ خانواده؛
  * `findByHash` فقط ردیفِ **باطل‌نشده** را می‌گیرد (خانواده‌ی سوخته → null → «invalid»).
+ *
+ * ★ M6 (ADR-066 §۴): `revokeAllForUser` = `revoked_at` روی **همه‌ی** ردیف‌های زنده‌ی کاربر (ایندکسِ
+ * `auth_sessions_user_idx` روی `revoked_at IS NULL`)؛ تعداد را برمی‌گرداند. با `tx`ِ تعلیق صدا زده می‌شود تا
+ * سوزاندن و `status='suspended'` و ردیفِ audit یک واحد باشند.
  */
 export function createPgSessionStore(db: Executor): SessionStore {
   return {
@@ -64,6 +68,18 @@ export function createPgSessionStore(db: Executor): SessionStore {
         "UPDATE auth_sessions SET revoked_at = now() WHERE family_id = $1 AND revoked_at IS NULL",
         [familyId],
       );
+    },
+
+    async revokeAllForUser(sub) {
+      // همه‌ی ردیف‌های باطل‌نشده می‌سوزند (چرخانده/منقضی هم — بی‌ضرر)، ولی عدد فقط **زنده‌ها** را می‌شمارد:
+      // همان تعریفِ `activeSessions`ِ پنل، تا `sessionsRevoked`ِ audit با آن نخوانَد نه بخوانَد (یافته‌ی ۵٫۵).
+      const { rows } = await db.query<{ live: boolean }>(
+        `UPDATE auth_sessions SET revoked_at = now()
+          WHERE user_id = $1 AND revoked_at IS NULL
+          RETURNING (rotated_at IS NULL AND expires_at > now()) AS live`,
+        [sub],
+      );
+      return rows.filter((r) => r.live).length;
     },
   };
 }

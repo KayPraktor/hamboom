@@ -1,5 +1,25 @@
 import {
+  adminMe,
+  adminPaymentDetail,
+  adminPaymentQuery,
+  adminPaymentSummary,
+  expireRequest,
+  paymentActionResult,
+  reconcileReport,
+  reconcileRequest,
+  refundRequest,
+  refundResult,
+  adminSearchQuery,
+  adminSearchResult,
+  adminTeamDetail,
+  adminUserBoard,
+  adminUserDetail,
+  adminUserSummary,
+  phoneRevealResult,
+  suspendRequest,
   apiError,
+  auditLogEntry,
+  auditLogQuery,
   assetPresignRequest,
   assetPresignResponse,
   board,
@@ -11,6 +31,7 @@ import {
   subscription,
   paginated,
   rtTokenClaims,
+  stepUpVerifyRequest,
   team,
   teamMember,
   user,
@@ -92,7 +113,45 @@ const COMPONENT_SCHEMAS: Record<string, z.ZodType> = {
   CheckoutBody: checkoutBody,
 };
 
-interface RouteDoc {
+/**
+ * ★★ schemaهای **داخلی** — پنلِ ادمین (M6، [ADR-067](../../../ARCHITECTURE_DECISIONS.md#adr-067) §۵).
+ *
+ * `components.schemas`ِ سندِ عمومی **همه‌ی** `COMPONENT_SCHEMAS` را بی‌توجه به مسیر خروجی می‌دهد
+ * (واقعیتِ ۸ی فاز ۰)؛ پس شکلِ DTOهای ادمین اگر آن‌جا بنشیند، از `GET /openapi.json`ِ عمومی لو
+ * می‌رود حتی وقتی هیچ مسیرِ `/admin`ی مستند نیست. این فهرست جداست و مسیرهای `internal` فقط از
+ * این می‌خوانند. سه خودآزمون در `openapi.test.ts` مرزِ دو فهرست را نگه می‌دارند.
+ */
+const INTERNAL_SCHEMAS: Record<string, z.ZodType> = {
+  AdminMe: adminMe,
+  StepUpVerifyRequest: stepUpVerifyRequest,
+  // فاز ۴٫۳ (D12، تاییدِ ۱۴۰۵/۰۶/۲۶)
+  AuditLogEntry: auditLogEntry,
+  AuditLogQuery: auditLogQuery,
+  // فاز ۵ (D12، تاییدِ ۱۴۰۵/۰۶/۲۷)
+  AdminSearchQuery: adminSearchQuery,
+  AdminSearchResult: adminSearchResult,
+  AdminUserSummary: adminUserSummary,
+  AdminUserDetail: adminUserDetail,
+  AdminTeamDetail: adminTeamDetail,
+  AdminUserBoard: adminUserBoard,
+  PhoneRevealResult: phoneRevealResult,
+  SuspendRequest: suspendRequest,
+  // فاز ۶ (D12، تاییدِ ۱۴۰۵/۰۷/۰۱) — پرداخت‌ها و استرداد (ADR-068)
+  AdminPaymentQuery: adminPaymentQuery,
+  AdminPaymentSummary: adminPaymentSummary,
+  AdminPaymentDetail: adminPaymentDetail,
+  PaymentActionResult: paymentActionResult,
+  ExpireRequest: expireRequest,
+  RefundRequest: refundRequest,
+  RefundResult: refundResult,
+  ReconcileRequest: reconcileRequest,
+  ReconcileReport: reconcileReport,
+};
+
+type PublicSchemaName = keyof typeof COMPONENT_SCHEMAS;
+type InternalSchemaName = keyof typeof INTERNAL_SCHEMAS;
+
+export interface RouteDoc {
   method: "get" | "post" | "patch" | "delete" | "put";
   /** مسیرِ Fastify (`:param`) — گاردِ دریفت مستقیم با آن می‌سنجد؛ هنگامِ خروجی به `{param}` می‌شود. */
   path: string;
@@ -100,10 +159,15 @@ interface RouteDoc {
   summary: string;
   /** پیش‌فرض bearer؛ `public: true` یعنی بدونِ احراز. */
   public?: boolean;
-  /** نامِ schemaِ بدنه در `components`. */
-  body?: keyof typeof COMPONENT_SCHEMAS;
+  /**
+   * ★ `internal: true` = مسیرِ پنلِ ادمین (ADR-067 §۵): در گاردِ دریفت **هست** (باید مستند باشد)،
+   * در `openapi.json`/`api.md`ِ عمومی **نیست**، و schemaهایش فقط از `INTERNAL_SCHEMAS` می‌آیند.
+   */
+  internal?: boolean;
+  /** نامِ schemaِ بدنه در `components` (برای مسیرِ داخلی: `INTERNAL_SCHEMAS`). */
+  body?: PublicSchemaName | InternalSchemaName;
   /** پاسخِ موفق: کد + (اختیاری) schema. پیش‌فرضِ کد ۲۰۰. */
-  ok?: { code?: number; schema?: keyof typeof COMPONENT_SCHEMAS; description?: string };
+  ok?: { code?: number; schema?: PublicSchemaName | InternalSchemaName; description?: string };
 }
 
 /** ★ منبعِ واحدِ مسیرها — گاردِ دریفتِ تست تضمین می‌کند کامل بماند. */
@@ -435,7 +499,226 @@ const ROUTES: RouteDoc[] = [
     summary: "صفحه‌ی ساختگیِ پرداخت — **فقط توسعه** (در production ثبت نمی‌شود)",
     public: true,
   },
+
+  // ── ★ پنلِ ادمین (M6 فاز ۳) — همه `internal`؛ تگِ `admin` عمداً در `tags`ِ سندِ عمومی نیست ──
+  {
+    method: "get",
+    path: "/admin/me",
+    tag: "admin",
+    summary: "کیستم؟ (staff) + وضعیتِ step-up",
+    internal: true,
+    ok: { schema: "AdminMe" },
+  },
+  {
+    method: "post",
+    path: "/admin/step-up/request",
+    tag: "admin",
+    summary: "درخواستِ کدِ step-up به شماره‌ی خودِ staff (purpose=admin_step_up، سقفِ نرخِ OTP)",
+    internal: true,
+  },
+  {
+    method: "post",
+    path: "/admin/step-up/verify",
+    tag: "admin",
+    summary: "تاییدِ کدِ step-up → users.step_up_verified_at = now()",
+    internal: true,
+    body: "StepUpVerifyRequest",
+    ok: { schema: "AdminMe" },
+  },
+  {
+    method: "get",
+    path: "/admin/audit",
+    tag: "admin",
+    summary:
+      "ردیف‌های audit_logs — فیلترِ actor/action(پیشوندی)/target/بازه، keyset cursor (AuditLogQuery)؛ ip ماسک",
+    internal: true,
+    ok: { schema: "Paginated", description: "paginated(AuditLogEntry)" },
+  },
+  // ── فاز ۵ — کاربران و تیم‌ها (ADR-066) ──
+  {
+    method: "post",
+    path: "/admin/search",
+    tag: "admin",
+    summary:
+      "جست‌وجوی کاربر/تیم — q: شماره‌ی کاملِ 09…، UUID، یا متن (trgm)؛ شماره ماسک؛ POST تا عبارت در لاگ/URL ننشیند؛ ممیزی‌شده (user.search)",
+    internal: true,
+    body: "AdminSearchQuery",
+    ok: { schema: "AdminSearchResult" },
+  },
+  {
+    method: "get",
+    path: "/admin/users/:id",
+    tag: "admin",
+    summary: "جزئیاتِ کاربر: تیم‌ها با نقش/پلن، بوردهای ساخته‌شده، نشست‌های زنده",
+    internal: true,
+    ok: { schema: "AdminUserDetail" },
+  },
+  {
+    method: "get",
+    path: "/admin/teams/:id",
+    tag: "admin",
+    summary: "جزئیاتِ تیم: پلن/سقف/مصرف با count(*)ِ زنده، اشتراکِ زنده، اعضا با وضعیت",
+    internal: true,
+    ok: { schema: "AdminTeamDetail" },
+  },
+  {
+    method: "get",
+    path: "/admin/users/:id/boards",
+    tag: "admin",
+    summary: "نمای پشتیبانی: بوردهای کاربر با نقشِ خودش (سازنده/عضو/تیم؛ حذف‌شده‌ها هم)",
+    internal: true,
+    ok: { description: "{ items: AdminUserBoard[] }" },
+  },
+  {
+    method: "post",
+    path: "/admin/users/:id/phone/reveal",
+    tag: "admin",
+    summary: "شماره‌ی کامل — ممیزی‌شده (user.phone.reveal)؛ تنها مسیرِ خروجِ شماره‌ی ماسک‌نشده",
+    internal: true,
+    ok: { schema: "PhoneRevealResult" },
+  },
+  {
+    method: "post",
+    path: "/admin/users/:id/suspend",
+    tag: "admin",
+    summary:
+      "تعلیق (step-up لازم، ۴۲۸ بدونش): status=suspended + سوزاندنِ همه‌ی نشست‌ها + audit در یک تراکنش؛ staff ۴۰۹",
+    internal: true,
+    body: "SuspendRequest",
+    ok: { schema: "AdminUserSummary" },
+  },
+  {
+    method: "post",
+    path: "/admin/users/:id/unsuspend",
+    tag: "admin",
+    summary: "رفعِ تعلیق (step-up لازم): status=active + audit؛ نشست‌ها برنمی‌گردند",
+    internal: true,
+    ok: { schema: "AdminUserSummary" },
+  },
+  // ── فاز ۶ — پرداخت‌ها و استرداد (ADR-068) ──
+  {
+    method: "post",
+    path: "/admin/payments/search",
+    tag: "admin",
+    summary:
+      "فهرستِ پرداخت‌ها — فیلترِ team/ref_id(دقیق)/authority(پیشوندی)/status، keyset cursor؛ POST تا شماره‌ی پیگیری در لاگ/URL ننشیند؛ ممیزی‌شده (payment.search)",
+    internal: true,
+    body: "AdminPaymentQuery",
+    ok: { schema: "Paginated", description: "paginated(AdminPaymentSummary)" },
+  },
+  {
+    method: "get",
+    path: "/admin/payments/:id",
+    tag: "admin",
+    summary:
+      "جزئیاتِ پرداخت: payloadهای request/callback/verify، فاکتور، اشتراکِ فعال‌شده، و دلیلِ غیرفعال‌بودنِ انقضا",
+    internal: true,
+    ok: { schema: "AdminPaymentDetail" },
+  },
+  {
+    method: "post",
+    path: "/admin/payments/:id/verify",
+    tag: "admin",
+    summary:
+      "verifyِ دستی (step-up): همان settlePayment + auditِ داخلِ همان تراکنش؛ ۲۰۰ با outcome برای هر نتیجه",
+    internal: true,
+    ok: { schema: "PaymentActionResult" },
+  },
+  {
+    method: "post",
+    path: "/admin/payments/:id/expire",
+    tag: "admin",
+    summary:
+      "انقضای دستی (step-up): نردبانِ ADR-056 پله‌ی ۳ زیرِ قفل + verifyِ تازه؛ paid ⇒ فعال‌سازی، notPaid ⇒ ابطال",
+    internal: true,
+    body: "ExpireRequest",
+    ok: { schema: "PaymentActionResult" },
+  },
+  {
+    method: "post",
+    path: "/admin/payments/:id/refund",
+    tag: "admin",
+    summary:
+      "استرداد (step-up): manual = ثبتِ مرجعِ دستی · gateway = پورتِ refund (زرین‌پال ⇒ REFUND_UNAVAILABLE)",
+    internal: true,
+    body: "RefundRequest",
+    ok: { schema: "RefundResult" },
+  },
+  {
+    method: "post",
+    path: "/admin/payments/reconcile",
+    tag: "admin",
+    summary:
+      "sweepِ دستی (step-up) زیرِ همان advisory lock؛ قفلِ گرفته‌شده ⇒ ۴۰۹. batchSize ≤ ۲۵ (مهلتِ nginx)",
+    internal: true,
+    body: "ReconcileRequest",
+    ok: { schema: "ReconcileReport" },
+  },
 ];
+
+/** خروجیِ OpenAPIِ یک مسیرِ Fastify: `:param` → `{param}`. */
+const toOpenApiPath = (path: string): string => path.replace(/:([A-Za-z0-9_]+)/g, "{$1}");
+
+/** مسیرهای داخلی به شکلِ OpenAPI — برای گاردِ «مسیرِ داخلی در سندِ عمومی». */
+export function internalOpenApiPaths(routes: readonly RouteDoc[] = ROUTES): string[] {
+  return routes.filter((r) => r.internal === true).map((r) => toOpenApiPath(r.path));
+}
+
+/** نام‌های schemaی داخلی — برای گاردِ «schemaی ادمین در componentsِ عمومی». */
+export function internalSchemaNames(): string[] {
+  return Object.keys(INTERNAL_SCHEMAS);
+}
+
+export interface RouteDrift {
+  /** ثبت‌شده در Fastify ولی نه در `ROUTES` و نه در استثناها. */
+  undocumented: string[];
+  /** در `ROUTES` هست ولی Fastify ثبتش نکرده. */
+  unregistered: string[];
+  /** استثنایی که مسیرش دیگر وجود ندارد. */
+  deadExceptions: string[];
+}
+
+/**
+ * ★ گاردِ دریفت — خالص، تا خودآزمون بتواند با ورودیِ عمداً خراب قرمزش کند.
+ * مسیرهای `internal` **داخلِ** `documented`اند: بی‌سند‌ماندنِ یک مسیرِ `/admin` همان‌قدر قرمز است.
+ */
+export function routeDrift(
+  registered: Iterable<string>,
+  documented: ReadonlySet<string>,
+  exceptions: ReadonlySet<string>,
+): RouteDrift {
+  const reg = new Set(registered);
+  return {
+    undocumented: [...reg].filter((r) => !documented.has(r) && !exceptions.has(r)).sort(),
+    unregistered: [...documented].filter((r) => !reg.has(r)).sort(),
+    deadExceptions: [...exceptions].filter((r) => !reg.has(r)).sort(),
+  };
+}
+
+/**
+ * ★★ سه ادعا درباره‌ی سندِ **عمومی** (ADR-067 §۵) — خالص، برای تست و برای `gen-openapi --check`:
+ * هیچ مسیرِ داخلی در `paths` · هیچ schemaی داخلی در `components.schemas` · تگِ `admin` در `tags` نیست.
+ */
+export function publicSpecProblems(
+  doc: Record<string, unknown>,
+  internalPaths: readonly string[],
+  internalSchemas: readonly string[],
+): string[] {
+  const paths = (doc.paths ?? {}) as Record<string, unknown>;
+  const components = (doc.components ?? {}) as { schemas?: Record<string, unknown> };
+  const tags = ((doc.tags ?? []) as { name: string }[]).map((t) => t.name);
+  const problems: string[] = [];
+  for (const p of internalPaths) {
+    if (p in paths) problems.push(`مسیرِ داخلی در سندِ عمومی: ${p}`);
+  }
+  for (const s of internalSchemas) {
+    if (components.schemas !== undefined && s in components.schemas) {
+      problems.push(`schemaی داخلی در componentsِ عمومی: ${s}`);
+    }
+  }
+  if (tags.includes("admin")) problems.push("تگِ admin در tagsِ سندِ عمومی");
+  return problems;
+}
 
 /** فهرستِ مسیرهای مستندشده به‌صورتِ `METHOD path` (مسیرِ Fastify) — گاردِ دریفتِ تست از این استفاده می‌کند. */
 export function documentedRoutes(): Set<string> {
@@ -471,16 +754,23 @@ function buildResponses(r: RouteDoc): Record<string, unknown> {
     : { [code]: success, "429": { $ref: "#/components/responses/Error" }, ...STD_ERRORS };
 }
 
-/** سندِ کاملِ OpenAPI 3.1. */
-export function buildOpenApiDocument(): Record<string, unknown> {
+/**
+ * سندِ **عمومیِ** OpenAPI 3.1 — مسیرهای `internal` و `INTERNAL_SCHEMAS` عمداً بیرون می‌مانند.
+ * ورودی‌ها تزریق‌پذیرند فقط برای خودآزمون‌ها (`openapi.test.ts`)؛ مصرف‌کننده‌ی واقعی بدونِ آرگومان صدا می‌زند.
+ */
+export function buildOpenApiDocument(
+  routes: readonly RouteDoc[] = ROUTES,
+  componentSchemas: Record<string, z.ZodType> = COMPONENT_SCHEMAS,
+): Record<string, unknown> {
   const schemas: Record<string, unknown> = {};
-  for (const [name, schema] of Object.entries(COMPONENT_SCHEMAS)) {
+  for (const [name, schema] of Object.entries(componentSchemas)) {
     schemas[name] = toJson(schema);
   }
 
   const paths: Record<string, Record<string, unknown>> = {};
-  for (const r of ROUTES) {
-    const oaPath = r.path.replace(/:([A-Za-z0-9_]+)/g, "{$1}");
+  for (const r of routes) {
+    if (r.internal === true) continue; // ADR-067 §۵ — سندِ عمومی، فقط مسیرهای عمومی
+    const oaPath = toOpenApiPath(r.path);
     const params = [...r.path.matchAll(/:([A-Za-z0-9_]+)/g)].map((m) => ({
       name: m[1],
       in: "path",

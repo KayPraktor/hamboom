@@ -43,6 +43,11 @@ export interface BackupManifest {
   migrations: Record<string, string>;
   /** نامِ جدول → بازه‌ی شمارشِ ردیف. */
   rows: Record<string, RowRange>;
+  /**
+   * ★ M6 فاز ۲٫۵: کلیدِ مانیفستِ آینه‌ی Object Storage که **در همان اجرا** (`backup-all`) گرفته شد.
+   * اختیاری — مانیفست‌های M5 ندارندش. `restore-storage` با همین جفت را پیدا می‌کند.
+   */
+  storageManifestKey?: string;
 }
 
 /** پیکربندیِ `ObjectStore`ِ باکتِ **پشتیبان** (M5-D7: جدا از دارایی‌ها). */

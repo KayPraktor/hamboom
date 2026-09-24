@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { api } from "../api/client.ts";
 import { errorMessage } from "../api/error-message.ts";
 import { useSession } from "./session-context.ts";
+import { SuspendedNotice } from "./SuspendedNotice.tsx";
 import { normalizeCode, normalizePhone } from "./validate.ts";
 
 /**
@@ -66,6 +67,8 @@ export function LoginPage() {
   if (status === "authenticated") {
     return <Navigate to="/dashboard" />;
   }
+  // ★ M6 ۵٫۲: معلق ⇒ کارت، نه فرمِ ورود (OTPِ بی‌صدا «کد فرستاده شد» می‌گوید و هرگز نمی‌آید).
+  if (status === "suspended") return <SuspendedNotice />;
 
   return (
     <div className="card auth-card">

@@ -1,4 +1,13 @@
+import { maskPhone } from "@hamboom/auth-core";
 import type {
+  AdminPaymentDetail,
+  AdminPaymentSummary,
+  AdminTeamDetail,
+  AdminTeamSummary,
+  AdminUserBoard,
+  AdminUserDetail,
+  AdminUserSummary,
+  AuditLogEntry,
   Board,
   BoardMember,
   BoardSummary,
@@ -11,6 +20,18 @@ import type {
   User,
   UserPublic,
 } from "@hamboom/shared-types";
+
+import type {
+  AdminTeamRow,
+  AdminUserRow,
+  TeamDetailRows,
+  UserBoardRow,
+  UserDetailRows,
+} from "./services/admin-users.ts";
+import type {
+  AdminPaymentDetailRows,
+  AdminPaymentRow,
+} from "./services/admin-payments.ts";
 
 /**
  * لایه‌ی serialize — ردیفِ خامِ DB (snake_case) → DTOهای camelCaseِ `shared-types`. گام ۶ (اصلاحِ فاز ۵).
@@ -44,6 +65,7 @@ export interface UserRow {
   locale: string;
   created_at: unknown;
   last_seen_at: unknown;
+  is_staff: boolean;
 }
 export function toUser(r: UserRow): User {
   return {
@@ -57,12 +79,13 @@ export function toUser(r: UserRow): User {
     locale: r.locale as User["locale"],
     createdAt: iso(r.created_at),
     lastSeenAt: isoOrNull(r.last_seen_at),
+    isStaff: r.is_staff,
   };
 }
 
 /** ستون‌های لازم برای `User` در یک SELECT (بازاستفاده در چند route). */
 export const USER_COLUMNS =
-  "id, phone, phone_verified_at, email, email_verified_at, display_name, locale, created_at, last_seen_at";
+  "id, phone, phone_verified_at, email, email_verified_at, display_name, locale, created_at, last_seen_at, is_staff";
 
 // ── UserPublic ──────────────────────────────────────────────────────────
 export interface UserPublicRow {
@@ -398,3 +421,180 @@ export const INVOICE_COLUMNS =
 /** ستون‌های `subscriptions` که `toSubscription` می‌خواهد. */
 export const SUBSCRIPTION_COLUMNS =
   "id, team_id, plan_code, status, period, seats, current_period_start, current_period_end, cancel_at_period_end";
+
+// ── AuditLogEntry (M6 فاز ۴٫۳) ─────────────────────────────────────────
+/** ردیفِ `audit_logs` همان‌طور که `services/audit-log.ts` می‌خوانَد (`host(ip)` متن). */
+export interface AuditRow {
+  id: number;
+  actor_user_id: string | null;
+  team_id: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  ip: string | null;
+  user_agent: string | null;
+  metadata: Record<string, unknown>;
+  created_at: unknown;
+  /** `created_at::text` — دقتِ میکروثانیه برای cursorِ keyset (Date فقط ms دارد). */
+  created_at_cursor: string;
+}
+/** ★ `ip` فقط از راهِ `maskIp` بیرون می‌رود (ADR-067 §۳) — هیچ مسیرِ دیگری ردیفِ خام را به DTO نمی‌رسانَد. */
+export function toAuditLogEntry(
+  r: AuditRow,
+  maskIp: (ip: string | null) => string | null,
+): AuditLogEntry {
+  return {
+    id: r.id,
+    actorUserId: r.actor_user_id,
+    teamId: r.team_id,
+    action: r.action,
+    targetType: r.target_type,
+    targetId: r.target_id,
+    ipMasked: maskIp(r.ip),
+    userAgent: r.user_agent,
+    metadata: r.metadata,
+    createdAt: iso(r.created_at),
+  };
+}
+
+// ── پنلِ ادمین — کاربران و تیم‌ها (M6 فاز ۵) ────────────────────────────
+/**
+ * ★ **شماره فقط از این‌جا و فقط ماسک‌شده بیرون می‌رود** (همان قاعده‌ی `ip` در `toAuditLogEntry`): سرویس
+ * ردیفِ خام می‌دهد، DTO `phoneMasked` دارد و هیچ فیلدِ `phone`ای ندارد. مسیرِ «کامل» `phone/reveal` است که
+ * ردیفِ audit می‌نویسد و DTOی خودش (`phoneRevealResult`) را دارد.
+ */
+export function toAdminUserSummary(r: AdminUserRow): AdminUserSummary {
+  return {
+    id: r.id,
+    displayName: r.display_name,
+    phoneMasked: r.phone === null ? null : maskPhone(r.phone),
+    status: r.status as AdminUserSummary["status"],
+    isStaff: r.is_staff,
+    createdAt: iso(r.created_at),
+    lastSeenAt: isoOrNull(r.last_seen_at),
+  };
+}
+
+export function toAdminUserDetail(d: UserDetailRows): AdminUserDetail {
+  return {
+    ...toAdminUserSummary(d.user),
+    teams: d.teams.map((t) => ({
+      teamId: t.team_id,
+      slug: t.slug,
+      name: t.name,
+      isPersonal: t.is_personal,
+      role: t.role as AdminUserDetail["teams"][number]["role"],
+      planCode: t.plan_code,
+      joinedAt: iso(t.joined_at),
+    })),
+    boardCount: d.boardCount,
+    activeSessions: d.activeSessions,
+  };
+}
+
+export function toAdminTeamSummary(r: AdminTeamRow): AdminTeamSummary {
+  return {
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    isPersonal: r.is_personal,
+    ownerUserId: r.owner_user_id,
+    memberCount: Number(r.member_count),
+    boardCount: Number(r.board_count),
+    planCode: r.plan_code,
+    subscriptionStatus: r.subscription_status as AdminTeamSummary["subscriptionStatus"],
+    createdAt: iso(r.created_at),
+  };
+}
+
+export function toAdminTeamDetail(d: TeamDetailRows): AdminTeamDetail {
+  return {
+    ...toAdminTeamSummary(d.team),
+    limits: {
+      maxMembers: Number(d.team.max_members),
+      maxBoards: Number(d.team.max_boards),
+      maxStorageBytes: Number(d.team.max_storage_bytes),
+    },
+    usage: {
+      members: Number(d.team.member_count),
+      boards: Number(d.team.usage_boards),
+      storageBytes: Number(d.team.usage_storage_bytes),
+    },
+    subscription: d.subscription === null ? null : toSubscription(d.subscription),
+    members: d.members.map((m) => ({
+      userId: m.user_id,
+      displayName: m.display_name,
+      role: m.role as AdminTeamDetail["members"][number]["role"],
+      status: m.status as AdminTeamDetail["members"][number]["status"],
+      joinedAt: iso(m.joined_at),
+    })),
+  };
+}
+
+/** `role` را مصرف‌کننده با `effectiveBoardRole` روی ورودی‌های همان ردیف حساب می‌کند (نقشِ خودِ کاربر). */
+export function toAdminUserBoard(r: UserBoardRow, role: AdminUserBoard["role"]): AdminUserBoard {
+  return {
+    id: r.id,
+    title: r.title,
+    teamId: r.team_id,
+    teamName: r.team_name,
+    accessMode: r.access_mode as AdminUserBoard["accessMode"],
+    role,
+    lastActivityAt: iso(r.last_activity_at),
+    deletedAt: isoOrNull(r.deleted_at),
+  };
+}
+
+// ── پرداخت‌ها در پنل (M6 فاز ۶٫۱، ADR-068) ─────────────────────────────
+
+/** شیءِ JSONِ ستون، یا `null` — آرایه/عدد/رشته‌ی خام به DTO نمی‌رود (schema شیء می‌خواهد). */
+const jsonObject = (v: unknown): Record<string, unknown> | null =>
+  typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+
+export function toAdminPaymentSummary(r: AdminPaymentRow): AdminPaymentSummary {
+  return {
+    id: r.id,
+    teamId: r.team_id,
+    teamName: r.team_name,
+    initiatedBy: r.initiated_by,
+    invoiceId: r.invoice_id,
+    invoiceNumber: r.invoice_number,
+    gateway: r.gateway,
+    gatewayMode: r.gateway_mode,
+    amountRial: Number(r.amount_rial),
+    status: r.status as AdminPaymentSummary["status"],
+    authority: r.authority,
+    refId: r.ref_id,
+    failureCode: r.failure_code,
+    requestedAt: iso(r.requested_at),
+    paidAt: isoOrNull(r.paid_at),
+    verifiedAt: isoOrNull(r.verified_at),
+    refundedAt: isoOrNull(r.refunded_at),
+  };
+}
+
+/**
+ * جزئیاتِ پرداخت. `expireBlocked` از **سرور** می‌آید (سقفش configی است) و `null` یعنی دکمه‌ی انقضا فعال.
+ *
+ * ⚠️ `card_hash` و `idempotency_key` عمداً **در DTO نیستند**: اولی هشِ کارتِ کاربر است و دومی کلیدی که
+ * کلاینت فرستاده — هیچ‌کدام به اشکال‌زداییِ staff کمکی نمی‌کنند.
+ */
+export function toAdminPaymentDetail(
+  rows: AdminPaymentDetailRows,
+  expireBlocked: string | null,
+): AdminPaymentDetail {
+  const p = rows.payment;
+  return {
+    ...toAdminPaymentSummary(p),
+    cardPanMasked: p.card_pan_masked,
+    feeRial: p.fee_rial === null ? null : Number(p.fee_rial),
+    refundRef: p.refund_ref,
+    refundAmountRial: p.refund_amount_rial === null ? null : Number(p.refund_amount_rial),
+    requestPayload: jsonObject(p.request_payload),
+    callbackPayload: jsonObject(p.callback_payload),
+    verifyPayload: jsonObject(p.verify_payload),
+    invoice: rows.invoice === null ? null : toInvoice(rows.invoice),
+    subscription: rows.subscription === null ? null : toSubscription(rows.subscription),
+    expireBlocked,
+  };
+}

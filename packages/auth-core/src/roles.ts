@@ -4,7 +4,12 @@ import type { BoardAccessMode, BoardRole, TeamRole } from "@hamboom/shared-types
  * نقشِ موثرِ کاربر روی یک بورد — [ADR-012](../../../ARCHITECTURE_DECISIONS.md#adr-012).
  *
  * دسترسی یک مقدارِ **محاسبه‌شده** است، نه یک ردیفِ ذخیره‌شده: از ترکیبِ منابع، **بیشترین**
- * نقش برنده می‌شود، و اگر هیچ منبعی نبود **`null`** (fail-closed). ★ **همین یک تابع** هم در
+ * نقش برنده می‌شود، و اگر هیچ منبعی نبود **`null`** (fail-closed).
+ *
+ * ★★ **دو تغییرِ M6 ([ADR-066](../../../ARCHITECTURE_DECISIONS.md#adr-066)، جایگزینِ بخشی از ADR-012):**
+ * staff **`viewer`** می‌گیرد نه `owner` (هر بوردی را می‌بیند، هیچ‌کدام را نمی‌نویسد — probe ۱٫۱ی M6 نوشتنِ
+ * staff روی بوردِ خصوصیِ غریبه را با عدد نشان داد)، و کاربرِ **معلق** `null` می‌گیرد پیش از هر منبعِ دیگر —
+ * تعلیق در همین یک تابع enforce می‌شود، پس REST و WebSocket با هم fail-closed‌اند. ★ **همین یک تابع** هم در
  * `apps/api` و هم در `apps/realtime` استفاده می‌شود — رایج‌ترین حفره‌ی امنیتیِ محصولاتِ مشابه این
  * است که REST درست چک کند ولی WebSocket نه. تابعِ خالص است: داده را ورودی می‌گیرد، DB را نمی‌بیند.
  */
@@ -14,8 +19,13 @@ const RANK: Record<BoardRole, number> = { owner: 3, editor: 2, commenter: 1, vie
 
 /** ورودیِ `effectiveBoardRole` — همه‌ی منابعِ دسترسی. مصرف‌کننده (api/realtime) از DB پُرش می‌کند. */
 export interface BoardAccessInput {
-  /** staffِ پلتفرم — دسترسیِ کامل (پشتیبانی/ادمین). */
+  /** staffِ پلتفرم — **فقط‌خواندنی** (viewer) روی هر بورد (ADR-066 §۱). */
   isStaff: boolean;
+  /**
+   * `users.status = 'suspended'` — **اجباری** و مقدم بر همه: معلق ⇒ `null` (ADR-066 §۴). عمداً اختیاری
+   * نیست: فیلدِ اختیاری یعنی readerی که فراموشش کند fail-open می‌شود (همان درسِ `developmentOnly`، M5 فاز ۴).
+   */
+  isSuspended: boolean;
   /** مالکِ **همین** بورد. */
   isBoardOwner: boolean;
   /** حالتِ دسترسیِ بورد — مسیرهای تیم/لینک را گِیت می‌کند. */
@@ -56,13 +66,19 @@ function maxRole(roles: readonly BoardRole[]): BoardRole | null {
  * - مسیرِ **تیم** فقط وقتی `access_mode='team'` است فعال می‌شود — بوردِ `private` عضویتِ تیم را
  *   نادیده می‌گیرد (فقط مالک + `board_members` + staff).
  * - مسیرِ **لینک** فقط در `link_view`/`link_edit` و با توکنِ معتبر.
- * - مالکِ بورد، `board_members`، و staff **همیشه** (مستقل از `access_mode`).
+ * - مالکِ بورد، `board_members`، و staff **همیشه** (مستقل از `access_mode`) — staff فقط `viewer`.
+ * - ★ معلق ⇒ `null`، **پیش از** هر منبع؛ حتی مالک/staffِ معلق هم هیچ دسترسی ندارد.
  */
 export function effectiveBoardRole(input: BoardAccessInput): BoardRole | null {
+  // ★ تعلیق اول و مطلق (ADR-066 §۴): `null`ِ این‌جا «دسترسی برداشته شده» است — با `null`ِ reader
+  //   («بورد نیست») در مصرف‌کننده یکی می‌شود و هر دو رد می‌شوند؛ تفکیکشان لازم نیست چون هر دو fail-closed‌اند.
+  if (input.isSuspended) return null;
+
   const candidates: BoardRole[] = [];
 
   // همیشه، مستقل از access_mode:
-  if (input.isStaff) candidates.push("owner");
+  // ★ staff → viewer (ADR-066 §۱)؛ اگر staff عضو/مالک هم باشد، آن منبع‌ها مثلِ هر کاربرِ دیگر بالاترش می‌برند.
+  if (input.isStaff) candidates.push("viewer");
   if (input.isBoardOwner) candidates.push("owner");
   if (input.directRole !== null) candidates.push(input.directRole);
 

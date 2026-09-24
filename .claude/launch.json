@@ -4,23 +4,44 @@
     {
       "name": "canvas-core-demo",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@hamboom/canvas-core", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@hamboom/canvas-core",
+        "dev"
+      ],
       "port": 15180,
       "url": "http://127.0.0.1:15180"
     },
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@hamboom/web", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@hamboom/web",
+        "dev"
+      ],
       "port": 15380,
       "url": "http://127.0.0.1:15380"
     },
     {
       "name": "api",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["--env-file-if-exists=.env", "apps/api/src/server.ts"],
-      "port": 3410,
-      "url": "http://localhost:3410"
+      "runtimeArgs": [
+        "--env-file-if-exists=.env",
+        "apps/api/src/server.ts"
+      ],
+      "port": 15402,
+      "url": "http://localhost:15402"
+    },
+    {
+      "name": "realtime",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--env-file-if-exists=.env",
+        "apps/realtime/src/main.ts"
+      ],
+      "port": 3001,
+      "url": "http://127.0.0.1:3001"
     }
   ]
 }

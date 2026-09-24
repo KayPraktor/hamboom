@@ -10,6 +10,7 @@ import type { ObjectStore } from "@hamboom/storage";
 import Fastify, { type FastifyInstance } from "fastify";
 import type pg from "pg";
 
+import { makeStaffGuards } from "./admin-guard.ts";
 import { makeRequireAuth } from "./auth-guard.ts";
 import { loadApiConfig, secretBytes, type ApiConfig } from "./config.ts";
 import { registerErrorHandler } from "./errors.ts";
@@ -18,8 +19,9 @@ import { loggerOptions } from "./logger.ts";
 import { createReconcileRecorder, createStalePendingCounter, renderApiMetrics } from "./metrics.ts";
 import { createDbPool } from "./plugins/db.ts";
 import { createPaymentGateway } from "./plugins/payment.ts";
-import { registerReconcileJob } from "./plugins/reconcile.ts";
+import { registerReconcileJob, reconcilePolicyFrom } from "./plugins/reconcile.ts";
 import { createAssetObjectStore, createSnapshotObjectStore } from "./plugins/s3.ts";
+import { registerAdminPaymentRoutes, registerAdminRoutes } from "./routes/admin.ts";
 import { registerAssetRoutes } from "./routes/assets.ts";
 import { registerBillingRoutes } from "./routes/billing.ts";
 import { registerAuthRoutes } from "./routes/auth.ts";
@@ -43,7 +45,20 @@ declare module "fastify" {
     db: pg.Pool;
     /** فهرستِ مسیرهای ثبت‌شده (`METHOD url`) — گاردِ دریفتِ OpenAPI با این می‌سنجد. */
     registeredRoutes: string[];
+    /**
+     * ★ مسیرهای زیرِ `/admin` با اعلامِ ممیزی‌شان — گیتِ ۱۶ (M6 فاز ۳٫۷،
+     * [`scripts/check-admin-audit.ts`](../../../scripts/check-admin-audit.ts)) از این می‌خواند:
+     * هر `POST/PATCH/PUT/DELETE`ی که `audit` نداشته باشد قرمز است (ADR-067 §۲).
+     */
+    adminRoutes: AdminRouteRecord[];
   }
+}
+
+export interface AdminRouteRecord {
+  method: string;
+  url: string;
+  /** نامِ عمل از `audited()`؛ `null` یعنی اعلام نشده. */
+  audit: string | null;
 }
 
 export interface BuildAppOptions {
@@ -72,15 +87,30 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     trustProxy: config.TRUST_PROXY,
   });
   app.decorateRequest("authUser", null);
+  app.decorateRequest("staff", null);
 
   // ★ گاردِ دریفتِ OpenAPI: هر مسیرِ ثبت‌شده جمع می‌شود تا تست ثابت کند همه مستندند.
   //   قبل از ثبتِ هر route اضافه می‌شود (onRoute فقط routeهای بعد از خودش را می‌بیند). HEAD حذف.
   const registeredRoutes: string[] = [];
+  const adminRoutes: AdminRouteRecord[] = [];
   app.addHook("onRoute", (route) => {
     const methods = Array.isArray(route.method) ? route.method : [route.method];
-    for (const m of methods) if (m !== "HEAD") registeredRoutes.push(`${m} ${route.url}`);
+    for (const m of methods) {
+      if (m === "HEAD") continue;
+      registeredRoutes.push(`${m} ${route.url}`);
+      // ★ گیتِ ۱۶: هر چه زیرِ `/admin` ثبت شود، با اعلامِ auditش (یا نبودش) جمع می‌شود.
+      if (route.url === "/admin" || route.url.startsWith("/admin/")) {
+        const action = route.config?.audit?.action;
+        adminRoutes.push({
+          method: m,
+          url: route.url,
+          audit: typeof action === "string" && action.length > 0 ? action : null,
+        });
+      }
+    }
   });
   app.decorate("registeredRoutes", registeredRoutes);
+  app.decorate("adminRoutes", adminRoutes);
 
   registerErrorHandler(app);
 
@@ -212,6 +242,31 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   const requireAuth = makeRequireAuth(secret);
   registerMeRoutes(app, { pool, requireAuth });
+
+  // ── پنلِ ادمین (M6 فاز ۳، ADR-065/066) — داخلِ buildApp، پس از همان گاردهای بوت ────
+  // ★ `requireStaff` در هر درخواست از DB می‌خوانَد (fail-closed)؛ `requireStepUp` برای عملِ مخرب
+  //   (تعلیق/رفعِ تعلیق از فاز ۵).
+  const { requireStaff, requireStepUp } = makeStaffGuards({
+    pool,
+    stepUpSeconds: config.ADMIN_STEP_UP_SECONDS,
+  });
+  registerAdminRoutes(app, {
+    pool,
+    requireAuth,
+    requireStaff,
+    requireStepUp,
+    sms,
+    otpConfig: {
+      ttlSeconds: config.OTP_TTL_SECONDS,
+      maxAttempts: config.OTP_MAX_ATTEMPTS,
+      cooldownSeconds: config.OTP_COOLDOWN_SECONDS,
+      fixedCode,
+    },
+    otpRateLimit: {
+      max: config.RATE_LIMIT_OTP_MAX,
+      timeWindow: config.RATE_LIMIT_WINDOW_SECONDS * 1000,
+    },
+  });
   registerTeamRoutes(app, {
     pool,
     requireAuth,
@@ -257,6 +312,18 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       max: config.RATE_LIMIT_MAX,
       timeWindow: config.RATE_LIMIT_WINDOW_SECONDS * 1000,
     },
+  });
+
+  // ── ★ پرداخت‌ها در پنل (M6 فاز ۶، ADR-068) ───────────────────────────
+  // بعد از درگاه ثبت می‌شود چون **همان درگاهِ حل‌شده** را می‌گیرد؛ سیاستِ آشتی‌دهی هم همانِ تایمر است تا
+  // نردبانِ انقضای دستی و خودکار یک سقف داشته باشند (ADR-056 پله‌ی ۳).
+  registerAdminPaymentRoutes(app, {
+    pool,
+    requireAuth,
+    requireStaff,
+    requireStepUp,
+    gateway: resolvedGateway,
+    reconcilePolicy: reconcilePolicyFrom(config),
   });
 
   // ── آشتی‌دهیِ بازه‌ای (M4 فاز ۷) — **پیش‌فرض خاموش** ─────────────────

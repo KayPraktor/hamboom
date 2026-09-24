@@ -10,6 +10,7 @@ export type {
   ObjectStore,
   PresignUploadOptions,
   PresignedUpload,
+  PutStreamOptions,
 } from "./object-store.ts";
 export { createS3ObjectStore, ensureBucket } from "./s3-object-store.ts";
 export type { S3StorageConfig } from "./s3-object-store.ts";

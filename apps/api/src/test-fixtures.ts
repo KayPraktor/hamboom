@@ -60,6 +60,8 @@ export const TEST_CONFIG: ApiConfig = {
   BILLING_PENDING_EXPIRE_HOURS: 72,
   BILLING_RECONCILE_BATCH: 50,
   BILLING_ADOPT_ORPHANS: false,
+  // ── پنلِ ادمین (M6 فاز ۳) — پنجره‌ی step-up؛ تست‌ها با `clock` بازی می‌کنند نه با این عدد.
+  ADMIN_STEP_UP_SECONDS: 600,
 };
 
 /** استخرِ دروغینِ db — فقط `query`/`end`. تست بدونِ Postgres. */

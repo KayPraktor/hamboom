@@ -117,8 +117,74 @@ ok(
   `آپلودِ POSTِ درست واقعاً ذخیره شد (${uploaded?.size})`,
 );
 
+// ★ M6 / ADR-069 — سه متدِ افزایشی روی انبارِ واقعی
+console.log("\n۴) ★ stream و پیمایش (M6/ADR-069):");
+{
+  const { Readable } = await import("node:stream");
+  const { createHash } = await import("node:crypto");
+  // ۵MB در تکه‌های ۶۴KB — بزرگ‌تر از یک صفحه‌ی TCP و از یک chunkِ SDK، کوچک‌تر از این‌که smoke کند شود.
+  const size = 5 * 1024 * 1024;
+  const chunk = Buffer.alloc(64 * 1024);
+  for (let i = 0; i < chunk.length; i++) chunk[i] = i & 0xff;
+  const expectHash = createHash("sha256");
+  for (let sent = 0; sent < size; sent += chunk.length) expectHash.update(chunk);
+  const expected = expectHash.digest("hex");
+
+  let left = size;
+  const src = new Readable({
+    read() {
+      if (left <= 0) {
+        this.push(null);
+        return;
+      }
+      left -= chunk.length;
+      this.push(chunk);
+    },
+  });
+  const streamKey = "smoke/stream.bin";
+  await store.putObjectStream(streamKey, src, {
+    contentLength: size,
+    contentType: "application/octet-stream",
+  });
+  const streamHead = await store.headObject(streamKey);
+  ok(streamHead?.size === size, `putObjectStream با contentLength: اندازه‌ی سمتِ سرور ${streamHead?.size}`);
+
+  const back = await store.getObjectStream(streamKey);
+  const gotHash = createHash("sha256");
+  let seen = 0;
+  for await (const c of back!) {
+    gotHash.update(c as Buffer);
+    seen += (c as Buffer).byteLength;
+  }
+  ok(
+    seen === size && gotHash.digest("hex") === expected,
+    `getObjectStream بیت‌به‌بیت (sha256 برابر، ${seen} بایت)`,
+  );
+  ok((await store.getObjectStream("smoke/does-not-exist")) === null, "getObjectStream غایب → null");
+
+  // ★ طولِ غلط باید **رد** شود — وگرنه «طول اجباری» فقط یک فیلد است، نه یک قرارداد.
+  let wrongLenRejected = false;
+  try {
+    await store.putObjectStream("smoke/wrong-len.bin", Readable.from([Buffer.from([1, 2, 3])]), {
+      contentLength: 10,
+    });
+  } catch {
+    wrongLenRejected = true;
+  }
+  ok(wrongLenRejected, "putObjectStream با contentLengthِ غلط توسط انبار رد می‌شود");
+
+  const iterated: string[] = [];
+  for await (const k of store.iteratePrefix("smoke/")) iterated.push(k);
+  const listed = await store.listPrefix("smoke/");
+  ok(
+    iterated.length === listed.length && iterated.every((k) => listed.includes(k)),
+    `iteratePrefix همان ${iterated.length} کلیدِ listPrefix را می‌دهد`,
+  );
+  await store.deleteObject(streamKey);
+}
+
 // ۵) delete و قراردادِ «کلیدِ غایب = null، نه خطا»
-console.log("\n۴) delete و قراردادِ null:");
+console.log("\n۵) delete و قراردادِ null:");
 await store.deleteObject(key);
 ok((await store.getObject(key)) === null, "بعد از deleteObject، getObject → null");
 ok(

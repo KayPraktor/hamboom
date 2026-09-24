@@ -1,6 +1,23 @@
 import type {
   AddBoardMemberBody,
+  AdminMe,
+  AdminSearchResult,
+  AdminTeamDetail,
+  AdminPaymentDetail,
+  AdminPaymentQuery,
+  AdminPaymentSummary,
+  AdminUserBoard,
+  ExpireRequest,
+  PaymentActionResult,
+  ReconcileReport,
+  ReconcileRequest,
+  RefundRequest,
+  RefundResult,
+  AdminUserDetail,
+  AdminUserSummary,
   AssetPresignRequest,
+  AuditLogEntry,
+  AuditLogQuery,
   AssetPresignResponse,
   Board,
   BoardAccessMode,
@@ -22,9 +39,12 @@ import type {
   PatchMemberRoleBody,
   PatchMeBody,
   PatchTeamBody,
+  PhoneRevealResult,
   Plan,
   PutAccessBody,
   ResolveLinkBody,
+  StepUpVerifyRequest,
+  SuspendRequest,
   Subscription,
   Team,
   TeamMember,
@@ -49,8 +69,12 @@ export interface ClientOptions {
   baseUrl: string;
   /** تزریق‌پذیر برای تست/محیط (پیش‌فرض: `fetch`ِ سراسری). */
   fetch?: FetchLike;
-  /** وقتی refresh هم شکست خورد (نشست واقعاً تمام شد) — کلاینت باید به صفحه‌ی ورود برود. */
-  onSessionEnded?: () => void;
+  /**
+   * وقتی refresh هم شکست خورد (نشست واقعاً تمام شد) — کلاینت باید به صفحه‌ی ورود برود.
+   * ★ M6 ۵٫۲: `reason.code` کدِ خطای آخرین refresh است اگر سرور یکی داده باشد — `USER_SUSPENDED` یعنی
+   * «حساب معلق است»، که رابط باید از «نشست تمام شد» تفکیک کند (ADR-066 §۴). افزودنی و اختیاری.
+   */
+  onSessionEnded?: (reason?: { code: string }) => void;
 }
 
 // ── envelopeهای پاسخ (ترکیبِ DTOها) ──────────────────────────────────────
@@ -141,10 +165,18 @@ export function createClient(options: ClientOptions) {
     });
   }
 
+  // ★ کدِ خطای آخرین refreshِ ناموفق — برای `onSessionEnded(reason)`؛ `null` = بدونِ بدنه/شبکه.
+  let lastRefreshError: { code: string } | null = null;
+
   async function doRefresh(): Promise<boolean> {
+    lastRefreshError = null;
     try {
       const res = await raw("POST", "/auth/refresh", { noAuth: true });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: { code?: unknown } } | null;
+        if (typeof body?.error?.code === "string") lastRefreshError = { code: body.error.code };
+        return false;
+      }
       const data = (await res.json()) as { accessToken?: unknown };
       if (typeof data.accessToken === "string") {
         accessToken = data.accessToken;
@@ -165,7 +197,7 @@ export function createClient(options: ClientOptions) {
       });
       const ok = await refreshing;
       if (ok) res = await raw(method, path, opts);
-      else options.onSessionEnded?.();
+      else options.onSessionEnded?.(lastRefreshError ?? undefined);
     }
     return res;
   }
@@ -220,7 +252,7 @@ export function createClient(options: ClientOptions) {
       /** refreshِ دستی؛ `false` یعنی نشست تمام شده. */
       async refresh(): Promise<boolean> {
         const ok = await doRefresh();
-        if (!ok) options.onSessionEnded?.();
+        if (!ok) options.onSessionEnded?.(lastRefreshError ?? undefined);
         return ok;
       },
     },
@@ -352,6 +384,83 @@ export function createClient(options: ClientOptions) {
       /** لغو **در پایانِ دوره**، نه بی‌درنگ: مشتری تا آخرِ چیزی که پولش را داده سرویس می‌گیرد. */
       cancel: (teamId: string): Promise<{ subscription: Subscription }> =>
         request("POST", `/teams/${teamId}/billing/cancel`),
+    },
+
+    /**
+     * ★ پنلِ ادمین — M6 فاز ۳ (ADR-065/066). فقط برای staff؛ غیرِ staff ۴۰۳ می‌گیرد و
+     * `RequireStaff`ِ رابط همین را به «دسترسی ندارید» ترجمه می‌کند.
+     *
+     * ⚠️ این مسیرها در `openapi.json`ِ عمومی نیستند (`internal`، ADR-067 §۵) — تایپشان از
+     * `shared-types` می‌آید و `sdk:contract` روی apiِ واقعی می‌سنجدشان.
+     */
+    admin: {
+      /** کیستم؟ + وضعیتِ step-up. */
+      me: (): Promise<AdminMe> => request("GET", "/admin/me"),
+      /**
+       * ردیف‌های audit — keyset: `nextCursor` را در فراخوانیِ بعد بده؛ `null` = پایان. `ipMasked` هرگز
+       * IPِ کامل نیست (ADR-067 §۳). فیلترها AND؛ `action` پیشوندی (`staff.`).
+       */
+      audit: (
+        query: Partial<AuditLogQuery> = {},
+      ): Promise<{ items: AuditLogEntry[]; nextCursor: string | null }> =>
+        request("GET", "/admin/audit", { query }),
+      stepUp: {
+        /** کدِ step-up به شماره‌ی **خودِ** staff فرستاده می‌شود (همان سقفِ نرخِ OTP). */
+        request: (): Promise<{ ok: boolean }> => request("POST", "/admin/step-up/request"),
+        /** موفق → `stepUpVerifiedAt` تازه؛ پنجره‌اش `ADMIN_STEP_UP_SECONDS` (per-user). */
+        verify: (body: StepUpVerifyRequest): Promise<AdminMe> =>
+          request("POST", "/admin/step-up/verify", { body }),
+      },
+      // ── فاز ۵ — کاربران و تیم‌ها (ADR-066) ──
+      /** جست‌وجو: شماره‌ی **کاملِ** `09…`، UUID، یا متن؛ شماره‌ها ماسک‌اند. POST تا عبارت در URL/لاگ ننشیند؛ ممیزی‌شده. */
+      search: (q: string, limit?: number): Promise<AdminSearchResult> =>
+        request("POST", "/admin/search", { body: limit === undefined ? { q } : { q, limit } }),
+      users: {
+        get: (id: string): Promise<AdminUserDetail> => request("GET", `/admin/users/${id}`),
+        /** نمای پشتیبانی: بوردهای کاربر با نقشِ خودش؛ بازکردنِ بورد با `/b/:id` و نقشِ viewerِ staff. */
+        boards: (id: string): Promise<{ items: AdminUserBoard[] }> =>
+          request("GET", `/admin/users/${id}/boards`),
+        /** شماره‌ی کامل — ممیزی‌شده (`user.phone.reveal`). */
+        revealPhone: (id: string): Promise<PhoneRevealResult> =>
+          request("POST", `/admin/users/${id}/phone/reveal`),
+        /** ★ ۴۲۸ `STEP_UP_REQUIRED` بدونِ OTPِ تازه — اول `stepUp.request/verify`، بعد دوباره. */
+        suspend: (id: string, body: SuspendRequest): Promise<AdminUserSummary> =>
+          request("POST", `/admin/users/${id}/suspend`, { body }),
+        unsuspend: (id: string): Promise<AdminUserSummary> =>
+          request("POST", `/admin/users/${id}/unsuspend`),
+      },
+      teams: {
+        get: (id: string): Promise<AdminTeamDetail> => request("GET", `/admin/teams/${id}`),
+      },
+      // ── فاز ۶ — پرداخت‌ها و استرداد (ADR-068) ──
+      /**
+       * ⚠️ **هر چهار جهش پشتِ step-up‌اند** (۴۲۸ `STEP_UP_REQUIRED`): verify پول را فعال می‌کند، expire
+       * فاکتور را باطل، refund اشتراک را لغو، و reconcile هر سه را با هم.
+       */
+      payments: {
+        /**
+         * فهرست — فیلترها AND؛ keyset: `nextCursor` را در فراخوانیِ بعد بده، `null` = پایان.
+         * ★ **POST با بدنه** و ممیزی‌شده (`payment.search`): شماره‌ی پیگیری/authorityِ مشتری در URL و لاگ ننشیند.
+         */
+        list: (
+          body: Partial<AdminPaymentQuery> = {},
+        ): Promise<{ items: AdminPaymentSummary[]; nextCursor: string | null }> =>
+          request("POST", "/admin/payments/search", { body }),
+        /** جزئیات + فاکتور + اشتراکِ فعال‌شده؛ `expireBlocked` دلیلِ **سرور** برای غیرفعال‌بودنِ انقضاست. */
+        get: (id: string): Promise<AdminPaymentDetail> => request("GET", `/admin/payments/${id}`),
+        /** verifyِ دستی — ۲۰۰ برای **هر** نتیجه؛ `outcome` را بخوان، نه فقط کدِ HTTP. */
+        verify: (id: string): Promise<PaymentActionResult> =>
+          request("POST", `/admin/payments/${id}/verify`),
+        /** انقضا — پله‌ی ۳ی ADR-056؛ زودتر از سقف ⇒ ۴۰۹ `INVALID_TRANSITION` با دلیلِ خواندنی. */
+        expire: (id: string, body: ExpireRequest): Promise<PaymentActionResult> =>
+          request("POST", `/admin/payments/${id}/expire`, { body }),
+        /** استرداد — `manual` (مرجعِ دستی) یا `gateway`؛ زرین‌پال ۴۰۹ `REFUND_UNAVAILABLE` می‌دهد. */
+        refund: (id: string, body: RefundRequest): Promise<RefundResult> =>
+          request("POST", `/admin/payments/${id}/refund`, { body }),
+        /** sweepِ دستی — قفل دستِ تایمر/نودِ دیگر ⇒ ۴۰۹ CONFLICT. `batchSize` سقفِ ۲۵. */
+        reconcile: (body: Partial<ReconcileRequest> = {}): Promise<ReconcileReport> =>
+          request("POST", "/admin/payments/reconcile", { body }),
+      },
     },
 
     links: {

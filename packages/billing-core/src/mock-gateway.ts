@@ -2,6 +2,10 @@ import type {
   CreatePaymentInput,
   CreatePaymentResult,
   PaymentGateway,
+  RefundInput,
+  RefundOutcome,
+  ReverseInput,
+  ReverseOutcome,
   UnverifiedPayment,
   VerifyOutcome,
   VerifyPaymentInput,
@@ -38,6 +42,9 @@ export interface MockGatewayConfig {
 interface MockRecord {
   amountRial: number;
   verifiedAt: number | null;
+  /** M6 فاز ۶ — `null` یعنی هنوز مسترد نشده؛ وگرنه شماره‌ی مرجعِ استردادِ ساختگی. */
+  refundRef: string | null;
+  reversed: boolean;
 }
 
 export class MockGateway implements PaymentGateway {
@@ -86,7 +93,12 @@ export class MockGateway implements PaymentGateway {
     assertGatewayAmount(input.amountRial);
 
     const authority = this.#authorityFactory();
-    this.#records.set(authority, { amountRial: input.amountRial, verifiedAt: null });
+    this.#records.set(authority, {
+      amountRial: input.amountRial,
+      verifiedAt: null,
+      refundRef: null,
+      reversed: false,
+    });
 
     return { authority, redirectUrl: `${this.#checkoutBaseUrl}/${authority}` };
   }
@@ -107,10 +119,62 @@ export class MockGateway implements PaymentGateway {
     return out;
   }
 
+  /**
+   * استردادِ ساختگی — M6 فاز ۶ ([ADR-068](../../../ARCHITECTURE_DECISIONS.md#adr-068) §۲).
+   *
+   * ★★ **ناشناخته و تکراری هر دو `rejected`اند، نه `refunded`** (یافته‌ی منتقدِ فاز ۶): اگر این متد به هر
+   * authorityی «برگرداندم» بگوید، یک ردیفِ **زرین‌پالی** که اشتباهاً روی استکِ mock افتاده با یک
+   * `MOCKRF`ِ ساختگی `refunded` می‌شد — بی‌آنکه ریالی جابه‌جا شده باشد. همان منطقِ
+   * `developmentOnly`: درگاهِ ساختگی نباید چیزی را تایید کند که ندیده است.
+   *
+   * ⚠️ و فقط پرداختِ **verify‌شده** مسترد می‌شود: پولی که هنوز نگرفته‌ایم برنمی‌گردد، `reverse` می‌شود.
+   */
+  async refund(input: RefundInput): Promise<RefundOutcome> {
+    const record = this.#records.get(input.authority);
+    if (record === undefined) {
+      return { status: "rejected", code: -51, message: "این پرداخت در درگاهِ ساختگی وجود ندارد." };
+    }
+    if (record.verifiedAt === null) {
+      return {
+        status: "rejected",
+        code: -52,
+        message: "این پرداخت هنوز verify نشده؛ استرداد ندارد (reverse کن).",
+      };
+    }
+    if (record.refundRef !== null) {
+      return { status: "rejected", code: -53, message: "این پرداخت قبلاً مسترد شده." };
+    }
+    if (record.amountRial !== input.amountRial) {
+      return { status: "rejected", code: -50, message: "مبلغِ استرداد با مبلغِ پرداخت یکی نیست." };
+    }
+    record.refundRef = `MOCKRF${input.authority.slice(-8)}`;
+    return { status: "refunded", refundRef: record.refundRef };
+  }
+
+  /** ابطالِ پرداختِ verify‌نشده — قرینه‌ی `refund`؛ پرداختِ تسویه‌شده `rejected` می‌گیرد. */
+  async reverse(input: ReverseInput): Promise<ReverseOutcome> {
+    const record = this.#records.get(input.authority);
+    if (record === undefined) {
+      return { status: "rejected", code: -51, message: "این پرداخت در درگاهِ ساختگی وجود ندارد." };
+    }
+    if (record.verifiedAt !== null) {
+      return { status: "rejected", code: -54, message: "پرداختِ تسویه‌شده ابطال نمی‌شود (refund کن)." };
+    }
+    if (record.reversed) {
+      return { status: "rejected", code: -55, message: "این پرداخت قبلاً ابطال شده." };
+    }
+    record.reversed = true;
+    return { status: "reversed" };
+  }
+
   async verifyPayment(input: VerifyPaymentInput): Promise<VerifyOutcome> {
     const record = this.#records.get(input.authority);
     if (record === undefined) {
       return { status: "notPaid", code: -51, message: "این پرداخت در درگاهِ ساختگی وجود ندارد." };
+    }
+    // ★ ابطال‌شده یعنی پول برنگشت و برنمی‌گردد — verifyِ بعدی نباید «پرداخت شد» بگوید.
+    if (record.reversed) {
+      return { status: "notPaid", code: -55, message: "این پرداخت ابطال شده است." };
     }
 
     if (this.#failEveryPayment) {

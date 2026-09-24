@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { buildApp } from "./app.ts";
-import { buildOpenApiDocument, documentedRoutes } from "./openapi.ts";
+import {
+  buildOpenApiDocument,
+  documentedRoutes,
+  internalOpenApiPaths,
+  internalSchemaNames,
+  publicSpecProblems,
+  routeDrift,
+  type RouteDoc,
+} from "./openapi.ts";
 import { fakeDb, TEST_CONFIG } from "./test-fixtures.ts";
 
 /** همه‌ی رشته‌های `$ref` را از درختِ سند جمع می‌کند. */
@@ -74,19 +83,70 @@ describe("★ گاردِ دریفتِ OpenAPI — هر مسیرِ ثبت‌شد�
       config: TEST_CONFIG,
       db: fakeDb(() => Promise.resolve({ rows: [] })),
     });
-    const registered = new Set(app.registeredRoutes);
-    const documented = documentedRoutes();
+    const drift = routeDrift(
+      app.registeredRoutes,
+      documentedRoutes(),
+      new Set(Object.keys(NOT_IN_PUBLIC_SPEC)),
+    );
     // ⚠️ استثنا باید **زنده** بماند: اگر مسیرش حذف شود، این‌جا قرمز می‌شود.
-    for (const route of Object.keys(NOT_IN_PUBLIC_SPEC)) {
-      expect(registered, `استثنای مرده: ${route}`).toContain(route);
-    }
-    const undocumented = [...registered]
-      .filter((r) => !documented.has(r) && !(r in NOT_IN_PUBLIC_SPEC))
-      .sort();
-    const unregistered = [...documented].filter((r) => !registered.has(r)).sort();
-    expect(undocumented, "مسیرهای ثبت‌شده‌ی بی‌سند").toEqual([]);
-    expect(unregistered, "مسیرهای مستندِ ثبت‌نشده").toEqual([]);
+    expect(drift.deadExceptions, "استثنای مرده").toEqual([]);
+    expect(drift.undocumented, "مسیرهای ثبت‌شده‌ی بی‌سند").toEqual([]);
+    expect(drift.unregistered, "مسیرهای مستندِ ثبت‌نشده").toEqual([]);
+    // ★ مسیرهای `/admin` واقعاً در گارد **هستند** (وگرنه internal یعنی «نامرئی»، نه «داخلی»).
+    expect(app.registeredRoutes.some((r) => r.startsWith("GET /admin/"))).toBe(true);
+    expect([...documentedRoutes()].some((r) => r.startsWith("GET /admin/"))).toBe(true);
     await app.close();
+  });
+});
+
+/**
+ * ★★ سه خودآزمونِ ADR-067 §۵ — هر کدام یک **شکستنِ عمدی** که باید قرمز شود، کنارِ اثباتِ سبزِ سندِ واقعی.
+ *
+ * ⚠️ بدونِ این‌ها، «internal» فقط یک پرچم است که کسی نمی‌داند اگر برداشته شود چه می‌شود (درسِ M2 گام ۴٫۷).
+ */
+describe("★★ مسیرهای داخلی (ADR-067 §۵) — سه شکستنِ عمدی", () => {
+  const INTERNAL_PATHS = internalOpenApiPaths();
+  const INTERNAL_SCHEMAS = internalSchemaNames();
+
+  it("سندِ واقعی: هیچ مسیر/schema/تگِ داخلی در سندِ عمومی نیست", () => {
+    expect(INTERNAL_PATHS.length).toBeGreaterThan(0);
+    expect(INTERNAL_SCHEMAS.length).toBeGreaterThan(0);
+    expect(publicSpecProblems(buildOpenApiDocument(), INTERNAL_PATHS, INTERNAL_SCHEMAS)).toEqual(
+      [],
+    );
+  });
+
+  it("۱) مسیرِ داخلیِ **بی‌سند** ⇒ گاردِ دریفت قرمز (internal یعنی مستند ولی غیرعمومی)", () => {
+    const drift = routeDrift(
+      [...documentedRoutes(), "POST /admin/users/x/suspend"],
+      documentedRoutes(),
+      new Set(),
+    );
+    expect(drift.undocumented).toEqual(["POST /admin/users/x/suspend"]);
+  });
+
+  it("۲) مسیرِ داخلی که پرچمش برداشته شود ⇒ در سندِ عمومی ظاهر می‌شود و گارد قرمز است", () => {
+    // شکستنِ عمدی: همان ROUTES ولی بدونِ `internal` روی مسیرهای admin.
+    const leaked: RouteDoc[] = [
+      { method: "get", path: "/admin/me", tag: "admin", summary: "x", ok: { schema: "AdminMe" } },
+    ];
+    const doc = buildOpenApiDocument(leaked);
+    const problems = publicSpecProblems(doc, INTERNAL_PATHS, INTERNAL_SCHEMAS);
+    expect(problems.some((p) => p.includes("/admin/me"))).toBe(true);
+  });
+
+  it("۳) schemaی ادمین در componentsِ عمومی ⇒ قرمز (حتی بدونِ هیچ مسیرِ admin)", () => {
+    // شکستنِ عمدی: AdminMe لای COMPONENT_SCHEMAS — شکلِ DTO از /openapi.json لو می‌رود.
+    const doc = buildOpenApiDocument([], { AdminMe: z.object({ userId: z.string() }) });
+    const problems = publicSpecProblems(doc, INTERNAL_PATHS, INTERNAL_SCHEMAS);
+    expect(problems).toEqual(["schemaی داخلی در componentsِ عمومی: AdminMe"]);
+  });
+
+  it("۳′) تگِ admin در tagsِ سندِ عمومی ⇒ قرمز", () => {
+    const doc = { ...buildOpenApiDocument(), tags: [{ name: "health" }, { name: "admin" }] };
+    expect(publicSpecProblems(doc, INTERNAL_PATHS, INTERNAL_SCHEMAS)).toEqual([
+      "تگِ admin در tagsِ سندِ عمومی",
+    ]);
   });
 });
 

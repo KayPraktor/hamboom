@@ -49,17 +49,53 @@ export const LOG_REDACT_PATHS = [
   //    و `errors.ts` کلِ `err` را لاگ می‌کند. این دو مسیر را می‌بندد.
   "*.detail",
   "*.where",
+  // ── M6 فاز ۴ (ADR-067 §۳) — پیش از اولین نویسنده‌ی audit_logs ────────────────
+  // ⚠️ ردیفِ audit `ip`/`user_agent` را **ذخیره می‌کند** (forensics) ولی نباید به لاگ برسد؛
+  //    و `phone`/`email` تا امروز فقط با ماسکِ دستی محافظت می‌شدند. wildcard یک‌سطحی است، پس
+  //    هر دو شکلِ camel/snake و هم سطحِ ریشه هم آمده. `req.remoteAddress`ِ fastify (لاگِ دسترسی)
+  //    عمداً دست‌نخورده است — آن IPِ اتصال است، نه داده‌ی یک شخص در یک ردیفِ ممیزی.
+  //    ⚠️ و یک سطحِ **دوم** (`*.*.ip`): `AuditEntry` شکلِ `{ actor: { ip } }` دارد و اگر کسی کلِ entry
+  //    را لاگ کند، wildcardِ یک‌سطحی نمی‌گیردش — تستِ نشتِ عمدی دقیقاً همین را گرفت.
+  ...["ip", "phone", "user_agent", "userAgent", "email"].flatMap((k) => [k, `*.${k}`, `*.*.${k}`]),
 ] as const;
 
 export const LOG_REDACT_CENSOR = "[Redacted]";
 
-/** گزینه‌های loggerِ pino که fastify مصرف می‌کند — تنها منبعِ redact. */
+/** `/x?y=z` → `/x` — query string هرگز به لاگِ دسترسی نمی‌رسد (M6 ۵٫۵: `?q=<شماره>` کاملِ یک شخص می‌شد). */
+export const stripQuery = (url: string | undefined): string | undefined =>
+  url === undefined ? undefined : url.split("?")[0];
+
+/**
+ * گزینه‌های loggerِ pino که fastify مصرف می‌کند — تنها منبعِ redact.
+ *
+ * ★ سریالایزرِ `req` همان فیلدهای پیش‌فرضِ fastify است، فقط `url` **بدونِ query string**: یافته‌ی بازبینیِ ۵٫۵
+ * نشان داد `GET /admin/search?q=0912…` شماره‌ی کامل را در لاگِ api (و nginx) می‌نشانْد. جست‌وجو POST شد، ولی این
+ * سد برای هر مسیرِ بعدی هم می‌مانَد؛ redact روی propertyها کار می‌کند نه داخلِ رشته‌ی url.
+ */
 export function loggerOptions(level: string): {
   level: string;
   redact: { paths: string[]; censor: string };
+  serializers: {
+    req: (req: {
+      method?: string;
+      url?: string;
+      hostname?: string;
+      ip?: string;
+      socket?: { remotePort?: number };
+    }) => Record<string, unknown>;
+  };
 } {
   return {
     level,
     redact: { paths: [...LOG_REDACT_PATHS], censor: LOG_REDACT_CENSOR },
+    serializers: {
+      req: (req) => ({
+        method: req.method,
+        url: stripQuery(req.url),
+        host: req.hostname,
+        remoteAddress: req.ip,
+        remotePort: req.socket?.remotePort,
+      }),
+    },
   };
 }

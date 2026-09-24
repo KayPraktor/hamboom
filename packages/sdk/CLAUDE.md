@@ -25,7 +25,7 @@
 
 | فایل | چیست |
 |---|---|
-| `src/client.ts` | `createClient({ baseUrl, fetch? })` → متدهای گروه‌بندی‌شده (auth/me/teams/folders/boards/links/assets) |
+| `src/client.ts` | `createClient({ baseUrl, fetch? })` → متدهای گروه‌بندی‌شده (auth/me/teams/folders/boards/billing/links/assets/**admin** — M6: `admin.me`, `admin.stepUp.{request,verify}`, `admin.audit(query)` (keyset: `nextCursor` را برگردان، `null` = پایان)، فاز ۵: `admin.search(q)`, `admin.users.{get, boards, revealPhone, suspend, unsuspend}`, `admin.teams.get` (`suspend`/`unsuspend` بدونِ step-upِ تازه **۴۲۸ `STEP_UP_REQUIRED`** می‌دهند — مصرف‌کننده `stepUp.request/verify` را می‌زند و دوباره)؛ مسیرهای `internal`، فقط `sdk:contract` شکلشان را می‌سنجد). ★ `onSessionEnded(reason?)` — M6 ۵٫۲: `reason.code` کدِ خطای آخرین refreshِ ناموفق (`USER_SUSPENDED` = حساب معلق، نه «دوباره وارد شو»)؛ افزودنی و اختیاری |
 | `src/errors.ts` | `SdkError` (code/status/requestId/details — قالبِ §۵) |
 | `contract/`(نیست) | تستِ قراردادی در `scripts/sdk-contract.ts` است (DB لازم دارد، بیرونِ verify) |
 
@@ -36,6 +36,13 @@ pnpm --filter @hamboom/sdk typecheck
 pnpm --filter @hamboom/sdk test         # unit با fetchِ دروغین (داخلِ verify)
 pnpm sdk:contract                        # ★ در برابرِ buildApp()ِ واقعی + DB (بیرونِ verify)
 ```
+
+## ★ `sdk.admin.payments` (M6 فاز ۶)
+
+`list`/`get` فقط staff؛ `verify`/`expire`/`refund`/`reconcile` **پشتِ step-up** (۴۲۸ `STEP_UP_REQUIRED` ⇒ اول
+`admin.stepUp.request/verify`، بعد دوباره). ⚠️ `verify`/`expire` برای **هر** نتیجه ۲۰۰ می‌دهند — `outcome` را
+بخوان، نه فقط کدِ HTTP. `refund` دو کانالِ صریح دارد؛ زرین‌پال امروز ۴۰۹ `REFUND_UNAVAILABLE` می‌دهد و ردِ
+**قطعیِ** درگاه ۴۰۹ `REFUND_REJECTED` است (نه ۵۰۲ی «دوباره تلاش کن»).
 
 ## چیزهایی که اینجا انجام نمی‌شوند
 

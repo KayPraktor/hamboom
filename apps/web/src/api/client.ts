@@ -11,14 +11,18 @@ import { createClient } from "@hamboom/sdk";
  * `baseUrl=""` یعنی هم‌مبدأ: در dev پروکسیِ Vite به api می‌رساند، در production
  * همان دامنه. `onSessionEnded` را `SessionProvider` وصل می‌کند.
  */
-let sessionEndedHandler: (() => void) | null = null;
+type SessionEndedHandler = (reason?: { code: string }) => void;
+let sessionEndedHandler: SessionEndedHandler | null = null;
 
 export const api = createClient({
   baseUrl: "",
-  onSessionEnded: () => sessionEndedHandler?.(),
+  onSessionEnded: (reason) => sessionEndedHandler?.(reason),
 });
 
-/** `SessionProvider` خودش را وصل می‌کند تا مرگِ نشست (۴۰۱ + refreshِ ناموفق) به state برسد. */
-export function setSessionEndedHandler(handler: (() => void) | null): void {
+/**
+ * `SessionProvider` خودش را وصل می‌کند تا مرگِ نشست (۴۰۱ + refreshِ ناموفق) به state برسد.
+ * `reason.code === "USER_SUSPENDED"` = حساب معلق است (M6 ۵٫۲) — نه «دوباره وارد شو».
+ */
+export function setSessionEndedHandler(handler: SessionEndedHandler | null): void {
   sessionEndedHandler = handler;
 }

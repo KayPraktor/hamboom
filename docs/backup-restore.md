@@ -9,10 +9,14 @@
 
 | دستور | چه می‌کند | کِی |
 |---|---|---|
-| `pnpm infra:backup` | `pg_dump` → باکتِ **جدا** + مانیفست + راستی‌آزماییِ اندازه | شبانه |
-| `pnpm infra:backup-storage` | آینه‌ی افزایشیِ `snapshots` و `assets` + مانیفستِ آن لحظه | شبانه |
-| ★★ `pnpm infra:restore-drill` | پشتیبان را روی دیتابیسِ **خالی** برمی‌گرداند و پنج ادعا را می‌سنجد | هفتگی، و در CI |
-| `pnpm infra:restore-drill -- --self-test` | چهار شکستنِ عمدی، هر کدام باید چکِ **درستش** را قرمز کند | در CI |
+| ★ `pnpm infra:backup-all` | **M6:** dump + آینه در یک اجرا، یک stamp، دو مانیفستِ به‌هم‌پیوندخورده | شبانه، و در CI |
+| `pnpm infra:backup` | فقط `pg_dump` → باکتِ **جدا** + مانیفست (آپلودِ استریمی) | جزءِ backup-all |
+| `pnpm infra:backup-storage` | فقط آینه‌ی افزایشیِ `snapshots` و `assets` + مانیفست با **sha256** | جزءِ backup-all |
+| `pnpm infra:backup-storage -- --self-test` | پنج سناریو روی انبارِ حافظه‌ای (کپی، skip با sha، شیءِ گم‌شده، مانیفستِ قدیمی) | در CI، و از داخلِ ایمیج |
+| ★★ `pnpm infra:restore-drill` | پشتیبان را روی دیتابیسِ **خالی** برمی‌گرداند و **شش** ادعا را می‌سنجد (ششمی: بایت‌های snapshot در آینه) | هفتگی، و در CI |
+| `pnpm infra:restore-drill -- --self-test` | پنج شکستنِ عمدی، هر کدام باید چکِ **درستش** را قرمز کند | در CI |
+| ★★ `pnpm infra:restore-storage` | **M6:** آینه را روی باکت‌های `<bucket>-restore-drill` برمی‌گرداند و شش ادعا را می‌سنجد؛ `--to-live` = بازیابیِ واقعی | هفتگی، و در CI |
+| `pnpm infra:restore-storage -- --self-test` | هفت سناریو، پنج شکستنِ عمدی (بیتِ چرخانده‌ی هم‌اندازه، بریده، گم‌شده، ردیفِ بی‌آینه، Y.Docِ خراب با shaی درست) | در CI، و از داخلِ ایمیج |
 
 ---
 
@@ -181,15 +185,16 @@ dumpِ production را گرفته ولی در واقع از کانتینرِ ل�
 ```bash
 C="docker compose -f infra/docker/docker-compose.prod.yml --env-file .env.production"
 
-# شبانه (cronِ خودِ VM)
-$C --profile ops run --rm backup node scripts/backup-db.ts --prune=14
+# شبانه (cronِ خودِ VM) — ★ M6: جفت، در یک اجرا
+$C --profile ops run --rm backup-all node scripts/backup-all.ts --prune=14
 # ⚠️ نه `run --rm backup -- --prune=14`: ایمیجِ پایه‌ی node آرگومانی را که با «-» شروع شود
 #    به `node` می‌دهد و `--prune=14` را اسم فایل می‌گیرد (اثبات: «Cannot find module»).
 #    فرمِ درست همیشه `node scripts/<اسکریپت> <پرچم‌ها>` است — همان‌طور که sweep/purge نوشته‌اند.
-$C --profile ops run --rm backup-storage
+# (`backup` و `backup-storage` جداگانه هم هستند؛ backup-all همان دو را با یک stamp می‌زند)
 
-# ★★ هفتگی — این تزئینی نیست
+# ★★ هفتگی — این تزئینی نیست: دیتابیس (۶ چک) و Object Storage (۶ چک، روی باکتِ drill)
 $C --profile ops run --rm restore-drill
+$C --profile ops run --rm restore-storage
 ```
 
 ⚠️ **`--prune` پیش‌فرض خاموش است.** حذفِ پشتیبان برگشت ندارد، پس عملِ آگاهانه‌ی اپراتور
@@ -215,9 +220,52 @@ $C up -d api realtime        # ✅ همین چهار گام روی استکِ pr
 
 ---
 
-## ⚠️ سقفی که امروز واقعی است
+## ★★ M6 فاز ۲ — بازیابیِ Object Storage، و آنچه M5 نمی‌دید
 
-پورتِ `ObjectStore` نه stream دارد نه کپیِ سمتِ سرور ([ADR-013](../ARCHITECTURE_DECISIONS.md#adr-013))،
-پس هر شیء کامل در حافظه بارگذاری می‌شود. برای dumpِ ~۳۰۰KB و فایل‌های ≤۱۰MB امروز
-بی‌اهمیت است؛ بالای ۵۱۲MB اسکریپت **هشدارِ صریح** می‌دهد. تغییرِ پورت به streaming کارِ
-M6 است و در [`TODO-M5-infra.md`](../TODO-M5-infra.md) ثبت است — نه چیزی که بی‌صدا بماند.
+**probe ۱٫۸ی M6 اندازه گرفت:** مشقِ M5 با باکتِ snapshotsِ **کاملاً خالی** (env به باکتِ ناموجود) و
+۱۴ ردیفِ `board_snapshots` **۵/۵ سبز** می‌مانْد — فقط ردیف می‌شمرد. و بعد از فشرده‌سازی، محتوای
+بورد تا `seq_upto` فقط در آن بایت‌هاست. سه چیز عوض شد:
+
+۱. **مشق چکِ ششم گرفت — `bytes`:** هر `board_snapshots.storage_key`ِ دیتابیسِ بازیابی‌شده باید
+   در **آینه‌ی پشتیبان** (`storage/<snapshots>/<key>`) شیئی با همان `byte_size` داشته باشد. گاردِ
+   vacuous دارد (بدونِ ردیف ⇒ قرمز: تا اولین فشرده‌سازی هیچ محتوایی محافظت نمی‌شود، و همین گفته
+   می‌شود). خودآزمون: آینه یک کلید کم دارد ⇒ **فقط** `bytes` قرمز.
+۲. **`restore-storage` — شش چک:** `count` (هر ورودیِ مانیفست در مقصد هست) · `size` · `integrity`
+   (sha256 — تنها چکی که خرابیِ **هم‌اندازه** را می‌گیرد) · `catalog` (هر ردیفِ `board_snapshots` بایت
+   دارد — همان پنجره‌ی compactor) · `opens` (بایت‌ها یک Y.Doc با همان `state_vector`ِ ردیف
+   می‌سازند — همان بازخوانی‌ای که compactor بعد از put می‌کند) · `vacuous`. پیش‌فرض باکتِ drill، `--to-live`
+   صریح، `--prefix=<boardId>/` برای یک بورد. ⚠️ مانیفستِ قدیمیِ M5 (بی‌sha) `integrity` را پاس
+   **نمی‌کند** — «نمی‌دانم» قرمز است؛ یک `backup-all` تازه رفعش می‌کند.
+   ★ **اولین اجرای واقعی دو ردیفِ زباله‌ی دستیِ M3 را گرفت** (بوردی که ردیفِ snapshot داشت و
+   بایتی در هیچ باکتی نداشت؛ و ردیفی که بایتش ۵۹ بایتِ غیرِ Yjs بود) — `catalog` و `opens`،
+   دقیقاً چکِ درست.
+۳. **`backup-all`:** dump و آینه با یک stamp در یک پروسه؛ `storageManifestKey` ↔ `pgBackupKey`.
+   پنجره‌ی بیست دقیقه‌ایِ cronِ M5 (که compactor می‌توانست در آن snapshotِ ارجاع‌شده‌ی dump را پاک
+   کند) چند ثانیه شد و `catalog` آشکارش می‌کند. **بسته نشده** — بستنش تاخیرِ حذف در compactor است
+   (M2، ADR).
+
+### مانیفستِ آینه — حالا با sha256
+
+```json
+{
+  "takenAt": "2026-09-12T10:19:04.000Z",
+  "pgBackupKey": "pg/hamboom-2026-09-12T10-19-04Z.dump",
+  "buckets": {
+    "hamboom-snapshots": [{ "key": "<boardId>/000000000500.ybin", "size": 367699, "sha256": "…" }],
+    "hamboom-assets": [{ "key": "teams/…/<fileId>.png", "size": 48213, "sha256": "…" }]
+  }
+}
+```
+
+hash **حینِ کپی** گرفته می‌شود (بایت‌ها همان‌جا رد می‌شوند). skip = هم‌اندازه **و** shaی شناخته از
+مانیفستِ قبلی؛ آینه هر روز بایت‌های مقصد را **دوباره نمی‌خوانَد** — خرابیِ درجا را `restore-storage`
+می‌گیرد، همان‌طور که خرابیِ dump را مشق می‌گیرد.
+
+## سقفی که برداشته شد، و سقفی که مانده
+
+پورتِ `ObjectStore` سه متدِ افزایشی گرفت ([ADR-069](../ARCHITECTURE_DECISIONS.md#adr-069)):
+`getObjectStream`/`putObjectStream` (طولِ اجباری) و `iteratePrefix`. اندازه‌گیریِ فاز ۱ی M6 روی شیءِ
+۲۰۰MB: مسیرِ Buffer لحظه‌ای **≈۳× شیء** در `arrayBuffers` (SDK جمع می‌کند + یک کپی)، استریم +۱۴٫۵MB.
+dump، آینه، بازیابی و جاروب همه روی استریم/پیمایش‌اند؛ هشدارِ ۵۱۲MBِ dump حالا درباره‌ی **زمانِ
+بازیابی** است نه حافظه. ⏳ آنچه مانده: بازیابیِ `--to-live` روی داده‌ی واقعی هنوز اجرا نشده (منطق
+همان است، مقصد فرق دارد)، و نگهداشتِ آینه/مانیفست‌ها عددِ سیاستیِ مالک است.

@@ -5,7 +5,8 @@ import { createContext, useContext } from "react";
  * قرارداد و hookِ نشست — عمداً جدا از `SessionProvider` (که کامپوننت است) تا هر
  * فایل فقط یک جنس export کند و Fast Refresh تمیز بماند.
  */
-export type SessionStatus = "loading" | "authenticated" | "anonymous";
+/** `suspended` — refresh با `USER_SUSPENDED` رد شد (M6 ۵٫۲، ADR-066 §۴): نه ورود، نه loop به `/login`. */
+export type SessionStatus = "loading" | "authenticated" | "anonymous" | "suspended";
 
 export interface SessionValue {
   status: SessionStatus;

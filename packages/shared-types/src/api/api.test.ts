@@ -51,6 +51,7 @@ describe("قراردادِ DTO — معتبر می‌گذرد، نامعتبر �
       locale: "fa",
       createdAt: DATE,
       lastSeenAt: null,
+      isStaff: false,
     };
     expect(user.parse(u)).toEqual(u);
     // id باید UUID باشد

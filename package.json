@@ -54,6 +54,10 @@
     "billing:reconcile": "node --env-file-if-exists=.env scripts/billing-reconcile.ts",
     "billing:probe-reconcile": "node --env-file-if-exists=.env scripts/billing-probe-reconcile.ts",
     "infra:probe-lock": "node --env-file-if-exists=.env scripts/infra-probe-lock.ts",
+    "admin:check-audit": "node scripts/check-admin-audit.ts",
+    "admin:grant-staff": "node --env-file-if-exists=.env scripts/admin-grant-staff.ts",
+    "infra:purge-audit": "node --env-file-if-exists=.env scripts/purge-audit.ts",
+    "admin:access": "node --env-file-if-exists=.env scripts/admin-access-gauge.ts",
     "infra:check-proxy": "node scripts/infra-check-proxy.ts --self-test && node scripts/infra-check-proxy.ts",
     "deps:check": "node scripts/check-workspace-deps.ts --self-test && node scripts/check-workspace-deps.ts",
     "openapi:check": "node scripts/gen-openapi.ts --check",
@@ -63,16 +67,20 @@
     "infra:probe-leader": "node --env-file-if-exists=.env scripts/infra-probe-leader.ts",
     "infra:backup": "node --env-file-if-exists=.env scripts/backup-db.ts",
     "infra:backup-storage": "node --env-file-if-exists=.env scripts/backup-storage.ts",
+    "infra:backup-all": "node --env-file-if-exists=.env scripts/backup-all.ts",
     "infra:restore-drill": "node --env-file-if-exists=.env scripts/restore-drill.ts",
+    "infra:restore-storage": "node --env-file-if-exists=.env scripts/restore-storage.ts",
     "sms:probe": "node --env-file-if-exists=.env scripts/sms-probe.ts",
     "infra:ship": "node scripts/ship-images.ts",
     "infra:sweep-orphans": "node --env-file-if-exists=.env scripts/sweep-orphans.ts",
-    "infra:purge": "node --env-file-if-exists=.env scripts/purge-deleted.ts"
+    "infra:purge": "node --env-file-if-exists=.env scripts/purge-deleted.ts",
+    "billing:refund": "node --env-file-if-exists=.env scripts/billing-probe-refund.ts"
   },
   "dependencies": {
     "@hamboom/config": "workspace:*",
     "@hamboom/storage": "workspace:*",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "yjs": "^13.6.20"
   },
   "devDependencies": {
     "@hamboom/auth-core": "workspace:*",
@@ -94,7 +102,6 @@
     "turbo": "^2.3.0",
     "typescript": "^5.7.0",
     "ws": "^8.18.0",
-    "y-protocols": "^1.0.6",
-    "yjs": "^13.6.20"
+    "y-protocols": "^1.0.6"
   }
 }

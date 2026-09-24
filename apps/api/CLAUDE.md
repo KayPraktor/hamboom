@@ -23,6 +23,9 @@ ADR-011، ADR-012، ADR-013، ADR-015، ADR-020، ADR-021، ADR-031، ADR-039** 
 4. ★★ **`effectiveBoardRole` fail-closed** — و `undefined`≠`null`. api و realtime از **یک** تابعِ
    `auth-core` مصرف می‌کنند ([ADR-012](../../ARCHITECTURE_DECISIONS.md#adr-012)). مسیرِ داغِ realtime روی
    هر update این را صدا **نمی‌زند** (نقش در `session.role` کش است)؛ ولی endpointهای REST هر بار می‌سنجند.
+   ★ M6 (ADR-066): `BoardAccessInput.isSuspended` **اجباری** است و مقدم بر همه (معلق ⇒ `null`)؛ staff **viewer**
+   است نه owner. هر کوئریِ inlineی که ورودیِ این تابع را می‌سازد (`GET /boards`) باید `u.status` را هم بخوانَد —
+   فیلدِ اجباری همین را در typecheck می‌گیرد.
 5. ★ **`process.env` فقط از `@hamboom/config`** (گیتِ `processEnvDiscipline`). env جدید با schema +
    `.env.example` هم‌زمان اضافه شود.
 6. ★ **هرگز `@hamboom/sdk`** — sdk کلاینتِ api است (دورِ باطل). با realtime هم از راهِ `auth-core`، نه import.
@@ -51,7 +54,10 @@ ADR-011، ADR-012، ADR-013، ADR-015، ADR-020، ADR-021، ADR-031، ADR-039** 
 | `src/plugins/` | db (Kysely+pg، int8→number) · redis · s3 · auth-guard · rate-limit · error · request-id | ۵٫۱ |
 | `migrations/` | `0001_init.sql` (کلِ schema) + `0002_board_fks.sql` (دو FK) | ۵٫۱ |
 | `src/adapters/` | DBِ پورت‌ها: BoardAccessReader · SessionStore · OtpStore · AssetTransport | ۵٫۲ |
-| `src/routes/` | auth · user · team · folder · board · access · rt-token · asset | ۵٫۳–۵٫۵ |
+| `src/routes/` | auth · user · team · folder · board · access · rt-token · asset · billing (M4) · **admin** (M6) | ۵٫۳–۵٫۵ |
+| `src/admin-guard.ts` · `src/audit.ts` | ★ M6 فاز ۳: `requireStaff` (SELECT PK در هر درخواست، fail-closed) + `requireStepUp` (۴۲۸، per-user) · `audited(action)` = اعلامِ ممیزی برای گیتِ ۱۶ (`app.adminRoutes`)؛ `recordAudit(tx)` تنها نویسنده (فاز ۴) | M6 ۳–۴ |
+| `src/services/admin-payments.ts` · `routes/admin.ts` (فاز ۶) | ★★ M6 فاز ۶ (ADR-068): خواندنِ پرداخت‌ها (keyset، فیلترِ team/ref_id/authority/status) + `expireBlockedReason` (نردبانِ ADR-056 **پله‌ی ۳**: ۷۲ ساعت **و** یک پاسخِ درگاه) · `services/billing.ts`: `settleLocked`/`lockPaymentForSettle`/`assertGatewayMatches` (`gateway` **و** `gateway_mode`) + قلابِ `onSettled(tx)` + نوشتنِ `verify_payload`/`callback_payload` + **`refundPayment(tx)`** (تنها نویسنده‌ی `refunded`؛ اشتراکِ هدف `canceled` و دوره‌ی جایگزین‌شده **برمی‌گردد**) · `services/reconcile.ts`: انقضا = **verifyِ تازه زیرِ قفل** (`expireStalePayment`/`applyExpiry`، یک تعریف برای دستی و خودکار) + auditِ expire/adopt با actorِ سیستم | M6 ۶ |
+| `src/services/admin-users.ts` · `routes/admin.ts` (فاز ۵) | ★★ M6 فاز ۵ (ADR-066): جست‌وجو (**`POST /admin/search`**، ممیزی‌شده `user.search`؛ شماره فقط **کامل** — پیشوند ماسک را بازسازی می‌کرد) و جزئیاتِ کاربر و تیم (کوئری‌های خودِ پنل؛ شماره فقط از `toAdminUserSummary` و **ماسک**)، `phone/reveal` (POST، ممیزی‌شده)، **تعلیق/رفعِ تعلیق** (step-up + `FOR UPDATE` + `revokeAllForUser` + audit در **یک** تراکنش؛ staff ۴۰۹)، `users/:id/boards` (نمای پشتیبانی). `routes/auth.ts`: معلق ⇒ OTP ۲۰۰ی بی‌صدا؛ `otp/verify` و refresh با چکِ status **داخلِ تراکنش** (`FOR SHARE` روی `users` — پشتِ `FOR UPDATE`ِ تعلیق می‌ایستد) ⇒ ۴۰۱ `USER_SUSPENDED` + clearCookie. `logger.ts`: سریالایزرِ `req` بدونِ query string. `services/boards.ts`: `requireBoardRole` روی خواندنِ **staff-only** ردیفِ `support.board.view` می‌نویسد (de-dupe ۱۰ دقیقه) — `GET /boards/:id` و rt-token که reader را مستقیم می‌خوانند همان را صدا می‌زنند | M6 ۵ |
 
 ## دستورات
 

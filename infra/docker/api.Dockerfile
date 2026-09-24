@@ -62,10 +62,16 @@ COPY --from=deps --chown=node:node /app /app
 #    ⚠️ کلِ `scripts/` می‌آید ولی فقط ورودی‌های زیر پشتیبانی می‌شوند — بقیه ابزارِ
 #    dev/CI اند و وابستگی‌هایشان در نصبِ `--prod` نیستند:
 #      migrate.ts · billing-reconcile.ts · backup-db.ts · backup-storage.ts ·
-#      restore-drill.ts · sweep-orphans.ts · purge-deleted.ts
-#      (+ کمکی‌ها: backup-common.ts، pg-tools.ts، db-fk-test.ts، sweep-orphans-core.ts)
+#      backup-all.ts · restore-drill.ts · restore-storage.ts · sweep-orphans.ts · purge-deleted.ts ·
+#      admin-grant-staff.ts (M6 فاز ۳ — تنها نویسنده‌ی is_staff) · purge-audit.ts (M6 فاز ۴)
+#      (+ کمکی‌ها: backup-common.ts، backup-run.ts، pg-tools.ts، db-fk-test.ts،
+#         sweep-orphans-core.ts، restore-storage-core.ts، و دو خودآزمونِ
+#         backup-storage.self-test.ts / restore-storage.self-test.ts که images.yml از داخلِ
+#         همین ایمیج اجرایشان می‌کند — M6 فاز ۲)
 #    ★ این فهرست با `PRODUCTION_SCRIPTS` در `scripts/check-workspace-deps.ts` یکی
-#      است و گیتِ `deps` جداافتادنشان را قرمز می‌کند.
+#      است و گیتِ `deps` جداافتادنشان را قرمز می‌کند — و از M6 **بستارِ importهای نسبی**
+#      هر ورودی را هم در برابرِ `dependencies`ِ صاحبش می‌سنجد (yjs از همین راه به
+#      `dependencies`ِ ریشه رفت).
 COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node infra/sql ./infra/sql
 USER node

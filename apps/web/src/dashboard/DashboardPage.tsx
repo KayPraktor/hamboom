@@ -150,7 +150,8 @@ function TrashCard({ board }: { board: BoardSummary }) {
       </div>
       <div className="board-card__body">
         <span className="board-card__title">{board.title || "بدونِ عنوان"}</span>
-        <span className="board-card__meta">حذف‌شده</span>
+        {/* ★ M6 فاز ۳ (ارثیه‌ی M3/M5-D9): سیاستِ سطل = ۳۰ روز (`TRASH_RETENTION_DAYS`، تصمیمِ مالک). */}
+        <span className="board-card__meta">حذف‌شده — بعد از ۳۰ روز برای همیشه پاک می‌شود</span>
       </div>
       <button
         type="button"

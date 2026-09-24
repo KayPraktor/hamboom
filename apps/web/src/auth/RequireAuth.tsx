@@ -2,6 +2,7 @@ import { Navigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { useSession } from "./session-context.ts";
+import { SuspendedNotice } from "./SuspendedNotice.tsx";
 
 /**
  * گاردِ مسیرهای نیازمندِ ورود. تا وقتی نشست در حالِ بازیابی است، loader؛ اگر
@@ -18,6 +19,10 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
   if (status === "anonymous") {
     return <Navigate to="/login" />;
+  }
+  if (status === "suspended") {
+    // ★ M6 ۵٫۲ (ADR-066 §۴): بدونِ Navigate به /login — آن‌جا OTPِ بی‌صدا فقط کاربر را سردرگم می‌کند.
+    return <SuspendedNotice />;
   }
   return <>{children}</>;
 }

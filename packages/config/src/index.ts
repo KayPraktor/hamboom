@@ -27,8 +27,10 @@ export {
 export type { ProductionGuardInput } from "./production-guards.ts";
 
 export {
+  adminEnvSchema,
   apiServerEnvSchema,
   appEnvSchema,
+  auditRetentionEnvSchema,
   authEnvSchema,
   backupEnvSchema,
   databaseEnvSchema,
@@ -44,8 +46,10 @@ export {
   uploadEnvSchema,
 } from "./sections.ts";
 export type {
+  AdminEnv,
   ApiServerEnv,
   AppEnv,
+  AuditRetentionEnv,
   AuthEnv,
   BackupEnv,
   DatabaseEnv,
