@@ -37,6 +37,47 @@ function envIntFromZero(defaultValue: number) {
 }
 
 /** عددِ صحیحِ مثبت از رشته‌ی محیطی. */
+/**
+ * ★★ یک **مبدأ** (scheme + host + port)، نه هر URLی — M6 ردیفِ ۸٫۷.
+ *
+ * `z.url()` به‌تنهایی کافی نیست و این را اولین استقرارِ واقعی نشان داد:
+ * اسکیمِ **دوتایی** («https» دو بار، با `://` وسطش) یک URLِ **کاملاً معتبر** است — فقط
+ * میزبانش «https» و بقیه‌اش مسیر می‌شود. هیچ‌چیز نشکست؛ فقط هر ریدایرکتی بی‌صدا به جای
+ * اشتباه رفت. همسایه‌اش `ZARINPAL_CALLBACK_URL` گاردی داشت که بلند می‌شکست، این یکی نه.
+ *
+ * ⊕ نمونه‌ی واقعی عمداً این‌جا نوشته نمی‌شود: گیتِ P2 هر میزبانی را در فایلِ runtime
+ *   می‌گیرد و نمی‌تواند کامنت را از کد تشخیص دهد — و **همین درست است**.
+ *
+ * سه قاعده، هر سه از همان خرابی:
+ * ۱. پروتکل فقط `http`/`https`.
+ * ۲. میزبان نباید خودش یک نامِ scheme باشد (**امضای دقیقِ اسکیمِ دوتایی**).
+ * ۳. مسیر باید خالی باشد — مبدأ مسیر ندارد، و مسیرِ ناخالی یعنی چیزی اشتباه چسبیده.
+ */
+function envOrigin(defaultValue: string) {
+  return z
+    .url()
+    .default(defaultValue)
+    .refine(
+      (value) => {
+        let url: URL;
+        try {
+          url = new URL(value);
+        } catch {
+          return false;
+        }
+        if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+        if (url.hostname === "http" || url.hostname === "https") return false;
+        if (url.hostname.length === 0) return false;
+        return url.pathname === "/" || url.pathname === "";
+      },
+      {
+        message:
+          "باید یک **مبدأ** باشد: اسکیم + میزبان (+ پورت)، بدونِ مسیر. " +
+          "⚠️ اسکیمِ دوتایی یک URLِ معتبر است ولی میزبانش «https» می‌شود و هر ریدایرکتی بی‌صدا غلط می‌رود.",
+      },
+    );
+}
+
 function envInt(defaultValue: number) {
   return z.coerce.number().int().positive().default(defaultValue);
 }
@@ -406,8 +447,12 @@ export const paymentEnvSchema = z.object({
    * هنگامِ صدور روی **خودِ فاکتور** منجمد می‌شود، نه بازمحاسبه از این مقدار.
    */
   VAT_PERCENT: envIntFromZero(0),
-  /** ریشه‌ی اپِ وب — بازگشت از درگاه به این‌جا ریدایرکت می‌شود (نه به خودِ api). */
-  WEB_BASE_URL: z.url().default("http://localhost:5173"),
+  /**
+   * ریشه‌ی اپِ وب — بازگشت از درگاه به این‌جا ریدایرکت می‌شود (نه به خودِ api).
+   *
+   * ⚠️ `envOrigin` و نه `z.url()`: یافته‌ی سومِ اولین استقرار (بالا، تعریفِ `envOrigin`).
+   */
+  WEB_BASE_URL: envOrigin("http://localhost:5173"),
 
   /**
    * ── ★★ کارت‌به‌کارت/شبا با تاییدِ دستی (M6، [ADR-070](../../../ARCHITECTURE_DECISIONS.md#adr-070)) ──
