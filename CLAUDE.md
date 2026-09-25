@@ -378,7 +378,13 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 - **★★ M5 (`infra`) تمام و تحویل شد** (۱۴۰۵/۰۶/۱۹) — فاز ۰ تا ۱۰ + ۴٫۵. TODO در
   [`TODO-M5-infra.md`](TODO-M5-infra.md)، دفترِ کار در [`PROGRESS-M5-infra.md`](PROGRESS-M5-infra.md).
   **ورودیِ M6:** [`docs/m6-handoff.md`](docs/m6-handoff.md) · **دفترچه‌ی اپراتور:** [`infra/RUNBOOK.md`](infra/RUNBOOK.md).
-  ⏳ **هیچ‌چیز هنوز روی VMِ آروان اجرا نشده** — اولین استقرارِ واقعی منتظرِ زرین‌پال است و RUNBOOK را بازنویسی می‌کند.
+  ✅ **اولین استقرارِ واقعی انجام شد (۱۴۰۵/۰۷/۰۳):** `https://hamboom.ir` روی VMِ آروان با TLS زنده است —
+  ۲ هسته/۱٫۹GiB/۳۰GB (+۲GB swap)، ایمیج‌ها با `infra:ship` (آرشیو ۱۸۶MB، هم‌شناسه در مقصد)، و **ADR-063 بسته شد**:
+  VM به Docker Hub می‌رسد (`postgres:16-alpine` در ۳۴s) پس `--base` لازم نیست. هر سه مقصدِ runtime باز
+  (sms.ir ۴۰۴ · zarinpal ۳۰۲ · storageِ آروان ۲۰۰). کلِ روزِ صفر سبز: ورودِ واقعی با پیامک، `grant-staff`،
+  بورد با `wss`، و **مشقِ بازیابی با هر شش چک**. ★ TLS با `APP_ENV=staging` هم کامل است (حالت را **وجودِ گواهی**
+  انتخاب می‌کند نه `APP_ENV`) ⇒ زرین‌پال منتظرِ `production` نمی‌مانَد. شش یافته‌ی استقرار در
+  [`PROGRESS-M6`](PROGRESS-M6-admin.md)؛ دو تای بازشان ۸٫۶ (تصویر روی بوم) و ۸٫۷ (گاردِ `WEB_BASE_URL`).
   - **دامنه:** ایمیجِ production → CI → سخت‌سازیِ راز → رصدپذیری → انتخابِ رهبر → پشتیبان و
     **مشقِ بازیابی** → نگهداشت → سخت‌سازیِ ایران → تحویل. ⛔ **بیرون:** room affinity (تریگرِ
     ADR-048 نرسیده) · K8s · `apps/worker` · OTel/Grafana · `refund`/`reverse` و پنلِ ادمین (**M6**).

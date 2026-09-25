@@ -33,12 +33,17 @@ bash infra/probe-vm.sh          # چهار گروه: ایمیجِ پایه · ر
 
 ### ۱٫۲ آماده‌سازیِ VM
 
+★ **مشخصاتِ اندازه‌گیری‌شده‌ی اولین استقرار (۱۴۰۵/۰۷/۰۳):** ۲ هسته · **۱٫۹ GiB رم** · ۳۰ GB دیسک.
+کلِ استک در حالتِ بی‌کار ~**۴۷۵MB** گرفت. ⚠️ **swap اضافه کن** (۲ گیگ، `vm.swappiness=10`): بدونِ آن،
+یک اوجِ گذرا (migration، بازیابی، بوردِ بزرگ) کِرنل را وادار می‌کند **postgres را بکُشد** چون بزرگ‌ترین
+مصرف‌کننده است. ⊕ ایمیج‌ها روی VM ساخته نمی‌شوند (ADR-063) پس CPU تنگنا نیست.
+
 | چه | چطور |
 |---|---|
 | Docker + plugin compose | نصبِ رسمیِ Docker Engine؛ `docker compose version` باید ≥ 2 باشد |
 | ریپو | `git clone` با deploy keyِ **فقط‌خواندنی**، یا `rsync`ِ پوشه‌ی `infra/` **به‌علاوه‌ی** `.env.production.example`ِ ریشه — compose فایلِ `infra/docker/docker-compose.prod.yml` و `infra/sql/` را می‌خواهد، نه سورس را (ایمیج‌ها با ship می‌آیند) |
 | فایروال | فقط **۲۲، ۸۰، ۴۴۳** باز. هیچ سرویسِ دیگری پورتِ هاست ندارد و نباید بگیرد |
-| `.env.production` | `cp .env.production.example .env.production` و **همه‌ی «‼️»ها**؛ سپس `chmod 600 .env.production` — راز فقط این‌جاست، هیچ‌جای دیگر |
+| `.env.production` | `cp .env.production.example .env.production` و **همه‌ی «‼️»ها**؛ سپس `chmod 600 .env.production` — راز فقط این‌جاست، هیچ‌جای دیگر. ⚠️⚠️ **هر رمزی که داخلِ یک رشته‌ی اتصال می‌نشیند را با `openssl rand -hex 24` بساز** (`POSTGRES_PASSWORD`+`DATABASE_URL`، `REDIS_PASSWORD`+`REDIS_URL`): خروجیِ هگز هیچ‌وقت لازم نیست در URL escape شود. رمزی با `@`/`:`/`#` بی‌صدا URL را می‌شکند و در اولین استقرار `28P01` داد. ⊕ و جای `‼️_دامنه‌ی_شما` فقط `hamboom.ir` بگذار، نه `https://hamboom.ir` — وگرنه اسکیم دوتایی می‌شود |
 | TLS | دو فایل در `infra/docker/tls/` (`fullchain.pem` + `privkey.pem`) — از پنلِ آروان یا certbot؛ دستورِ هر دو در [`README.md`](README.md). ⚠️ با certbot **ترتیب**: اول `APP_ENV=staging` و `up -d` (حالتِ http، ACME جواب می‌دهد) → certbot → دو فایل → `APP_ENV=production` → `up -d` |
 | CORSِ باکت | مرورگر **مستقیم** به Object Storage می‌فرستد و می‌خوانَد (presign، P4). در پنلِ آروان روی `hamboom-assets`: origin `https://<دامنه>`، متدهای `GET, POST, PUT, HEAD`، همه‌ی هدرها. بدونش تصویر «قابِ خالی» می‌شود در حالی که همه‌چیز healthy است (ردیفش در §۵) |
 
@@ -75,11 +80,37 @@ $C ps               # هر پنج سرویس باید (healthy) باشند: post
 | ۵ | باز کردنِ یک بورد | نقطه‌ی سبز و «ذخیره شد» در نوارِ وضعیت (hover: «متصل · ذخیره شد») — یعنی `wss://` از پشتِ nginx وصل است |
 | ۶ | `$C logs --tail=50 api` | هیچ `ProductionConfigError`، هیچ `TRUST_PROXY` |
 | ۷ | `$C --profile ops run --rm backup` | یک dump در باکتِ **جدا** (`S3_BUCKET_BACKUPS`) + مانیفست |
-| ۸ | `$C --profile ops run --rm restore-drill` | **پنج چک سبز** — پشتیبانِ روزِ صفر واقعاً برمی‌گردد |
+| ۸ | `$C --profile ops run --rm restore-drill` سپس `restore-storage` | **هر شش چک سبز**. ⚠️⚠️ روی یک استقرارِ **تازه** این‌ها **قرمز می‌شوند و باید بشوند**: تا وقتی هیچ بوردی فشرده نشده، `board_snapshots` خالی است و چکِ `bytes` (و دو چکِ «بازیابیِ هیچ»ِ `restore-storage`) صادقانه می‌گویند محتوای هیچ بوردی اثبات نشده. اول فشرده‌سازی را بساز — پایینِ همین بخش |
 | ۹ | درجِ یک تصویر روی بوم + رفرش | تصویر می‌مانَد — یعنی CORSِ باکت و presign با دامنه‌ی واقعی درست‌اند (روی MinIOی لوکال اثبات شده، روی آروان نه) |
 | ۱۰ | ★ **اولین staff** (M6): بعد از اینکه با شماره‌ات یک‌بار وارد شدی، `$C --profile ops run --rm grant-staff node scripts/admin-grant-staff.ts --phone=09…` | «✔ … staff شد (audit: staff.grant)»؛ بعد از **رفرشِ** داشبورد لینکِ «پنلِ ادمین» در سایدبار هست و `/panel` باز می‌شود. ⚠️ بدونِ `--phone` بالا نمی‌آید؛ **هیچ راهِ دیگری** برای staff‌شدن نیست (نه SQL، نه env — ADR-066) |
 
 ★ ردیفِ ۸ همان روز، نه هفته‌ی بعد: پشتیبانِ بازیابی‌نشده پشتیبان نیست.
+
+#### ★★ چطور **اولین فشرده‌سازی** را عمداً بسازی (پیش‌نیازِ ردیفِ ۸)
+
+شرطش `pending >= RT_SNAPSHOT_EVERY_UPDATES || now() - sinceAt >= RT_SNAPSHOT_EVERY_MS` است
+(پیش‌فرض‌ها: ۵۰۰ و **۶۰ ثانیه**)، و ⚠️ **فقط روی خودِ update سنجیده می‌شود، نه با تایمر** —
+بوردِ ساکت هرگز فشرده نمی‌شود. `sinceAt` هم از **لحظه‌ی بازشدنِ اتاق** شمرده می‌شود.
+
+پس بدونِ دست‌زدن به env:
+
+۱. یک بورد باز کن و چند چیز بکش (و یک **تصویر** هم بگذار تا باکتِ assets هم خالی نمانَد).
+۲. **بیش از ۷۰ ثانیه صبر کن** — بورد باز بماند.
+۳. **یک ویرایشِ دیگر** بکن. همان یک update شرطِ ۶۰ثانیه‌ای را فعال می‌کند.
+
+تایید (باید `snapshots ≥ 1` و `files ≥ 1` باشد):
+
+```bash
+set -a; . ./.env.production; set +a; $C exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  -c "select (select count(*) from boards) as boards, (select count(*) from files) as files,
+             (select count(*) from board_snapshots) as snapshots, (select count(*) from board_updates) as updates"
+```
+
+⚠️ **تله‌ای که خودمان خوردیم:** آستانه را به ۲۰ پایین آوردیم و باز شلیک نکرد — ۱۸ ویرایش شد
+(یک قدم مانده) و هر ۱۸ تا داخلِ ۶۰ ثانیه بودند، پس هیچ‌کدام از دو شاخه برقرار نشد. پایین‌آوردنِ
+آستانه لازم نیست؛ **صبرِ ۷۰ ثانیه‌ای** کافی است.
+⊕ اگر با این هم صفر مانْد، مظنونِ بعدی **قفلِ صاحب** است (`!room.owner` ⇒ فشرده‌سازی رد می‌شود):
+`$C logs --tail=40 realtime | grep -iE "صاحب|compact"`.
 
 ---
 
@@ -233,6 +264,9 @@ compactor فایلِ قدیمی را همان لحظه پاک کرده (پنجر
 | عملِ مخربِ پنل **۴۲۸** می‌دهد | همان درخواست، `error.code` | `STEP_UP_REQUIRED`: خودِ staff باید در خانه‌ی پنل «درخواستِ کد» بزند و کدِ پیامکی را وارد کند (پنجره `ADMIN_STEP_UP_SECONDS` = ۶۰۰s، **per-user**). کد به شماره‌ی خودِ staff می‌رود و همان سقفِ نرخِ OTP را دارد — «کد نمی‌آید» همان ردیفِ بالاست |
 | کاربر می‌گوید «**حساب معلق شده است**» می‌بیند | `audit_logs` با `action='user.suspend'` و `target_id`ِ او (پنل → ممیزی، یا SQL) | یک staff معلقش کرده — `metadata.reason` را ببین. رفعِ تعلیق فقط از پنل (§۷٫۲)؛ **نه** `UPDATE users` دستی (ردیفِ audit نمی‌ماند). بعد از رفع باید **دوباره با پیامک وارد شود** — نشست‌هایش در لحظه‌ی تعلیق سوخته‌اند |
 | کاربرِ معلق هنوز روی بوردی **می‌نویسد** | `$C logs realtime` | محدودیتِ **مستندِ** ADR-066 §۴: WSِ از-قبل-باز تا reconnect می‌مانَد و access-tokenِ ۱۵دقیقه‌ای پذیرفته می‌شود؛ رفرشِ صفحه/انقضای توکن قطعش می‌کند. اگر باید **همین حالا** قطع شود: `$C restart realtime` (همه‌ی اتاق‌ها reconnect می‌شوند و او رد می‌شود). سنجه‌اش `pnpm admin:access` (۱٫۲d) |
+| `migrate` با **`28P01 password authentication failed`** می‌افتد | `$C logs --tail=20 migrate` | ★ **آزمونِ تفکیک‌کننده** — این را بزن و بعد قضاوت کن:<br>`set -a; . ./.env.production; set +a; docker run --rm --network hamboom-prod_default -e PGPASSWORD="$POSTGRES_PASSWORD" postgres:16-alpine psql -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'select 1'`<br>**وصل شد** ⇒ رمز درست است و **`DATABASE_URL` خراب**: یا با `POSTGRES_PASSWORD` نمی‌خواند، یا رمز کاراکترِ خاص دارد و URL را می‌شکند. **وصل نشد** ⇒ دیتابیس با رمزِ **دیگری** initialize شده (`POSTGRES_PASSWORD` فقط در initdb اثر دارد) ⇒ `ALTER USER … PASSWORD …` بزن، **نه** `down -v` |
+| `.env` را درست کردم، `up -d` زدم، **همان خطای قبلی** ادامه دارد | `docker inspect <کانتینر> --format '{{range .Config.Env}}{{println .}}{{end}}' \| grep '^VAR='` | ★★ کانتینری که در **حلقه‌ی ری‌استارت** است از دیدِ `up -d` «در حال اجرا» حساب می‌شود و env نویش را برنمی‌دارد. `$C up -d --force-recreate <سرویس>`. ⚠️ `inspect` تشخیص را قطعی می‌کند: فایل درست است یا کانتینر کهنه |
+| تصویر روی بوم **نمی‌آید** ولی چیزی در لاگ نیست | اول: `select count(*) from files` | ⚠️ **دو خرابیِ متفاوت با یک نشانه.** `files` صفر ⇒ آپلود اصلاً انجام نشده ⇒ CORSِ باکت (`curl -si -X OPTIONS -H "Origin: https://<دامنه>" -H "Access-Control-Request-Method: POST" $S3_ENDPOINT/<باکتِ assets>` باید `access-control-allow-origin` بدهد). `files` **ناصفر** ⇒ آپلود موفق بوده و مشکل در **رندر** است — ⏳ باگِ بازِ ۸٫۶ی [TODO-M6](../TODO-M6-admin.md)، با کنسول/Networkِ مرورگر تشخیص داده می‌شود نه با لاگِ سرور |
 | «پشتیبانِ آخر کِی بود؟» | ★ از **M6 فاز ۷**: پنل → **وضعیتِ سیستم** (کارتِ پشتیبان، سن به ساعت + تاریخِ هر دو) | لازم نیست به باکت ssh/لاگین کنی. اگر از **۳۰ ساعت** گذشته باشد، همان صفحه **هشدار** می‌دهد. cron بی‌صدا افتاده؟ `/var/log/hamboom/backup.log` (§۶). ⚠️ با `--prune=14`، دو هفته شکستِ بی‌صدا یعنی **هیچ** نقطه‌ی بازیابی |
 | پنل می‌گوید **باکت در دسترس نیست** ولی `/readyz` ۲۰۰ است | پنل → وضعیتِ سیستم، ستونِ توضیح (کدِ خطا) | ★ دقیقاً کاری است که این صفحه برایش ساخته شد: `/readyz` **هیچ‌کدام** از باکت‌ها را نمی‌سنجد. `NoSuchBucket` ⇒ نام غلط یا باکت پاک شده · `AccessDenied`/`InvalidAccessKeyId` ⇒ کلیدِ S3 چرخیده · `TIMEOUT` ⇒ خودِ آروان. بوردِ فشرده‌شده بدونِ باکتِ snapshots **باز نمی‌شود** |
 | پنل می‌گوید **Redis پاسخ نمی‌دهد** | همان صفحه، سطرِ Redis | ⚠️⚠️ همان وضعیتِ «همه در حالِ ذخیره…» بالا — تا بازگشتِ Redis **هیچ نودی نمی‌نویسد** و ری‌استارتِ realtime تنها نسخه‌ی داده را می‌بَرد. اگر سطر **«نامعلوم»** است یعنی `REDIS_URL` به api داده نشده (اختیاری است)، نه اینکه Redis خراب باشد |
