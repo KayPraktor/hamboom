@@ -99,11 +99,13 @@
 | GET | `/teams/{teamId}/billing/subscription` | 🔒 bearer | اشتراکِ فعلی (admin؛ `null` یعنی تیمِ رایگان) |
 | GET | `/teams/{teamId}/billing/invoices` | 🔒 bearer | فاکتورها (admin) |
 | POST | `/teams/{teamId}/billing/cancel` | 🔒 bearer | لغو در پایانِ دوره (owner) |
+| GET | `/billing/transfer/{authority}` | 🔒 bearer | دستورِ واریزِ کارت‌به‌کارت (owner): مقصد، مبلغ، مهلت و وضعیتِ ادعا |
+| POST | `/billing/transfer/{authority}/claim` | 🔒 bearer | «واریز کردم» (owner) — ابطالِ خودکار را منجمد می‌کند تا staff ببیند (ADR-056) |
 | GET | `/billing/mock/pay/{authority}` | عمومی | صفحه‌ی ساختگیِ پرداخت — **فقط توسعه** (در production ثبت نمی‌شود) |
 
 ## Schemas (`components`)
 
 شکلِ کاملِ هر schema در [`docs/openapi.json`](openapi.json) است (تولیدشده از zod با `z.toJSONSchema`):
 
-`ApiError` · `User` · `UserPublic` · `Team` · `TeamMember` · `Board` · `BoardSummary` · `BoardMember` · `Folder` · `RtTokenClaims` · `AssetPresignRequest` · `AssetPresignResponse` · `Paginated` · `OtpRequestBody` · `OtpVerifyBody` · `CreateBoardBody` · `PatchBoardBody` · `CreateTeamBody` · `PatchTeamBody` · `PatchMemberRoleBody` · `CreateInviteBody` · `CreateFolderBody` · `PatchFolderBody` · `PatchMeBody` · `PutAccessBody` · `ResolveLinkBody` · `AddBoardMemberBody` · `PatchBoardMemberRoleBody` · `Plan` · `Subscription` · `Invoice` · `CheckoutBody`
+`ApiError` · `User` · `UserPublic` · `Team` · `TeamMember` · `Board` · `BoardSummary` · `BoardMember` · `Folder` · `RtTokenClaims` · `AssetPresignRequest` · `AssetPresignResponse` · `Paginated` · `OtpRequestBody` · `OtpVerifyBody` · `CreateBoardBody` · `PatchBoardBody` · `CreateTeamBody` · `PatchTeamBody` · `PatchMemberRoleBody` · `CreateInviteBody` · `CreateFolderBody` · `PatchFolderBody` · `PatchMeBody` · `PutAccessBody` · `ResolveLinkBody` · `AddBoardMemberBody` · `PatchBoardMemberRoleBody` · `Plan` · `Subscription` · `Invoice` · `TransferInstructions` · `TransferClaimRequest` · `CheckoutBody`
 

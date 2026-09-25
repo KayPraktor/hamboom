@@ -90,6 +90,8 @@ pnpm billing:probe-gateway -- --verify    #   بعد از پرداختِ دست�
 pnpm billing:settle          # ★★ فاز ۵: ۸ چک — دو تسویه‌ی هم‌زمان ⇒ یک اشتراک، کوپن، تمدید
 pnpm billing:quota           # ★★ فاز ۶: ۶ چک — سقف، همزمانی، سنتینلِ -1، فضای شخصی، staff
 pnpm billing:probe-reconcile # ★★ فاز ۷: ۹ چک — callbackِ گم‌شده، یتیم، فرزندخواندگی، دو sweepِ هم‌زمان
+pnpm billing:transfer        # ★★ M6/ADR-070: ۸ چک — دو تاییدِ هم‌زمان، ردیفِ ادعاشده هرگز باطل نمی‌شود،
+#   بازپخشِ شماره‌ی مرجع (پیش‌چک **و** ایندکسِ یکتا، جدا)، مبلغِ ناهم‌خوان، شکستِ ممیزی، فیلترِ درگاه
 pnpm billing:refund          # ★★ M6 فاز ۶: ۱۰ چک — استرداد↔تسویه‌ی هم‌زمان، بازگشتِ دوره‌ی تمدید، zarinpal ⇒ REFUND_UNAVAILABLE بدونِ fetch
 pnpm billing:reconcile       # ★ ابزارِ اپراتور (نه سنجه): همان کدِ پلاگین، دستی
 pnpm infra:probe-lock        # ★★ M5 فاز ۱: ۴ چک — انحصار، مرگِ نشست، تله‌ی اتصالِ استخر
@@ -671,7 +673,11 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
 
   **آروان ✅ · دامنه ✅ · VPS ✅ (مستقر) · درگاه ⏸** — مالک زرین‌پال را کنار گذاشت و (۱۴۰۵/۰۷/۰۳)
   **کارت‌به‌کارت/شبا با تاییدِ دستی** را انتخاب کرد؛ اتوماسیونِ پیامک موکول به «اگر حجم توجیهش کرد».
-  ★★ [ADR-070](ARCHITECTURE_DECISIONS.md#adr-070) **پذیرفته شد و پیاده‌سازی‌اش شروع شد** (۱۴۰۵/۰۷/۰۳). درگاهی
+  ★★ [ADR-070](ARCHITECTURE_DECISIONS.md#adr-070) **پذیرفته و پیاده شد** (۱۴۰۵/۰۷/۰۴): migrationِ `0010`،
+  سومین `PaymentGateway`، دو مسیرِ کاربر، تاییدِ staff پشتِ step-up، صفحه‌ی `/payment/transfer/$authority`،
+  و سنجه‌ی [`billing:transfer`](scripts/billing-probe-transfer.ts) **۸/۸** · `sdk:contract` **۵۲/۵۲**.
+  ⛔ **ولی روشن نیست:** `PAYMENT_PROVIDER` هنوز `mock` است و تا چکِ حقوقی و مقادیرِ واقعیِ `CARD_TRANSFER_*`
+  روشن نشود همان می‌مانَد. درگاهی
   که به‌جای HTTP از **جدولِ خودمان** می‌خواند، پس `settlePayment` تنها مسیرِ فعال‌سازی می‌مانَد
   (ADR-055) و **نردبانِ ADR-056 زنده می‌مانَد**: ادعای پرداختِ کاربر ⇒ پاسخِ `gatewayError` ⇒
   `failure_code` دست‌نخورده ⇒ هرگز ابطالِ خودکار — حیاتی برای **پایا** که چرخه‌ای تسویه می‌شود.

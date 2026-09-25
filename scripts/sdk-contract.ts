@@ -1287,6 +1287,171 @@ async function main(): Promise<void> {
   );
   await app.db.query("DELETE FROM otp_challenges WHERE destination = $1", [phone]);
 
+  // ── ★★ ۵۰–۵۲: کارت‌به‌کارت ([ADR-070](../ARCHITECTURE_DECISIONS.md#adr-070)) ──
+  //
+  // ★ روی یک اپِ **دوم** با `PAYMENT_PROVIDER=card_transfer`، و عمداً **بدونِ تزریقِ درگاه**:
+  //   این‌طوری خودِ `createPaymentGateway` + گاردِ بوتِ مقصد هم از مسیر رد می‌شوند، نه فقط routeها.
+  // ⊕ دیتابیس مشترک است، پس `is_staff` و `step_up_verified_at`ی که چک‌های ۱۸/۱۹ ساختند
+  //   این‌جا هم معتبرند — فقط یک ورودِ تازه لازم است تا کوکیِ نشست برای اپِ دوم ساخته شود.
+  {
+    const blockStartedAt = new Date();
+    const transferApp = await buildApp({
+      config: {
+        ...config,
+        PAYMENT_PROVIDER: "card_transfer" as const,
+        // ★ کارتِ معتبرِ Luhn — مقدارِ بدرقم این‌جا **در بوت** می‌شکست، که خودش نکته‌ی گارد است.
+        CARD_TRANSFER_CARD_NUMBER: "6037991234567893",
+        CARD_TRANSFER_HOLDER_NAME: "مالکِ هم‌بوم",
+        CARD_TRANSFER_BANK_NAME: "ملی",
+        CARD_TRANSFER_CLAIM_WINDOW_HOURS: 24,
+      },
+    });
+    await transferApp.ready();
+    // ⚠️ پلنِ سنجه را چک‌های قبلی **غیرفعال** کرده‌اند (تا در فهرستِ عمومی نماند)؛ برای این
+    //    بلوک دوباره فعالش می‌کنیم و در پایان برش می‌گردانیم.
+    await transferApp.db.query("UPDATE plans SET is_active = true WHERE code = $1", [probePlan]);
+    const tSdk = createClient({ baseUrl: "", fetch: injectFetch(transferApp) });
+    await tSdk.auth.requestOtp({ phone });
+    await tSdk.auth.verifyOtp({ phone, code: "424242" });
+
+    const co = await tSdk.billing.checkout(teamId, {
+      planCode: probePlan,
+      period: "monthly",
+      seats: 1,
+    });
+    const authority = co.redirectUrl.slice(co.redirectUrl.lastIndexOf("/") + 1);
+    const info = await tSdk.billing.transfer(authority);
+
+    check(
+      "50) ★★ checkoutِ کارت‌به‌کارت به صفحه‌ی **خودمان** می‌رود و مقصد از config می‌آید (نه از باندل)",
+      () => {
+        // ★★ مسیرِ **SPA**، نه مسیرِ api. اگر روزی زیرِ `/billing` برگردد، مرورگرِ کاربر
+        //    به‌جای صفحه یک JSON می‌گیرد (گاردِ بوتِ `registerBillingRoutes` هم همین را می‌گوید).
+        if (!co.redirectUrl.includes("/payment/transfer/")) {
+          throw new Error(`redirectUrl به صفحه‌ی ما نرفت: ${co.redirectUrl}`);
+        }
+        if (co.redirectUrl.includes("/billing/transfer/")) {
+          throw new Error("redirectUrl زیرِ پیشوندِ api است ⇒ کاربر JSON می‌بیند");
+        }
+        if (!/^CT[0-9a-f]{32}$/.test(authority)) {
+          throw new Error(`authority قابلِ‌حدس به نظر می‌رسد: ${authority}`);
+        }
+        if (info.destination.card !== "6037991234567893") {
+          throw new Error(`کارتِ مقصد نخواند: ${String(info.destination.card)}`);
+        }
+        if (info.destination.holderName !== "مالکِ هم‌بوم") throw new Error("نامِ صاحبِ حساب نیامد");
+        if (info.state !== "awaiting") throw new Error(`وضعیتِ اولیه ${info.state} بود`);
+        if (info.claimedRef !== null) throw new Error("ادعای از پیش موجود؟");
+        if (info.amountRial <= 0) throw new Error("مبلغ صفر");
+      },
+    );
+
+    const claimed = await tSdk.billing.claimTransfer(authority, {
+      ref: "پیگیری-اشتباه",
+      last4: "4821",
+    });
+    // ⊕ تصحیحِ ادعا باید ممکن باشد: کاربری که شماره را غلط تایپ کرده نباید بن‌بست بخورد.
+    const corrected = await tSdk.billing.claimTransfer(authority, {
+      ref: "پیگیری-درست",
+      last4: "4821",
+    });
+
+    check("51) ادعای کاربر وضعیت را به «claimed» می‌برد، و ادعای دوم **تصحیحش** می‌کند", () => {
+      if (claimed.state !== "claimed") throw new Error(`وضعیت ${claimed.state}`);
+      if (claimed.claimedRef !== "پیگیری-اشتباه") throw new Error("شماره‌ی اول ثبت نشد");
+      if (corrected.claimedRef !== "پیگیری-درست") throw new Error("تصحیح نپذیرفت");
+      if (corrected.claimedAt === null) throw new Error("زمانِ ادعا خالی است");
+    });
+
+    const priorStaff = await transferApp.db.query<{ is_staff: boolean }>(
+      "SELECT is_staff FROM users WHERE id = $1",
+      [verified.user!.id],
+    );
+    // ★ پرچمِ staff را چک‌های بعدیِ فاز ۵ برداشته‌اند؛ دوباره می‌گذاریم و بعد **step-upِ واقعی**
+    //   از مسیرِ SDK می‌زنیم (نه نوشتنِ مستقیمِ `step_up_verified_at`) تا گاردِ ۴۲۸ هم واقعاً رد شود.
+    await transferApp.db.query("UPDATE users SET is_staff = true WHERE id = $1", [
+      verified.user!.id,
+    ]);
+    await tSdk.admin.stepUp.request();
+    await tSdk.admin.stepUp.verify({ code: "424242" });
+
+    let mismatch: unknown;
+    try {
+      await tSdk.admin.payments.approveTransfer(co.paymentId, {
+        ref: "مرجعِ-بانک",
+        last4: null,
+        observedAmountRial: 10_000,
+        note: null,
+      });
+    } catch (e) {
+      mismatch = e;
+    }
+    const approved = await tSdk.admin.payments.approveTransfer(co.paymentId, {
+      ref: "مرجعِ-بانک",
+      last4: "7788",
+      observedAmountRial: info.amountRial,
+      note: "دیده شد در صورت‌حساب",
+    });
+    const detail = await tSdk.admin.payments.get(co.paymentId);
+
+    check(
+      "52) ★★ مبلغِ ناهم‌خوان ⇒ ۴۰۹ TRANSFER_AMOUNT_MISMATCH · تاییدِ درست ⇒ activated · و **ادعا و مشاهده دو فیلدِ جدا می‌مانند**",
+      () => {
+        if (!(mismatch instanceof SdkError)) throw new Error(`SdkError نبود: ${String(mismatch)}`);
+        if (mismatch.status !== 409 || mismatch.code !== "TRANSFER_AMOUNT_MISMATCH") {
+          throw new Error(`status=${mismatch.status} code=${mismatch.code}`);
+        }
+        if (approved.outcome !== "activated") throw new Error(`outcome=${approved.outcome}`);
+        if (approved.payment.status !== "paid") throw new Error("ردیف paid نشد");
+        const tr = detail.transfer;
+        if (tr === null) throw new Error("بخشِ transfer در جزئیات نیامد");
+        // ★★ همان تفکیکی که کلِ ۰۰۱۰ رویش بنا است: اگر این دو یکی شوند، شاهدِ تقلب از بین می‌رود.
+        if (tr.ref !== "مرجعِ-بانک") throw new Error(`مرجعِ staff: ${String(tr.ref)}`);
+        if (tr.claimedRef !== "پیگیری-درست") throw new Error(`ادعای کاربر: ${String(tr.claimedRef)}`);
+        if (tr.senderLast4 !== "7788") throw new Error("۴ رقمِ مشاهده‌شده نیامد");
+        if (tr.claimedLast4 !== "4821") throw new Error("۴ رقمِ ادعاشده نیامد");
+        if (tr.approvedAt === null || tr.approvedBy === null) throw new Error("تایید بی‌عامل");
+        // ⚠️ `refId` از همان مرجعِ staff پر می‌شود — نه از ادعای کاربر.
+        if (detail.refId !== "مرجعِ-بانک") throw new Error(`refId=${String(detail.refId)}`);
+        // ★★ عکسِ مقصد در `request_payload` منجمد شده — پیامدِ ADR-070 که بدونِ این چک
+        //    فقط یک جمله در سند می‌مانْد. اگر فردا شماره‌ی کارت عوض شود، پرونده می‌گوید به
+        //    **این مشتری** کدام شماره اعلام شده بود.
+        const snap = detail.requestPayload?.gatewaySnapshot as { card?: unknown } | undefined;
+        if (snap?.card !== "6037991234567893") {
+          throw new Error(`عکسِ مقصد ثبت نشد: ${JSON.stringify(snap)}`);
+        }
+      },
+    );
+
+    // ⚠️ همان قاعده‌ی بالا: این اسکریپت ردیفِ جامانده نمی‌گذارد (وگرنه یک گیت، گیتِ دیگری را آلوده می‌کند).
+    await transferApp.db.query("DELETE FROM audit_logs WHERE target_id = $1", [co.paymentId]);
+    await transferApp.db.query("DELETE FROM subscriptions WHERE activated_by_payment_id = $1", [
+      co.paymentId,
+    ]);
+    const inv = await transferApp.db.query<{ invoice_id: string | null }>(
+      "DELETE FROM payments WHERE id = $1 RETURNING invoice_id",
+      [co.paymentId],
+    );
+    const invoiceId = inv.rows[0]?.invoice_id ?? null;
+    if (invoiceId !== null) {
+      await transferApp.db.query("DELETE FROM invoices WHERE id = $1", [invoiceId]);
+    }
+    await transferApp.db.query("UPDATE plans SET is_active = false WHERE code = $1", [probePlan]);
+    // ⚠️⚠️ **حالتِ مشترک باید دقیقاً به جای اولش برگردد.** این بلوک `is_staff`، step-up، ردیف‌های
+    //    ممیزیِ step-up و چالشِ OTP را دست می‌زند؛ اگر برنگردند، **اجرای بعدیِ همین اسکریپت**
+    //    روی چک‌های ۱۸/۲۱/۲۴/۲۵ قرمز می‌شود — یعنی یک گیت، گیتِ دیگری را آلوده می‌کند. (دیده شد.)
+    await transferApp.db.query(
+      "DELETE FROM audit_logs WHERE actor_user_id = $1 AND action IN ('staff.step_up', 'staff.step_up.request') AND created_at >= $2",
+      [verified.user!.id, blockStartedAt],
+    );
+    await transferApp.db.query(
+      "UPDATE users SET is_staff = $2, step_up_verified_at = NULL WHERE id = $1",
+      [verified.user!.id, priorStaff.rows[0]!.is_staff],
+    );
+    await transferApp.db.query("DELETE FROM otp_challenges WHERE destination = $1", [phone]);
+    await transferApp.close();
+  }
+
   console.log(`\nsummary: ${pass} pass, ${fail} fail.\n`);
   await app.close();
   process.exit(fail === 0 ? 0 : 1);

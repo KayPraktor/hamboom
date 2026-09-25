@@ -384,7 +384,7 @@ export const smsEnvSchema = z.object({
 export type SmsEnv = z.infer<typeof smsEnvSchema>;
 
 export const paymentEnvSchema = z.object({
-  PAYMENT_PROVIDER: z.enum(["mock", "zarinpal"]).default("mock"),
+  PAYMENT_PROVIDER: z.enum(["mock", "zarinpal", "card_transfer"]).default("mock"),
   ZARINPAL_MODE: z.enum(["sandbox", "production"]).default("sandbox"),
   ZARINPAL_MERCHANT_ID: z.string().optional(),
   /**
@@ -408,6 +408,36 @@ export const paymentEnvSchema = z.object({
   VAT_PERCENT: envIntFromZero(0),
   /** ریشه‌ی اپِ وب — بازگشت از درگاه به این‌جا ریدایرکت می‌شود (نه به خودِ api). */
   WEB_BASE_URL: z.url().default("http://localhost:5173"),
+
+  /**
+   * ── ★★ کارت‌به‌کارت/شبا با تاییدِ دستی (M6، [ADR-070](../../../ARCHITECTURE_DECISIONS.md#adr-070)) ──
+   *
+   * ⚠️ هر چهار مقدار `optional`اند، **به همان دلیلی که فیلدهای زرین‌پال هستند**: با
+   * `PAYMENT_PROVIDER=mock` لازم نیستند و اجباری‌کردنشان یعنی `pnpm dev` یک شماره‌ی کارتِ
+   * واقعی می‌خواهد ⇒ همه یک مقدارِ الکی می‌گذارند ⇒ گیت می‌میرد. اعتبارسنجیِ واقعی هنگامِ
+   * **ساختِ درگاه** انجام می‌شود، آن هم فقط وقتی provider واقعاً `card_transfer` باشد.
+   *
+   * ★★ **و آن اعتبارسنجی فقط «خالی نباشد» نیست — رقم‌ها هم سنجیده می‌شوند** (Luhn برای کارت،
+   * mod-97 برای شبا). دلیلش یک‌بارمصرف‌بودنِ این مقدار است: یک آدم آن را **یک بار** در
+   * `.env.production` تایپ می‌کند و از آن به بعد هر مشتری پولش را به همان می‌ریزد. یک رقمِ
+   * جابه‌جا یعنی پولِ مشتری به حسابِ **یک غریبه** می‌رود و ما فقط وقتی می‌فهمیم که کسی شکایت
+   * کند. با این گارد، همان اشتباه **در بوت** می‌شکند.
+   *
+   * ⛔ این شماره‌ها **راز نیستند** (به هر مشتری نشان داده می‌شوند) ولی هویتِ مالی‌اند: فقط در
+   * `.env.production` می‌نشینند، هرگز در کد، و هرگز لاگ نمی‌شوند.
+   */
+  CARD_TRANSFER_CARD_NUMBER: z.string().optional(),
+  CARD_TRANSFER_SHEBA: z.string().optional(),
+  /** ★ نامِ صاحبِ حساب — کاربر **پیش از واریز** با اپِ بانکش تطبیقش می‌دهد. */
+  CARD_TRANSFER_HOLDER_NAME: z.string().optional(),
+  CARD_TRANSFER_BANK_NAME: z.string().optional(),
+  /**
+   * تا این مدت بعد از ساختِ فاکتور، نبودِ ادعا **قضاوت نمی‌شود**.
+   *
+   * ⚠️ پیش‌فرض ۲۴ ساعت است، نه ۲۰ دقیقه‌ی زرین‌پال: کاربر باید به اپِ بانکش برود، و اگر
+   * **شبا/پایا** بفرستد تسویه‌اش چرخه‌ای است و می‌تواند روزِ کاری بعد بنشیند.
+   */
+  CARD_TRANSFER_CLAIM_WINDOW_HOURS: envInt(24),
 
   /**
    * ── آشتی‌دهی (M4 فاز ۷، ADR-051/ADR-056) ─────────────────────────────

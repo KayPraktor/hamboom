@@ -13,6 +13,9 @@ import {
   systemStatus,
   refundRequest,
   refundResult,
+  transferApproveRequest,
+  transferClaimRequest,
+  transferInstructions,
   adminSearchQuery,
   adminSearchResult,
   adminTeamDetail,
@@ -114,6 +117,9 @@ const COMPONENT_SCHEMAS: Record<string, z.ZodType> = {
   Plan: plan,
   Subscription: subscription,
   Invoice: invoice,
+  // کارت‌به‌کارت (ADR-070)
+  TransferInstructions: transferInstructions,
+  TransferClaimRequest: transferClaimRequest,
   CheckoutBody: checkoutBody,
 };
 
@@ -148,6 +154,9 @@ const INTERNAL_SCHEMAS: Record<string, z.ZodType> = {
   ExpireRequest: expireRequest,
   RefundRequest: refundRequest,
   RefundResult: refundResult,
+  // کارت‌به‌کارت (ADR-070) — ⚠️ فقط بدنه‌ی **تاییدِ staff** internal است؛ دستورِ واریز و ادعا
+  //    را کاربرِ عادی می‌بیند، پس جایشان در فهرستِ عمومی است (وگرنه سندِ عمومی refِ شکسته دارد).
+  TransferApproveRequest: transferApproveRequest,
   ReconcileRequest: reconcileRequest,
   ReconcileReport: reconcileReport,
   // فاز ۷ (D12، تاییدِ ۱۴۰۵/۰۷/۰۳) — آمار و وضعیتِ سیستم (ADR-067)
@@ -499,6 +508,23 @@ const ROUTES: RouteDoc[] = [
     summary: "لغو در پایانِ دوره (owner)",
     ok: { schema: "Subscription" },
   },
+  // ── ★ کارت‌به‌کارت/شبا (ADR-070) — **همیشه** ثبت می‌شوند، حتی وقتی provider چیزِ دیگری
+  //    است؛ شرطی‌کردنشان جدولِ مسیرها را به `.env` گره می‌زد (⇒ ۴۰۹، نه ۴۰۴).
+  {
+    method: "get",
+    path: "/billing/transfer/:authority",
+    tag: "billing",
+    summary: "دستورِ واریزِ کارت‌به‌کارت (owner): مقصد، مبلغ، مهلت و وضعیتِ ادعا",
+    ok: { schema: "TransferInstructions" },
+  },
+  {
+    method: "post",
+    path: "/billing/transfer/:authority/claim",
+    tag: "billing",
+    summary: "«واریز کردم» (owner) — ابطالِ خودکار را منجمد می‌کند تا staff ببیند (ADR-056)",
+    body: "TransferClaimRequest",
+    ok: { schema: "TransferInstructions" },
+  },
   // ⚠️ فقط در غیر-production ثبت می‌شود، ولی **مستند می‌مانَد**: گاردِ دریفت با `buildApp`ِ
   //    محیطِ تست می‌سنجد و اگر اینجا نباشد قرمز می‌شود. جای درگاهِ واقعی را در توسعه می‌گیرد (P3).
   {
@@ -641,6 +667,16 @@ const ROUTES: RouteDoc[] = [
       "انقضای دستی (step-up): نردبانِ ADR-056 پله‌ی ۳ زیرِ قفل + verifyِ تازه؛ paid ⇒ فعال‌سازی، notPaid ⇒ ابطال",
     internal: true,
     body: "ExpireRequest",
+    ok: { schema: "PaymentActionResult" },
+  },
+  {
+    method: "post",
+    path: "/admin/payments/:id/approve-transfer",
+    tag: "admin",
+    summary:
+      "تاییدِ واریزِ کارت‌به‌کارت (step-up): شماره‌ی مرجعِ صورت‌حساب + مبلغِ مشاهده‌شده؛ بعدش همان settleLocked",
+    internal: true,
+    body: "TransferApproveRequest",
     ok: { schema: "PaymentActionResult" },
   },
   {

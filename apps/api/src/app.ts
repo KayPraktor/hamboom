@@ -18,7 +18,7 @@ import { registerIdempotency } from "./idempotency.ts";
 import { loggerOptions } from "./logger.ts";
 import { createReconcileRecorder, createStalePendingCounter, renderApiMetrics } from "./metrics.ts";
 import { createDbPool } from "./plugins/db.ts";
-import { createPaymentGateway } from "./plugins/payment.ts";
+import { cardTransferSettingsFrom, createPaymentGateway } from "./plugins/payment.ts";
 import { registerReconcileJob, reconcilePolicyFrom } from "./plugins/reconcile.ts";
 import {
   createAssetObjectStore,
@@ -307,7 +307,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   //    `options.gateway ?? createPaymentGateway(config)` بود و چون گیت داخلِ
   //    `createPaymentGateway` است، یک درگاهِ **تزریق‌شده** کاملاً از آن رد می‌شد — یعنی
   //    دقیقاً همان ادعای «هر ورودی از یک گیت رد می‌شود» نقض می‌شد.
-  const resolvedGateway = options.gateway ?? createPaymentGateway(config);
+  // ⊕ `db: pool` فقط برای `card_transfer` معنی دارد: درگاهش به‌جای HTTP از جدولِ خودمان
+  //   می‌خوانَد (ADR-070). دو درگاهِ دیگر نادیده‌اش می‌گیرند.
+  const resolvedGateway = options.gateway ?? createPaymentGateway(config, { db: pool });
   assertGatewayAllowed(resolvedGateway, config.APP_ENV);
   // ★★ `createPaymentGateway` خودش `assertGatewayAllowed` را صدا می‌زند، پس اگر
   //    `APP_ENV=production` با `PAYMENT_PROVIDER=mock` بالا بیاید **همین‌جا** می‌شکند —
@@ -324,6 +326,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       max: config.RATE_LIMIT_MAX,
       timeWindow: config.RATE_LIMIT_WINDOW_SECONDS * 1000,
     },
+    transfer: cardTransferSettingsFrom(config),
   });
 
   // ── ★ پرداخت‌ها در پنل (M6 فاز ۶، ADR-068) ───────────────────────────
@@ -336,6 +339,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     requireStepUp,
     gateway: resolvedGateway,
     reconcilePolicy: reconcilePolicyFrom(config),
+    transfer: cardTransferSettingsFrom(config),
   });
 
   // ── ★ آمار و وضعیتِ سیستم (M6 فاز ۷، ADR-067) ─────────────────────────

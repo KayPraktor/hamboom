@@ -77,7 +77,7 @@ const pool = createDbPool({
   ssl: config.DATABASE_SSL,
   poolMax: config.DATABASE_POOL_MAX,
 });
-const gateway = createPaymentGateway(config);
+const gateway = createPaymentGateway(config, { db: pool });
 
 console.log(
   `آشتی‌دهی — درگاه «${gateway.name}/${gateway.mode}» · کهنگی ${policy.staleAfterMs / 60_000} دقیقه · ` +

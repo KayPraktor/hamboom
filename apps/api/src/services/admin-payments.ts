@@ -73,6 +73,14 @@ export interface AdminPaymentDetailRow extends AdminPaymentRow {
   request_payload: unknown;
   callback_payload: unknown;
   verify_payload: unknown;
+  // ── کارت‌به‌کارت (ADR-070) — روی بقیه‌ی درگاه‌ها همیشه NULL (CHECKِ ۰۰۱۰) ──
+  transfer_claimed_ref: string | null;
+  transfer_claimed_last4: string | null;
+  transfer_claimed_at: Date | null;
+  transfer_ref: string | null;
+  transfer_sender_last4: string | null;
+  transfer_approved_by: string | null;
+  transfer_approved_at: Date | null;
 }
 
 /** ستون‌های فهرست — با alias برای join؛ `p.` تا با `invoices`/`teams` تصادم نکند. */
@@ -83,7 +91,9 @@ const LIST_COLUMNS =
   "p.refunded_at, p.refund_ref, p.refund_amount_rial";
 
 const DETAIL_COLUMNS =
-  `${LIST_COLUMNS}, p.card_pan_masked, p.fee_rial, p.request_payload, p.callback_payload, p.verify_payload`;
+  `${LIST_COLUMNS}, p.card_pan_masked, p.fee_rial, p.request_payload, p.callback_payload, p.verify_payload, ` +
+  "p.transfer_claimed_ref, p.transfer_claimed_last4, p.transfer_claimed_at, " +
+  "p.transfer_ref, p.transfer_sender_last4, p.transfer_approved_by, p.transfer_approved_at";
 
 const FROM = "FROM payments p JOIN teams t ON t.id = p.team_id LEFT JOIN invoices i ON i.id = p.invoice_id";
 

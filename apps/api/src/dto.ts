@@ -36,6 +36,7 @@ import type {
   AdminPaymentRow,
 } from "./services/admin-payments.ts";
 import type { StatsRows, StatsSeriesRow } from "./services/admin-stats.ts";
+import { CARD_TRANSFER_NAME } from "./services/card-transfer.ts";
 
 /**
  * لایه‌ی serialize — ردیفِ خامِ DB (snake_case) → DTOهای camelCaseِ `shared-types`. گام ۶ (اصلاحِ فاز ۵).
@@ -594,6 +595,21 @@ export function toAdminPaymentDetail(
     feeRial: p.fee_rial === null ? null : Number(p.fee_rial),
     refundRef: p.refund_ref,
     refundAmountRial: p.refund_amount_rial === null ? null : Number(p.refund_amount_rial),
+    // ★ فقط برای ردیفِ کارت‌به‌کارت شیء می‌سازد. ⚠️ شرط روی **درگاه** است نه «یکی از ستون‌ها
+    //   پر است»: ردیفِ کارت‌به‌کارتی که هنوز نه ادعا دارد نه تایید، باید در پنل بخشِ خودش را
+    //   **خالی** نشان دهد، نه اینکه اصلاً نداشته باشد.
+    transfer:
+      p.gateway !== CARD_TRANSFER_NAME
+        ? null
+        : {
+            claimedRef: p.transfer_claimed_ref,
+            claimedLast4: p.transfer_claimed_last4,
+            claimedAt: isoOrNull(p.transfer_claimed_at),
+            ref: p.transfer_ref,
+            senderLast4: p.transfer_sender_last4,
+            approvedBy: p.transfer_approved_by,
+            approvedAt: isoOrNull(p.transfer_approved_at),
+          },
     requestPayload: jsonObject(p.request_payload),
     callbackPayload: jsonObject(p.callback_payload),
     verifyPayload: jsonObject(p.verify_payload),

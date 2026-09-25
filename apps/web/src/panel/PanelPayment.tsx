@@ -5,6 +5,7 @@ import { errorMessage } from "../api/error-message.ts";
 import { PanelTable, type PanelColumn } from "./PanelTable.tsx";
 import {
   useAdminPayment,
+  useApproveTransfer,
   useExpirePayment,
   useRefundPayment,
   useVerifyPayment,
@@ -42,6 +43,22 @@ interface InfoRow {
   label: string;
   value: ReactNode;
 }
+interface TransferRow {
+  key: string;
+  side: string;
+  ref: string;
+  last4: string;
+  at: string;
+}
+
+/** ★ دو سطر، عمداً کنارِ هم: «کاربر چه گفت» در برابرِ «staff چه دید» (ADR-070). */
+const TRANSFER_COLUMNS: readonly PanelColumn<TransferRow>[] = [
+  { key: "side", header: "سمت", render: (r) => r.side },
+  { key: "ref", header: "شماره‌ی مرجع", render: (r) => r.ref, ltr: true },
+  { key: "last4", header: "۴ رقمِ کارت", render: (r) => r.last4, ltr: true },
+  { key: "at", header: "زمان", render: (r) => r.at },
+];
+
 const INFO_COLUMNS: readonly PanelColumn<InfoRow>[] = [
   { key: "label", header: "چه", render: (r) => r.label },
   { key: "value", header: "مقدار", render: (r) => r.value },
@@ -67,6 +84,32 @@ export function PanelPayment() {
   const [expireReason, setExpireReason] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [refundRef, setRefundRef] = useState("");
+  const approve = useApproveTransfer(paymentId);
+  const [transferRef, setTransferRef] = useState("");
+  const [transferLast4, setTransferLast4] = useState("");
+  const [transferAmount, setTransferAmount] = useState("");
+
+  const doApprove = (e: FormEvent): void => {
+    e.preventDefault();
+    const r = transferRef.trim();
+    const amount = Number(transferAmount);
+    if (r.length < 4 || !Number.isSafeInteger(amount) || amount <= 0) return;
+    approve.mutate(
+      {
+        ref: r,
+        last4: transferLast4.length === 4 ? transferLast4 : null,
+        observedAmountRial: amount,
+        note: null,
+      },
+      {
+        onSuccess: () => {
+          setTransferRef("");
+          setTransferLast4("");
+          setTransferAmount("");
+        },
+      },
+    );
+  };
 
   if (payment.isPending) return <div className="loader">در حال بارگذاری…</div>;
   if (payment.isError) {
@@ -77,12 +120,13 @@ export function PanelPayment() {
     );
   }
   const p = payment.data;
-  const actionError = verify.error ?? expire.error ?? refund.error;
+  const actionError = verify.error ?? expire.error ?? refund.error ?? approve.error;
   const needsStepUp = isStepUpRequired(actionError);
   const resetActions = (): void => {
     verify.reset();
     expire.reset();
     refund.reset();
+    approve.reset();
   };
 
   const doExpire = (e: FormEvent): void => {
@@ -171,6 +215,100 @@ export function PanelPayment() {
       </div>
 
       <PanelTable columns={INFO_COLUMNS} rows={rows} rowKey={(r) => r.key} caption="پرداخت" />
+
+      {p.transfer !== null && (
+        <section className="card" aria-labelledby="transfer-title">
+          <h2 id="transfer-title">واریزِ کارت‌به‌کارت</h2>
+          {/*
+            ★★ **ادعای کاربر و مشاهده‌ی staff عمداً کنارِ هم و جدا نشان داده می‌شوند** (ADR-070).
+            اگر این دو نخوانند، خودِ اختلاف سیگنال است — و رابطی که یکی‌شان کند، همان شاهد را از
+            بین می‌برد. به همین دلیل ستونِ دیتابیس هم دوتاست، نه یکی.
+          */}
+          <PanelTable
+            columns={TRANSFER_COLUMNS}
+            rows={[
+              {
+                key: "claim",
+                side: "ادعای کاربر",
+                ref: p.transfer.claimedRef ?? "—",
+                last4: p.transfer.claimedLast4 ?? "—",
+                at: fmtTime(p.transfer.claimedAt),
+              },
+              {
+                key: "observed",
+                side: "مشاهده‌ی staff",
+                ref: p.transfer.ref ?? "—",
+                last4: p.transfer.senderLast4 ?? "—",
+                at: fmtTime(p.transfer.approvedAt),
+              },
+            ]}
+            rowKey={(r) => r.key}
+            caption="دو سمتِ واریز"
+          />
+          {p.transfer.approvedAt === null && p.status === "pending" && (
+            <form onSubmit={doApprove} noValidate>
+              <label className="field">
+                <span>شماره‌ی مرجع — همان‌طور که در صورت‌حسابِ بانک دیدی</span>
+                <input
+                  className="input"
+                  value={transferRef}
+                  onChange={(e) => setTransferRef(e.target.value)}
+                  minLength={4}
+                  maxLength={80}
+                  disabled={approve.isPending}
+                  dir="ltr"
+                />
+              </label>
+              <label className="field">
+                <span>۴ رقمِ آخرِ کارتِ مبدأ (اختیاری)</span>
+                <input
+                  className="input"
+                  value={transferLast4}
+                  onChange={(e) => setTransferLast4(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  disabled={approve.isPending}
+                  dir="ltr"
+                  inputMode="numeric"
+                />
+              </label>
+              <label className="field">
+                <span>مبلغی که در صورت‌حساب دیدی (ریال)</span>
+                <input
+                  className="input"
+                  value={transferAmount}
+                  onChange={(e) => setTransferAmount(e.target.value.replace(/\D/g, ""))}
+                  disabled={approve.isPending}
+                  dir="ltr"
+                  inputMode="numeric"
+                />
+              </label>
+              {/*
+                ⚠️ مبلغ عمداً **از پیش پر نمی‌شود.** پرکردنش یعنی دکمه‌ی «تایید» و چکِ مبلغ یک چیز
+                می‌شوند و کلِ نگهبان به یک کلیک تبدیل می‌شود. staff باید عددی را که واقعاً دیده
+                تایپ کند؛ اگر نخواند، سرور ۴۰۹ می‌دهد.
+              */}
+              <p className="field-hint">
+                مبلغِ فاکتور: {toman(p.amountRial)} — عمداً از پیش پر نشده؛ عددی را که در صورت‌حساب
+                می‌بینی تایپ کن.
+              </p>
+              <button
+                type="submit"
+                className="btn btn--primary"
+                disabled={
+                  approve.isPending || transferRef.trim().length < 4 || transferAmount.length === 0
+                }
+              >
+                {approve.isPending ? "در حال تایید…" : "تاییدِ واریز و فعال‌سازی"}
+              </button>
+            </form>
+          )}
+          {approve.data !== undefined && (
+            <p className="field-hint" role="status">
+              نتیجه: {approve.data.outcome}
+              {approve.data.message === null ? "" : ` — ${approve.data.message}`}
+            </p>
+          )}
+        </section>
+      )}
 
       <Payload title="نیّتِ خرید (request)" value={p.requestPayload} />
       <Payload title="بازگشت از درگاه (callback)" value={p.callbackPayload} />

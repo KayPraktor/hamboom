@@ -27,6 +27,26 @@ export { ZarinpalGateway } from "./zarinpal-gateway.ts";
 export type { ZarinpalConfig } from "./zarinpal-gateway.ts";
 
 export {
+  InvalidTransferDestinationError,
+  luhnOk,
+  resolveTransferDestination,
+  shebaOk,
+} from "./transfer-destination.ts";
+export type { TransferDestination, TransferDestinationInput } from "./transfer-destination.ts";
+
+export {
+  CARD_TRANSFER_ABANDONED,
+  CardTransferGateway,
+  decideTransfer,
+  maskLast4,
+} from "./card-transfer-gateway.ts";
+export type {
+  CardTransferGatewayConfig,
+  TransferApprovalReader,
+  TransferRecord,
+} from "./card-transfer-gateway.ts";
+
+export {
   assertGatewayAmount,
   computeCharge,
   GATEWAY_MAX_RIAL,

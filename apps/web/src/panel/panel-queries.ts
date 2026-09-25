@@ -4,6 +4,7 @@ import type {
   AdminUserDetail,
   ReconcileRequest,
   RefundRequest,
+  TransferApproveRequest,
 } from "@hamboom/shared-types";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -159,6 +160,16 @@ export function useExpirePayment(id: string) {
 
 export function useRefundPayment(id: string) {
   return usePaymentMutation(id, (body: RefundRequest) => api.admin.payments.refund(id, body));
+}
+
+/**
+ * تاییدِ واریزِ کارت‌به‌کارت (ADR-070) — همان الگوی بقیه: کلیدِ همین پرداخت و فهرست باطل می‌شوند،
+ * چون تایید ردیف را `paid` می‌کند و یک اشتراک می‌سازد.
+ */
+export function useApproveTransfer(id: string) {
+  return usePaymentMutation(id, (body: TransferApproveRequest) =>
+    api.admin.payments.approveTransfer(id, body),
+  );
 }
 
 /**

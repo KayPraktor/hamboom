@@ -6,6 +6,12 @@ import {
 } from "@hamboom/billing-core";
 
 import type { ApiConfig } from "../config.ts";
+import {
+  createCardTransferGatewayOn,
+  resolveCardTransferSettings,
+  type CardTransferSettings,
+} from "../services/card-transfer.ts";
+import type { Executor } from "./db.ts";
 
 /**
  * ساختِ `PaymentGateway` از configِ api — قرینه‌ی [`s3.ts`](./s3.ts) (M4 فاز ۵،
@@ -42,15 +48,61 @@ export type PaymentGatewayConfig = Pick<
   | "ZARINPAL_MERCHANT_ID"
   | "ZARINPAL_CURRENCY"
   | "ZARINPAL_CALLBACK_URL"
+  | "WEB_BASE_URL"
+  | "CARD_TRANSFER_CARD_NUMBER"
+  | "CARD_TRANSFER_SHEBA"
+  | "CARD_TRANSFER_HOLDER_NAME"
+  | "CARD_TRANSFER_BANK_NAME"
+  | "CARD_TRANSFER_CLAIM_WINDOW_HOURS"
 >;
 
-export function createPaymentGateway(config: PaymentGatewayConfig): PaymentGateway {
-  const gateway =
-    config.PAYMENT_PROVIDER === "zarinpal"
-      ? createZarinpal(config)
-      : new MockGateway({
-          checkoutBaseUrl: `http://localhost:${String(config.PORT)}${MOCK_CHECKOUT_PATH}`,
-        });
+/**
+ * تنظیماتِ کارت‌به‌کارت، یا `null` وقتی provider چیزِ دیگری است (ADR-070).
+ *
+ * ★★ **گاردِ بوت همین‌جاست:** `resolveCardTransferSettings` روی مقصدِ غایب یا بدرقم پرتاب
+ * می‌کند، و چون در مسیرِ `buildApp` صدا زده می‌شود، `APP_ENV=production` بدونِ مقصدِ معتبر
+ * **بالا نمی‌آید** — همان الگوی `ZARINPAL_MERCHANT_ID` پایین، و همان چیزی که ردیفِ ۸٫۷
+ * (`WEB_BASE_URL`ِ بی‌گارد) نبودش را ثبت کرده بود.
+ */
+export function cardTransferSettingsFrom(
+  config: PaymentGatewayConfig,
+): CardTransferSettings | null {
+  if (config.PAYMENT_PROVIDER !== "card_transfer") return null;
+  return resolveCardTransferSettings(
+    config,
+    config.WEB_BASE_URL,
+    // ⊕ برخلافِ زرین‌پال، این‌جا `mode` متغیرِ خودش را ندارد: سندباکسی وجود ندارد که بشود
+    //   انتخابش کرد. یا پولِ واقعی جابه‌جا می‌شود یا محیط production نیست.
+    config.APP_ENV === "production" ? "production" : "sandbox",
+  );
+}
+
+/**
+ * @param deps.db اجراکننده‌ای که درگاهِ **پیش‌فرضِ برنامه** رویش می‌خوانَد (استخر).
+ *   ⚠️ مسیرِ تایید عمداً از این استفاده نمی‌کند و نمونه‌ی tx-محدودِ خودش را می‌سازد.
+ */
+export function createPaymentGateway(
+  config: PaymentGatewayConfig,
+  deps: { db?: Executor } = {},
+): PaymentGateway {
+  const transfer = cardTransferSettingsFrom(config);
+  let gateway: PaymentGateway;
+  if (transfer !== null) {
+    if (deps.db === undefined) {
+      // ⚠️ برخلافِ دو درگاهِ دیگر، این یکی بدونِ دیتابیس بی‌معنی است — و شکستنِ صریح در بوت
+      //    از یک درگاهِ نیمه‌ساخته که سرِ اولین verify می‌شکند بهتر است.
+      throw new Error(
+        "PAYMENT_PROVIDER=card_transfer است ولی هیچ اجراکننده‌ی دیتابیسی به createPaymentGateway داده نشد (ADR-070).",
+      );
+    }
+    gateway = createCardTransferGatewayOn(transfer, deps.db);
+  } else if (config.PAYMENT_PROVIDER === "zarinpal") {
+    gateway = createZarinpal(config);
+  } else {
+    gateway = new MockGateway({
+      checkoutBaseUrl: `http://localhost:${String(config.PORT)}${MOCK_CHECKOUT_PATH}`,
+    });
+  }
 
   // ★★ گیتی که نبودنش یعنی هر پرداخت در production **رایگان** موفق می‌شود.
   //    این‌جا صدا زده می‌شود (نه در `server.ts`) تا تست‌ها و هر ورودیِ آینده هم از آن رد شوند.

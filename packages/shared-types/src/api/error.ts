@@ -40,6 +40,11 @@ export const apiErrorCodes = [
   "INVALID_TRANSITION", // چرخشِ وضعیتِ نامجاز روی payment/subscription (ADR-068)
   // ── M6 فاز ۶ (تاییدِ مالک ۱۴۰۵/۰۷/۰۱) ──
   "REFUND_REJECTED", // درگاه استرداد را **قطعی** رد کرد (نه «در دسترس نیست») — کد/پیامش در details
+  // ── M6 — کارت‌به‌کارت (ADR-070) ──
+  // ⚠️ این دو عمداً از `CONFLICT`ِ عمومی جدا شدند: هر دو ۴۰۹اند ولی **دو کارِ متفاوت** از
+  //    اپراتور می‌خواهند — یکی «شماره را دوباره بخوان»، دیگری «این واریز مالِ فاکتورِ دیگری است».
+  "TRANSFER_REF_TAKEN", // همان شماره‌ی مرجع قبلاً پرداختِ دیگری را تسویه کرده (نگهبانِ بازپخش)
+  "TRANSFER_AMOUNT_MISMATCH", // مبلغی که staff در صورت‌حساب دید با `amount_rial` نمی‌خواند
 ] as const;
 export const apiErrorCode = z.enum(apiErrorCodes);
 export type ApiErrorCode = z.infer<typeof apiErrorCode>;

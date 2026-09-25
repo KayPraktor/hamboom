@@ -74,7 +74,8 @@
     "infra:ship": "node scripts/ship-images.ts",
     "infra:sweep-orphans": "node --env-file-if-exists=.env scripts/sweep-orphans.ts",
     "infra:purge": "node --env-file-if-exists=.env scripts/purge-deleted.ts",
-    "billing:refund": "node --env-file-if-exists=.env scripts/billing-probe-refund.ts"
+    "billing:refund": "node --env-file-if-exists=.env scripts/billing-probe-refund.ts",
+    "billing:transfer": "node --env-file-if-exists=.env scripts/billing-probe-transfer.ts"
   },
   "dependencies": {
     "@hamboom/config": "workspace:*",

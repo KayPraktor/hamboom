@@ -17,6 +17,9 @@ import type {
   ReconcileRequest,
   RefundRequest,
   RefundResult,
+  TransferApproveRequest,
+  TransferClaimRequest,
+  TransferInstructions,
   AdminUserDetail,
   AdminUserSummary,
   AssetPresignRequest,
@@ -378,6 +381,31 @@ export function createClient(options: ClientOptions) {
       verifyPayment: (paymentId: string): Promise<{ settled: boolean; subscriptionId: string }> =>
         request("POST", `/billing/payments/${paymentId}/verify`),
 
+      /**
+       * ── ★★ کارت‌به‌کارت/شبا (ADR-070) ──
+       *
+       * ★ با `authority` کلید می‌خورد، نه `paymentId`: همان توکنی است که `checkout` در
+       *   `redirectUrl` برگردانده، و کاربر از همان صفحه می‌آید.
+       * ⚠️ روی نصبی که `PAYMENT_PROVIDER` چیزِ دیگری است ⇒ ۴۰۹ `INVALID_TRANSITION`
+       *   (نه ۴۰۴): مسیر هست، این نصب این روشِ پرداخت را ندارد.
+       */
+      transfer: (authority: string): Promise<TransferInstructions> =>
+        request("GET", `/billing/transfer/${authority}`),
+
+      /**
+       * «واریز کردم، این هم شماره‌ی پیگیری».
+       *
+       * ★★ اثرِ واقعی‌اش یک ستون نیست، **منجمدکردنِ ابطالِ خودکار** است: از این لحظه هیچ
+       * sweepی این فاکتور را باطل نمی‌کند، هرچقدر هم کهنه شود (ADR-056/ADR-070). برای
+       * واریزِ **پایا** که ممکن است روزِ کاری بعد بنشیند، همین تفاوتِ «پول گم شد» و «پول رسید» است.
+       * ⊕ ثبتِ دوباره مجاز است — کاربری که اشتباه تایپ کرده باید بتواند تصحیحش کند.
+       */
+      claimTransfer: (
+        authority: string,
+        body: TransferClaimRequest,
+      ): Promise<TransferInstructions> =>
+        request("POST", `/billing/transfer/${authority}/claim`, { body }),
+
       /** ⚠️ `null` یعنی **تیمِ رایگان**، نه خطا — هر تیمِ تازه دقیقاً همین است. */
       subscription: (teamId: string): Promise<{ subscription: Subscription | null }> =>
         request("GET", `/teams/${teamId}/billing/subscription`),
@@ -458,6 +486,18 @@ export function createClient(options: ClientOptions) {
         /** انقضا — پله‌ی ۳ی ADR-056؛ زودتر از سقف ⇒ ۴۰۹ `INVALID_TRANSITION` با دلیلِ خواندنی. */
         expire: (id: string, body: ExpireRequest): Promise<PaymentActionResult> =>
           request("POST", `/admin/payments/${id}/expire`, { body }),
+        /**
+         * تاییدِ واریزِ کارت‌به‌کارت (ADR-070) — شماره‌ی مرجع و مبلغی که در **صورت‌حسابِ بانک** دیده شد.
+         *
+         * ⚠️ دو ۴۰۹ی مشخص دارد و رابط باید تفکیکشان کند: `TRANSFER_REF_TAKEN` یعنی این واریز
+         * قبلاً فاکتورِ دیگری را تسویه کرده (نگهبانِ بازپخش)، `TRANSFER_AMOUNT_MISMATCH` یعنی
+         * مبلغ با فاکتور نمی‌خواند. اولی «شماره را دوباره بخوان»، دومی «این پولِ فاکتورِ دیگری است».
+         */
+        approveTransfer: (
+          id: string,
+          body: TransferApproveRequest,
+        ): Promise<PaymentActionResult> =>
+          request("POST", `/admin/payments/${id}/approve-transfer`, { body }),
         /** استرداد — `manual` (مرجعِ دستی) یا `gateway`؛ زرین‌پال ۴۰۹ `REFUND_UNAVAILABLE` می‌دهد. */
         refund: (id: string, body: RefundRequest): Promise<RefundResult> =>
           request("POST", `/admin/payments/${id}/refund`, { body }),

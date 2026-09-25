@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { PaymentGateway } from "@hamboom/billing-core";
+import { transferClaimRequest, type TransferInstructions } from "@hamboom/shared-types";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type pg from "pg";
 
@@ -23,6 +24,14 @@ import {
   settlePayment,
   voidFailedCheckout,
 } from "../services/billing.ts";
+import {
+  CARD_TRANSFER_NAME,
+  claimTransfer,
+  TRANSFER_API_PATH,
+  TRANSFER_PAGE_PATH,
+  type CardTransferSettings,
+} from "../services/card-transfer.ts";
+import { withTransaction } from "../plugins/db.ts";
 import { requireTeamRole } from "../services/teams.ts";
 
 /**
@@ -43,6 +52,14 @@ export interface BillingRouteDeps {
   appEnv: string;
   /** سقفِ نرخِ اختصاصیِ callback (mسیرِ عمومی). */
   callbackRateLimit: { max: number; timeWindow: number };
+  /**
+   * تنظیماتِ کارت‌به‌کارت، یا `null` وقتی provider چیزِ دیگری است (ADR-070).
+   *
+   * ⚠️ دو مسیرِ انتقال **همیشه** ثبت می‌شوند، حتی وقتی این `null` است. شرطی‌کردنشان جدولِ
+   * مسیرها را به `.env` گره می‌زد و گیتِ `infra:check-proxy` بسته به محیط نتیجه‌ی متفاوت
+   * می‌داد — یعنی یک گیت که می‌تواند دروغ بگوید.
+   */
+  transfer: CardTransferSettings | null;
 }
 
 /** مسیرِ **ثبت‌شده‌ی** بازگشت از درگاه — تنها تعریفش، و گاردِ بوت با همین می‌سنجد. */
@@ -63,6 +80,19 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
       `ZARINPAL_CALLBACK_URL به «${callbackPath}» اشاره می‌کند ولی مسیرِ ثبت‌شده ` +
         `«${ZARINPAL_CALLBACK_PATH}» است. درگاه کاربر را به ۴۰۴ می‌فرستد و تسویه فقط با ` +
         "آشتی‌دهی نجات پیدا می‌کند.",
+    );
+  }
+
+  // ★★ **گاردِ بوتِ دوم، قرینه‌ی اولی: صفحه‌ای که مرورگر به آن می‌رود نباید مسیرِ api باشد.**
+  //
+  // `createPayment`ِ کارت‌به‌کارت مرورگر را به `WEB_BASE_URL + TRANSFER_PAGE_PATH` می‌فرستد.
+  // اگر آن مسیر زیرِ `/billing` بنشیند، هم در dev (پروکسیِ vite) و هم پشتِ nginx **کاملاً**
+  // به api می‌رود و کاربر به‌جای صفحه‌ی «این مبلغ را به این کارت بریز» یک JSON می‌بیند —
+  // همان کلاسِ نقصی که در M4 فاز ۹ با `MOCK_CHECKOUT_PATH` رخ داد و فقط اجرای واقعی پیدایش کرد.
+  if (TRANSFER_PAGE_PATH.startsWith(TRANSFER_API_PATH.slice(0, TRANSFER_API_PATH.indexOf("/", 1)))) {
+    throw new Error(
+      `TRANSFER_PAGE_PATH («${TRANSFER_PAGE_PATH}») زیرِ پیشوندِ apiِ «${TRANSFER_API_PATH}» است؛ ` +
+        "مرورگر به‌جای صفحه، پاسخِ JSONِ api را می‌گیرد (router.tsx همین قاعده را ثبت کرده).",
     );
   }
 
@@ -99,6 +129,16 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
         vatPercent: deps.vatPercent,
         gatewayName: deps.gateway.name,
         gatewayMode: deps.gateway.mode,
+        // ★ مقصدی که همین حالا به کاربر نشان داده می‌شود، همین‌جا منجمد می‌شود (ADR-070).
+        gatewaySnapshot:
+          deps.transfer === null
+            ? undefined
+            : {
+                card: deps.transfer.destination.card,
+                sheba: deps.transfer.destination.sheba,
+                holderName: deps.transfer.destination.holderName,
+                bankName: deps.transfer.destination.bankName,
+              },
       },
       // ★★ کلیدِ یکتای **ماندگار** — ایندکسِ `payments_idem_uq`. برخلافِ میان‌افزارِ
       // حافظه‌ایِ `idempotency.ts`، این از ری‌استارت و نودِ دوم جان به در می‌بَرد (ADR-050).
@@ -288,7 +328,116 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   // ★ P3: `docker compose up && pnpm dev` باید کافی باشد. این صفحه جای درگاهِ واقعی را
   //   می‌گیرد تا کلِ جریان بدونِ اینترنت قابلِ اجرا باشد. در production ثبت **نمی‌شود**.
   if (deps.appEnv !== "production") {
-    app.get("/billing/mock/pay/:authority", async (req, reply) => {
+    // ── ★★ کارت‌به‌کارت/شبا (ADR-070) ──────────────────────────────────
+  //
+  // ⊕ مسیر با **authority** کلید می‌خورد نه `paymentId`: همان توکنی است که `createPayment`
+  //   ساخته و `redirectUrl` به آن اشاره می‌کند، و ۳۲ رقمِ تصادفیِ Web Crypto است.
+
+  const transferRow = async (
+    authority: string,
+  ): Promise<{
+    id: string;
+    team_id: string;
+    status: string;
+    amount_rial: number;
+    requested_at: Date;
+    invoice_number: string | null;
+    transfer_claimed_ref: string | null;
+    transfer_claimed_at: Date | null;
+    transfer_approved_at: Date | null;
+  }> => {
+    const settings = deps.transfer;
+    if (settings === null) {
+      // ★ ۴۰۹ و نه ۴۰۴: مسیر هست، ولی این نصب اصلاً کارت‌به‌کارت نمی‌گیرد. تفکیکش برای
+      //   کسی که `.env` را عوض کرده و می‌خواهد بفهمد چرا، تفاوتِ ده دقیقه و ده ساعت است.
+      throw new HttpError(409, "INVALID_TRANSITION", "این نصب پرداختِ کارت‌به‌کارت ندارد.");
+    }
+    const { rows } = await deps.pool.query<{
+      id: string;
+      team_id: string;
+      status: string;
+      amount_rial: number;
+      requested_at: Date;
+      invoice_number: string | null;
+      transfer_claimed_ref: string | null;
+      transfer_claimed_at: Date | null;
+      transfer_approved_at: Date | null;
+    }>(
+      `SELECT p.id, p.team_id, p.status, p.amount_rial, p.requested_at,
+              p.transfer_claimed_ref, p.transfer_claimed_at, p.transfer_approved_at,
+              i.number AS invoice_number
+         FROM payments p LEFT JOIN invoices i ON i.id = p.invoice_id
+        WHERE p.gateway = $1 AND p.authority = $2`,
+      [CARD_TRANSFER_NAME, authority],
+    );
+    const row = rows[0];
+    if (row === undefined) throw new HttpError(404, "PAYMENT_NOT_FOUND", "پرداخت یافت نشد.");
+    return row;
+  };
+
+  const instructionsOf = (
+    row: Awaited<ReturnType<typeof transferRow>>,
+    settings: CardTransferSettings,
+  ): TransferInstructions => {
+    const deadline = new Date(row.requested_at.getTime() + settings.claimWindowMs);
+    // ⚠️ ترتیب مهم است: «تاییدشده» بر همه مقدم، بعد «باطل‌شده»، بعد «اعلام‌شده». ردیفی که هم
+    //    ادعا دارد هم باطل شده، باید «مهلت گذشت» ببیند — نه «منتظرِ بررسی»، که دروغ است.
+    const state: TransferInstructions["state"] =
+      row.status === "paid" || row.transfer_approved_at !== null
+        ? "approved"
+        : row.status !== "pending"
+          ? "expired"
+          : row.transfer_claimed_at !== null
+            ? "claimed"
+            : Date.now() >= deadline.getTime()
+              ? "expired"
+              : "awaiting";
+    return {
+      paymentId: row.id,
+      invoiceNumber: row.invoice_number ?? "",
+      amountRial: Number(row.amount_rial),
+      destination: settings.destination,
+      state,
+      claimDeadline: deadline.toISOString(),
+      claimedRef: row.transfer_claimed_ref,
+      claimedAt: row.transfer_claimed_at?.toISOString() ?? null,
+    };
+  };
+
+  app.get(
+    `${TRANSFER_API_PATH}/:authority`,
+    { preHandler: deps.requireAuth },
+    async (req): Promise<TransferInstructions> => {
+      const sub = requireSub(req);
+      const { authority } = req.params as { authority: string };
+      const row = await transferRow(authority);
+      // ★ همان گیتِ نقشِ checkout: خریدار `owner` است، پس فقط او دستورِ واریز را می‌بیند.
+      await requireTeamRole(deps.pool, row.team_id, sub, "owner");
+      return instructionsOf(row, deps.transfer!);
+    },
+  );
+
+  app.post(
+    `${TRANSFER_API_PATH}/:authority/claim`,
+    { preHandler: deps.requireAuth },
+    async (req): Promise<TransferInstructions> => {
+      const sub = requireSub(req);
+      const { authority } = req.params as { authority: string };
+      const body = parseBody(transferClaimRequest, req.body);
+      const row = await transferRow(authority);
+      await requireTeamRole(deps.pool, row.team_id, sub, "owner");
+
+      await withTransaction(deps.pool, async (tx) => {
+        await claimTransfer(tx, { paymentId: row.id, ref: body.ref, last4: body.last4 });
+      });
+
+      // ★ وضعیتِ **تازه** برگردانده می‌شود، نه `{ok:true}`: رابط بلافاصله «در انتظارِ بررسی»
+      //   را نشان می‌دهد بدونِ یک رفت‌وبرگشتِ دوم.
+      return instructionsOf(await transferRow(authority), deps.transfer!);
+    },
+  );
+
+  app.get("/billing/mock/pay/:authority", async (req, reply) => {
       const { authority } = req.params as { authority: string };
       // ⚠️ `:authority` متنِ دلخواهِ کاربر است ⇒ باید escape شود، وگرنه XSSِ بازتابی روی
       //    سرورِ dev که کوکیِ نشستِ واقعی دارد.

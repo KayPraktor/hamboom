@@ -5,6 +5,7 @@ import { LoginPage } from "./auth/LoginPage.tsx";
 import { RequireAuth } from "./auth/RequireAuth.tsx";
 import { RequireStaff } from "./auth/RequireStaff.tsx";
 import { PaymentResultPage } from "./billing/PaymentResultPage.tsx";
+import { TransferPage } from "./billing/TransferPage.tsx";
 import { PricingPage } from "./billing/PricingPage.tsx";
 import { TeamBillingPage } from "./billing/TeamBillingPage.tsx";
 import { BoardPage } from "./board/BoardPage.tsx";
@@ -102,6 +103,23 @@ const paymentResultRoute = createRoute({
   //    دسترسی فقط در حافظه بوده. با گارد، کاربر پیش از بازسازیِ نشست به `/login` می‌پرد و
   //    فکر می‌کند پولش گم شده. تسویه هم این‌جا انجام نمی‌شود — سرور قبلاً کرده.
   component: PaymentResultPage,
+});
+
+/**
+ * ★ صفحه‌ی کارت‌به‌کارت (ADR-070) — زیرِ `/payment`، **نه** `/billing`.
+ *
+ * ⚠️ `RequireAuth` **دارد**، برخلافِ `/payment/result`: این‌جا بارگذاریِ سرد نیست (کاربر از
+ * همین اپ به این‌جا آمده) و خودِ endpoint هم عضویتِ `owner` را می‌خواهد. بدونِ گارد، کاربرِ
+ * بی‌نشست یک ۴۰۱ی خام می‌دید به‌جای صفحه‌ی ورود.
+ */
+const transferRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/payment/transfer/$authority",
+  component: () => (
+    <RequireAuth>
+      <TransferPage />
+    </RequireAuth>
+  ),
 });
 
 const inviteRoute = createRoute({
@@ -246,6 +264,7 @@ const routeTree = rootRoute.addChildren([
   pricingRoute,
   teamBillingRoute,
   paymentResultRoute,
+  transferRoute,
   panelRoute.addChildren([
     panelIndexRoute,
     panelAuditRoute,

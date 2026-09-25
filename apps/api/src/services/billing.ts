@@ -418,6 +418,14 @@ export interface CheckoutInput {
   vatPercent: number;
   gatewayName: string;
   gatewayMode: string;
+  /**
+   * ★★ عکسِ آنچه در لحظه‌ی صدور **به کاربر نشان داده شد** — امروز فقط مقصدِ کارت‌به‌کارت
+   * (ADR-070). صرفاً **شاهد** است: `readIntent` نمی‌خواندش و هیچ تصمیمی رویش بنا نمی‌شود.
+   *
+   * ⚠️ دلیلش دعوا است، نه فنی: اگر مالک فردا شماره‌ی کارت را عوض کند، پرونده باید بگوید
+   * دیروز به **این مشتری** کدام شماره اعلام شده بود. بدونش، هیچ‌کس نمی‌تواند ثابتش کند.
+   */
+  gatewaySnapshot?: Record<string, string | null> | undefined;
 }
 
 export interface CheckoutDraft {
@@ -590,7 +598,13 @@ export async function createCheckout(
       input.gatewayMode,
       charge.totalRial,
       idempotencyKey,
-      JSON.stringify(intent),
+      // ⊕ عکس **کنارِ** نیّت می‌نشیند، نه داخلش: `readIntent` فقط کلیدهای شناخته‌شده را
+      //   برمی‌دارد، پس افزودنش هیچ مسیرِ موجودی را لمس نمی‌کند.
+      JSON.stringify(
+        input.gatewaySnapshot === undefined
+          ? intent
+          : { ...intent, gatewaySnapshot: input.gatewaySnapshot },
+      ),
     ],
   );
 

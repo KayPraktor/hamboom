@@ -53,6 +53,12 @@ export {
   subscription,
   invoiceLineItem,
   invoice,
+  // M6 — کارت‌به‌کارت (ADR-070)
+  transferDestination,
+  transferStateValues,
+  transferState,
+  transferInstructions,
+  transferClaimRequest,
 } from "./billing.ts";
 export type {
   SubscriptionStatus,
@@ -66,6 +72,10 @@ export type {
   Subscription,
   InvoiceLineItem,
   Invoice,
+  TransferDestination,
+  TransferState,
+  TransferInstructions,
+  TransferClaimRequest,
 } from "./billing.ts";
 
 export { apiErrorCodes, apiErrorCode, apiError } from "./error.ts";
@@ -108,6 +118,9 @@ export {
   systemCheck,
   systemStatus,
   adminFeatureFlag,
+  // کارت‌به‌کارت (ADR-070)
+  adminTransferView,
+  transferApproveRequest,
 } from "./admin.ts";
 export type {
   AdminMe,
@@ -143,6 +156,8 @@ export type {
   SystemCheck,
   SystemStatus,
   AdminFeatureFlag,
+  AdminTransferView,
+  TransferApproveRequest,
 } from "./admin.ts";
 
 export { rtTokenClaims } from "./rt-token.ts";

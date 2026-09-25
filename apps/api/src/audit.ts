@@ -52,7 +52,11 @@ export type AuditAction =
   | "payment.expire"
   | "payment.refund"
   | "payment.adopt"
-  | "payment.reconcile";
+  | "payment.reconcile"
+  // کارت‌به‌کارت (ADR-070) — ★★ **تنها جهشِ ادمینی که مستقیماً پول را به سرویس تبدیل می‌کند
+  //   بدونِ اینکه هیچ طرفِ سومی تاییدش کرده باشد.** پس ردیفِ ممیزی‌اش شماره‌ی مرجعِ بانک و
+  //   مبلغِ مشاهده‌شده را هم نگه می‌دارد، نه فقط «چه کسی و کِی».
+  | "payment.approveTransfer";
 
 /** نوعِ هدفِ عمل — ستونِ `target_type`؛ `target_id` شناسه‌ی همان جدول است. */
 export type AuditTargetType = "user" | "team" | "board" | "payment" | "subscription" | "staff";

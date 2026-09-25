@@ -15,6 +15,7 @@ import {
   refundRequest,
   stepUpVerifyRequest,
   suspendRequest,
+  transferApproveRequest,
   type AdminMe,
   type AdminPaymentDetail,
   type AdminPaymentSummary,
@@ -62,6 +63,7 @@ import {
   settleLocked,
   settlePayment,
 } from "../services/billing.ts";
+import { approveTransfer, type CardTransferSettings } from "../services/card-transfer.ts";
 import { applyExpiry, runReconcile, type ReconcilePolicy } from "../services/reconcile.ts";
 import {
   classifyQuery,
@@ -131,6 +133,8 @@ export interface AdminPaymentRouteDeps {
   gateway: PaymentGateway;
   /** سیاستِ آشتی‌دهی از config — `expireAfterMs` سقفِ نردبانِ انقضای دستی هم هست. */
   reconcilePolicy: ReconcilePolicy;
+  /** تنظیماتِ کارت‌به‌کارت، یا `null` وقتی provider چیزِ دیگری است (ADR-070). */
+  transfer: CardTransferSettings | null;
 }
 
 const STEP_UP_PURPOSE = "admin_step_up" as const;
@@ -614,6 +618,43 @@ export function registerAdminPaymentRoutes(app: FastifyInstance, deps: AdminPaym
   );
 
   // ── استرداد: تنها نویسنده‌ی `refunded`، با audit در همان تراکنش ──
+  // ── ★★ تاییدِ واریزِ کارت‌به‌کارت (ADR-070) ─────────────────────────
+  //
+  // ★ **این تنها جهشِ ادمینی است که پول را بدونِ هیچ طرفِ سومی به سرویس تبدیل می‌کند.** پس
+  //   پشتِ `stepUp` است (مثلِ استرداد و تعلیق) و ردیفِ ممیزی‌اش شماره‌ی مرجعِ بانک را هم دارد.
+  //
+  // ⊕ چرا این‌جا و نه یک `payment.verify`ِ ساده: verify درگاه را می‌پرسد، و درگاهِ انتقال تا
+  //   وقتی staff چیزی ننوشته «نمی‌دانم» می‌گوید. نوشتنِ همان چیز **کارِ این مسیر** است — و
+  //   بعدش همان `settleLocked`ِ همیشگی فعال‌سازی می‌کند، نه یک مسیرِ دوم (ADR-055).
+  app.post(
+    "/admin/payments/:id/approve-transfer",
+    { preHandler: stepUp, config: audited("payment.approveTransfer") },
+    async (req): Promise<PaymentActionResult> => {
+      const id = paymentIdParam(req);
+      const settings = deps.transfer;
+      if (settings === null) {
+        throw new HttpError(409, "INVALID_TRANSITION", "این نصب پرداختِ کارت‌به‌کارت ندارد.");
+      }
+      const body = parseBody(transferApproveRequest, req.body);
+      const outcome = await withTransaction(deps.pool, async (tx) =>
+        approveTransfer(
+          tx,
+          { settings, actor: auditActor(req) },
+          {
+            paymentId: id,
+            ref: body.ref,
+            last4: body.last4,
+            observedAmountRial: body.observedAmountRial,
+            note: body.note,
+          },
+        ),
+      );
+      const message =
+        outcome.kind === "notPaid" || outcome.kind === "unknown" ? outcome.message : null;
+      return { outcome: outcome.kind, message, payment: await summaryAfter(deps.pool, id) };
+    },
+  );
+
   app.post(
     "/admin/payments/:id/refund",
     { preHandler: stepUp, config: audited("payment.refund") },

@@ -151,3 +151,64 @@ export const invoice = z.object({
   lineItems: z.array(invoiceLineItem),
 });
 export type Invoice = z.infer<typeof invoice>;
+
+// ── ★★ کارت‌به‌کارت/شبا با تاییدِ دستی ([ADR-070](../../../../ARCHITECTURE_DECISIONS.md#adr-070)) ──
+
+/**
+ * مقصدِ واریز، همان‌طور که به کاربر نشان داده می‌شود.
+ *
+ * ⚠️ **این‌ها راز نیستند** (هر مشتری می‌بیندشان) ولی از سرور می‌آیند و هرگز در باندل نمی‌نشینند:
+ * عوض‌کردنشان نباید build بخواهد. `holderName` تزئینی نیست — تنها چیزی است که کاربر **پیش از**
+ * زدنِ دکمه‌ی واریز با اپِ بانکش تطبیق می‌دهد.
+ */
+export const transferDestination = z.object({
+  /** ۱۶ رقم، بدونِ جداکننده؛ `null` اگر فقط شبا اعلام شده. */
+  card: z.string().nullable(),
+  /** `IR` + ۲۴ رقم؛ `null` اگر فقط کارت اعلام شده. */
+  sheba: z.string().nullable(),
+  holderName: z.string(),
+  bankName: z.string().nullable(),
+});
+export type TransferDestination = z.infer<typeof transferDestination>;
+
+/**
+ * وضعیتِ یک واریزِ کارت‌به‌کارت از دیدِ **کاربر**.
+ *
+ * ⚠️ عمداً `failed` ندارد: تا وقتی staff نگاه نکرده، «نشد» یک ادعای بی‌پشتوانه است. چیزی که
+ * کاربر می‌بیند یا «منتظرِ واریزِ توست»، یا «اعلام کردی و منتظرِ بررسی‌ایم»، یا «تایید شد»، یا
+ * «مهلت گذشت» — و آخری هم با یک ادعای دیررس هنوز نجات‌پذیر است (ADR-056).
+ */
+export const transferStateValues = ["awaiting", "claimed", "approved", "expired"] as const;
+export const transferState = z.enum(transferStateValues);
+export type TransferState = z.infer<typeof transferState>;
+
+/** پاسخِ `GET /billing/transfer/:authority` — همه‌چیزِ صفحه‌ی «این مبلغ را به این کارت بریز». */
+export const transferInstructions = z.object({
+  paymentId: uuid,
+  invoiceNumber: z.string(),
+  amountRial: rial,
+  destination: transferDestination,
+  state: transferState,
+  /** پایانِ مهلتِ اعلامِ واریز — بعدش ردیف «رهاشده» شمرده می‌شود (ولی ادعای دیررس هنوز ممکن است). */
+  claimDeadline: isoDateTime,
+  /** شماره‌ای که **خودِ کاربر** ثبت کرده؛ `null` تا وقتی ثبت نکرده. */
+  claimedRef: z.string().nullable(),
+  claimedAt: isoDateTime.nullable(),
+});
+export type TransferInstructions = z.infer<typeof transferInstructions>;
+
+/**
+ * بدنه‌ی `POST /billing/transfer/:authority/claim`.
+ *
+ * ⊕ `last4` اختیاری است و فقط پیداکردنِ واریز در صورت‌حساب را برای اپراتور آسان می‌کند؛
+ * هیچ تصمیمی رویش بنا نمی‌شود.
+ */
+export const transferClaimRequest = z.object({
+  ref: z.string().trim().min(4).max(80),
+  last4: z
+    .string()
+    .regex(/^\d{4}$/)
+    .nullable()
+    .default(null),
+});
+export type TransferClaimRequest = z.infer<typeof transferClaimRequest>;

@@ -206,6 +206,42 @@ export const adminPaymentQuery = pageQuery.extend({
 });
 export type AdminPaymentQuery = z.infer<typeof adminPaymentQuery>;
 
+/**
+ * ★★ دو سمتِ یک واریزِ کارت‌به‌کارت، **جدا از هم** (ADR-070).
+ *
+ * `claimed*` آن چیزی است که **کاربر تایپ کرد**؛ `ref`/`senderLast4` آن چیزی که **staff در
+ * صورت‌حسابِ بانک دید**. یکی‌کردنشان در رابط همان اشتباهی است که در دیتابیس نکردیم: اگر این
+ * دو نخوانند، **خودِ اختلاف** سیگنالِ تقلب است و اپراتور باید ببیندش.
+ */
+export const adminTransferView = z.object({
+  claimedRef: z.string().nullable(),
+  claimedLast4: z.string().nullable(),
+  claimedAt: isoDateTime.nullable(),
+  ref: z.string().nullable(),
+  senderLast4: z.string().nullable(),
+  approvedBy: uuid.nullable(),
+  approvedAt: isoDateTime.nullable(),
+});
+export type AdminTransferView = z.infer<typeof adminTransferView>;
+
+/**
+ * بدنه‌ی `POST /admin/payments/:id/approve-transfer` (ADR-070).
+ *
+ * ★★ `observedAmountRial` اجباری است و **حذف‌شدنی نیست**: تنها چیزی است که ماشین می‌تواند
+ * بسنجد. بدونش، تنها نگهبانِ «۱۰ هزار تومان ریختم، پلنِ تیم را بده» چشمِ اپراتورِ خسته است.
+ */
+export const transferApproveRequest = z.object({
+  ref: z.string().trim().min(4).max(80),
+  last4: z
+    .string()
+    .regex(/^\d{4}$/)
+    .nullable()
+    .default(null),
+  observedAmountRial: rial,
+  note: z.string().trim().max(200).nullable().default(null),
+});
+export type TransferApproveRequest = z.infer<typeof transferApproveRequest>;
+
 /** یک پرداخت در فهرستِ پنل. ⚠️ عمداً بدونِ `cardPanMasked`/payloadها — آن‌ها فقط در جزئیات. */
 export const adminPaymentSummary = z.object({
   id: uuid,
@@ -249,6 +285,8 @@ export const adminPaymentDetail = adminPaymentSummary.extend({
   /** اشتراکی که `activated_by_payment_id` به همین پرداخت اشاره می‌کند — هدفِ استرداد؛ `null` اگر هیچ. */
   subscription: subscription.nullable(),
   expireBlocked: z.string().nullable(),
+  /** ★ فقط روی ردیفِ `card_transfer` پر است (ADR-070)؛ برای بقیه‌ی درگاه‌ها `null`. */
+  transfer: adminTransferView.nullable(),
 });
 export type AdminPaymentDetail = z.infer<typeof adminPaymentDetail>;
 
