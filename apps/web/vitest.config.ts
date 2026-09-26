@@ -11,6 +11,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react()],
   test: {
+    // ★★ **فقط تست‌های واحدِ `src/`.** بدونِ این، vitest فایل‌های `e2e/*.spec.ts`ِ
+    //    playwright را هم برمی‌دارد و گیتِ `test`ِ verify روی چیزی قرمز می‌شود که اصلاً مالِ
+    //    او نیست (دیده شد، ردیفِ ۸٫۱). قرینه‌ی `include`ِ `canvas-sync`.
+    include: ["src/**/*.test.{ts,tsx}"],
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test-setup.ts"],

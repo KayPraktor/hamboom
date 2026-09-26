@@ -130,6 +130,9 @@ node --env-file-if-exists=.env scripts/ci-wait-services.mjs   # انتظارِ �
 # ★ E2Eِ مرورگر (بیرون از pnpm verify — مرورگر لازم دارند)
 pnpm --filter @hamboom/canvas-sync test:e2e          # ۲۸ تست، بدونِ داکر
 pnpm --filter @hamboom/canvas-sync test:e2e:server   # گام ۶٫۱ — ★ داکر لازم دارد
+pnpm --filter @hamboom/web test:e2e                  # ★★ M6 ۸٫۱: پنلِ ادمین روی استکِ **واقعی** —
+#   دو webServer (api+web) را خودش بالا می‌آورد؛ Postgres باید بالا باشد. فیکسچرها از خودِ api،
+#   پرچمِ staff از `admin:grant-staff`، شماره‌ی تازه در هر اجرا + پاک‌سازیِ کامل ⇒ دوباره‌اجراپذیر
 ```
 
 ⚠️ **این هفت `skip` نمی‌شوند و نباید بشوند.** هر کدام باگی گرفتند که همه‌ی
@@ -709,7 +712,8 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   **PLAN Q4: حقیقی یا حقوقی؟** · **`RATE_LIMIT_OTP_MAX`ِ تولیدی** (۵/دقیقه/IP زیرِ CGNAT تنگ است) ·
   عددِ `--prune` در cronِ پشتیبان (۱۴ پیش‌فرضِ سند است، نه سیاست) ·
   متنِ «۳۰ روز» در نمای سطلِ `apps/web` (M3).
-  ✅ **VPS و گواهی بسته شدند** (۱۴۰۵/۰۷/۰۳): آروان + certbot روی خودِ nginx.
+  ✅ **VPS و گواهی بسته شدند** (۱۴۰۵/۰۷/۰۳): آروان + certbot روی خودِ nginx؛ و **فایروال تایید شد**
+  (۱۴۰۵/۰۷/۰۴، مالک): فقط ۲۲/۸۰/۴۴۳. ⏳ تنها بازمانده‌ی عملیاتی: **دیدنِ اولین اجرای cron**.
   ✅ M5-D9 بسته شد: **۳۰ روز** (`TRASH_RETENTION_DAYS`).
 
 - **★★ M4 (`billing`) تمام و تحویل شد** (۱۴۰۵/۰۶/۱۵) — فاز ۰ تا ۱۰. TODO در

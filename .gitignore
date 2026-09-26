@@ -58,3 +58,7 @@ scratch/
 
 # snapshotهای محلیِ FsSnapshotStore (D-3) — داده‌ی توسعه، نه سورس
 .hamboom/
+
+# ★ فیکسچرهای E2Eِ پنل (M6 ردیفِ ۸٫۱) — هر اجرا از نو ساخته می‌شود
+apps/web/e2e/.fixtures.json
+playwright-report/
