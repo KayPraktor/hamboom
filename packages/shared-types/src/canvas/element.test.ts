@@ -260,3 +260,28 @@ describe("hbAppState", () => {
     expect(hbAppState.parse(state).gridSize).toBeNull();
   });
 });
+
+/**
+ * ★★ عنصرِ **embeddable** (ویدیو/توییت/فیگما) به مدلِ سند راه ندارد — M6 ردیفِ ۸٫۴.
+ *
+ * موتورِ excalidraw با **چسباندنِ** یک لینکِ یوتیوب/ویمیو یک عنصرِ `embeddable` می‌سازد که
+ * رندرش یک `<iframe src="https://…">` است. اتحادِ `hbElement` آن نوع را ندارد، و
+ * [`apps/realtime`](../../../../apps/realtime/src/room.ts) هر عنصرِ ردشده را **قرنطینه** می‌کند
+ * (از سند حذف + لاگ). پس هیچ مرورگرِ **همتایی** هرگز آن میزبان را صدا نمی‌زند.
+ *
+ * ⚠️ این تست همان تضمین را قفل می‌کند: اگر روزی کسی `embeddable` را به اتحاد اضافه کند،
+ * این‌جا قرمز می‌شود و یادش می‌آید که آن تغییر یک **سرویسِ خارجیِ runtime** را وارد P2 می‌کند.
+ */
+describe("★★ embeddable رد می‌شود (P2 — ردیفِ ۸٫۴)", () => {
+  it("نوعِ embeddable در اتحادِ hbElement نیست", () => {
+    const embeddable = { ...base("shape"), type: "embeddable", link: "https://youtu.be/abc" };
+    const parsed = hbElement.safeParse(embeddable);
+    expect(parsed.success).toBe(false);
+  });
+
+  it("⊕ و همان شکل با نوعِ مجاز پذیرفته می‌شود — پس رد‌شدن مالِ **نوع** است، نه بقیه‌ی فیلدها", () => {
+    // ★ بدونِ این کنترل، تستِ بالا می‌توانست به هر دلیلِ دیگری قرمز باشد و ما نفهمیم.
+    const ok = { ...base("shape"), type: "rectangle" as const, link: "https://youtu.be/abc" };
+    expect(hbElement.safeParse(ok).success).toBe(true);
+  });
+});
