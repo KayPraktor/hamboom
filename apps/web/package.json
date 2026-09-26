@@ -16,7 +16,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:p2": "playwright test -c playwright.p2.config.ts"
   },
   "dependencies": {
     "@fontsource-variable/vazirmatn": "5.3.0",
