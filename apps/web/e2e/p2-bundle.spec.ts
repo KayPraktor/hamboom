@@ -1,7 +1,8 @@
-import { execFileSync } from "node:child_process";
 import { randomInt } from "node:crypto";
 
 import { expect, test } from "@playwright/test";
+
+import { codeFromLog, compose } from "./compose.ts";
 
 /**
  * P2 روی **باندلِ واقعی، پشتِ nginxِ واقعی** — M6 ردیفِ ۸٫۳.
@@ -13,12 +14,16 @@ import { expect, test } from "@playwright/test";
  * [`playwright.server.config.ts`ِ canvas-sync](../../../packages/canvas-sync/playwright.server.config.ts).
  * نبودنش یعنی **شکست**، نه skipِ خاموش. رویه در PROGRESS (ردیفِ ۸٫۳).
  *
- * ⚠️⚠️ **محدودیتِ این محیط، صریح:** مرورگرِ این sandbox **egress ندارد** و درخواست به یک
- * میزبانِ واقعاً خارجی حتی رویدادِ `request` هم تولید نمی‌کند (آزموده شد). پس این probe به‌تنهایی
- * نمی‌تواند «اپ هیچ تماسی نمی‌گیرد» را از «شبکه همه را می‌بندد» تفکیک کند — برای میزبانِ
- * **غیرقابلِ‌دسترس**. ⇒ گیتِ دائمیِ [`check-p2.ts`](../../../scripts/check-p2.ts) روی **سورس** جای
- * این شکاف را پر می‌کند، و ابزارِ این فایل با یک مبدأِ **قابلِ دسترسِ متفاوت** اعتبارسنجی شد
- * (`http://127.0.0.1:15402` گرفته شد و تست قرمز شد) — یعنی خودِ سنجه کور نیست، فقط شبکه است.
+ * ⚠️⚠️ **محدودیتی که این‌جا ثبت شده بود، در ردیفِ ۸٫۵ دوباره سنجیده شد و دیگر برقرار نیست.**
+ * نوشته بودم «مرورگرِ این sandbox egress ندارد، پس نمی‌شود «تماس نگرفت» را از «شبکه بست»
+ * تفکیک کرد». اندازه‌گیریِ دوباره (۱۴۰۵/۰۷/۰۷) خلافش را نشان داد: یک `fetch`ِ عمدی به
+ * `https://example.com/` پاسخِ **opaque** با **۹۹۹ms** و یک entryِ واقعی در resource timing داد.
+ * ⇒ ابزار **می‌تواند** تماسِ خارجی را ببیند، و اپ هیچ تماسی نمی‌گیرد. کنترلِ مثبتِ دومی هم در
+ * ۸٫۵ آمد: روی یک بوردِ واقعی، ۲۳۰ نشانیِ فونتِ `esm.sh` فقط **اعلام** می‌شوند و هیچ‌کدام fetch
+ * نمی‌شوند (هر ۲۳۰ با `duration=0` و `transferSize=0`).
+ * ⊕ گیتِ دائمیِ [`check-p2.ts`](../../../scripts/check-p2.ts) روی **سورس** سرِ جایش می‌مانَد، و
+ * ابزارِ این فایل با یک مبدأِ **قابلِ دسترسِ متفاوت** هم اعتبارسنجی شد (`http://127.0.0.1:15402`
+ * گرفته شد و تست قرمز شد).
  *
  * ★★ **و ادعا «صفر رشته‌ی میزبان در باندل» نیست** — آن ادعا غلط است و اندازه‌گیری‌اش هم شد:
  * باندلِ ساخته‌شده ۳۷ میزبانِ غیرِ لوکال **به‌عنوانِ رشته** دارد (namespaceِ XML، متنِ لایسنس،
@@ -27,37 +32,6 @@ import { expect, test } from "@playwright/test";
  */
 
 const BASE = process.env.E2E_WEB_URL ?? "http://localhost";
-const PROJECT = process.env.E2E_COMPOSE_PROJECT ?? "hamboom-p2";
-// ⚠️ `compose run` هم `--env-file` می‌خواهد، نه فقط `up` — وگرنه همه‌ی متغیرها خالی می‌روند
-//    و اسکریپت با یک خطای مبهم می‌افتد (دیده شد).
-const ENV_FILE = process.env.E2E_COMPOSE_ENV_FILE;
-const COMPOSE = [
-  "-f",
-  "infra/docker/docker-compose.prod.yml",
-  ...(ENV_FILE === undefined ? [] : ["--env-file", ENV_FILE]),
-  "-p",
-  PROJECT,
-];
-const ROOT = new URL("../../..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
-
-const compose = (...args: string[]): string =>
-  execFileSync("docker", ["compose", ...COMPOSE, ...args], { cwd: ROOT, encoding: "utf8" });
-
-/**
- * ★★ کدِ ورود از **لاگِ providerِ mock** خوانده می‌شود، نه از `OTP_DEV_FIXED_CODE`.
- *
- * ⚠️ دلیلش یک واقعیتِ ثبت‌شده است: compose متغیرهای **dev-only** را به کانتینر نمی‌دهد و
- * گاردِ بوتِ production هم وجودشان را تخلف می‌شمارد (M5 فاز ۴). پس در یک استکِ production-mode
- * کدِ ثابت وجود ندارد — و چاپِ کد در لاگ **فقط** خاصیتِ `mock` است (P7)، همان چیزی که
- * `SMS_PROVIDER=smsir` آن را هم می‌بندد.
- */
-const codeFromLog = (): string => {
-  const log = compose("logs", "--tail=80", "api");
-  const hits = [...log.matchAll(/کدِ ورود (\d{6})/g)];
-  const last = hits.at(-1);
-  if (last === undefined) throw new Error("کدِ mock در لاگِ api پیدا نشد");
-  return last[1]!;
-};
 
 test("★★ chunkِ پنل روی باندلِ واقعی: صفر درخواستِ غیرِ هم‌مبدأ", async ({ page }) => {
   const phone = `0912${String(randomInt(1_000_000, 9_999_999))}`;
@@ -132,4 +106,15 @@ test("★★ chunkِ پنل روی باندلِ واقعی: صفر درخواس�
   );
   expect(foreign, `درخواستِ غیرِ هم‌مبدأ: ${JSON.stringify(foreign)}`).toEqual([]);
   expect(origins.get(expected) ?? 0).toBeGreaterThan(10);
+
+  // ── ★★ کنترلِ مثبت — **بعد از** ادعای بالا، چون عمداً یک مبدأ اضافه می‌کند ──
+  //
+  // «صفر درخواستِ خارجی» تا وقتی نشان ندهی ابزار **می‌توانست** ببیند، یک ادعای پوچ است. این
+  // چند خط یک تماسِ خارجیِ عمدی می‌زند و انتظار دارد در همان شمارنده بنشیند. اگر روزی شبکه
+  // بسته باشد این ادعا قرمز می‌شود — و **همان درست است**: آن روز این فایل حق ندارد بگوید
+  // «اپ تماسِ خارجی نمی‌گیرد»، چون اصلاً نمی‌توانسته ببیند.
+  await page.evaluate(() => fetch("https://example.com/", { mode: "no-cors" }).catch(() => null));
+  await expect
+    .poll(() => origins.has("https://example.com"), { timeout: 20_000 })
+    .toBe(true);
 });

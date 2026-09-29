@@ -230,6 +230,10 @@ pnpm --filter @hamboom/web typecheck
 pnpm --filter @hamboom/web lint
 pnpm --filter @hamboom/web test
 pnpm --filter @hamboom/web build       # tsc --noEmit سپس vite build
+
+# ★★ E2Eهای فاز ۸ — هر دو **استکِ productionِ محلی** را از قبل بالا می‌خواهند (خودشان بالا نمی‌آورند)
+pnpm --filter @hamboom/web test:e2e:p2  # ۸٫۳ — P2 روی باندلِ ساخته‌شده پشتِ nginx + کنترلِ مثبت
+pnpm --filter @hamboom/web test:e2e:csp # ۸٫۵ — اندازه‌گیریِ CSP: ۹ پالیسی، دو کنترل، یک خودآزمون
 ```
 
 > **پورتِ dev = 15380** (بیرونِ بازه‌ی dynamic portِ ویندوز؛ مثلِ canvas-core=15180،

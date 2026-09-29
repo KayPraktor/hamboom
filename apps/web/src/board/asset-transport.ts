@@ -1,4 +1,5 @@
 import type { AssetTransport } from "@hamboom/canvas-sync";
+import { SdkError } from "@hamboom/sdk";
 import {
   HB_ALLOWED_IMAGE_MIME,
   type HbAllowedImageMime,
@@ -82,7 +83,25 @@ export function createApiAssetTransport({
       // به CORS/taintِ Object Storage (برای export فاز بعد هم مهم).
       try {
         return await blobToDataUrl(await api.assets.resolveBlob(fileId));
-      } catch {
+      } catch (e) {
+        // ★★ **صدا در نمی‌آید ≠ اشکالی نیست** (M6 ردیفِ ۸٫۶).
+        //
+        // ⚠️ این `catch` عمداً خطا را نمی‌اندازد (مسیرِ رندر است و placeholder باید بمانَد) — ولی
+        //    نگارشِ اولش **کاملاً خاموش** بود، و نتیجه‌اش در اولین استقرارِ واقعی این شد: تصویر
+        //    آپلود می‌شد، روی بوم نمی‌آمد، و **نه لاگِ api چیزی داشت نه کنسولِ مرورگر** — یعنی
+        //    باگی که از بیرون اصلاً قابلِ تشخیص نبود. حالا دلیلش را می‌گوید، بی‌آنکه رفتار عوض شود.
+        //
+        // سه علتِ قابلِ تفکیک، و هرکدام این‌جا شکلِ خودش را دارد:
+        //   • `SdkError` با ۴۰۴ ⇒ ردیفِ `files` هنوز `ready` نیست (commit نشده/خورده) — مالِ **ما**.
+        //   • `SdkError` با ۴۰۳/۴۰۱ ⇒ دسترسیِ بورد.
+        //   • `TypeError`ِ «Failed to fetch» ⇒ خودِ **انبار**: پاسخِ ری‌دایرکت CORS نداشت یا مسدود شد.
+        //   • هر چیزِ دیگر با status ⇒ انبار پاسخِ ناموفق داد (مثلاً امضای presign-GET).
+        // ⊕ P7: `fileId` یک UUIDِ بی‌معناست، نه PII.
+        const reason =
+          e instanceof SdkError
+            ? `api ${String(e.status)} ${e.code}`
+            : `${e instanceof Error ? e.name : "unknown"}: ${e instanceof Error ? e.message : String(e)}`;
+        console.error(`‏[hamboom] بایتِ تصویر ${fileId} خوانده نشد — ${reason}`);
         return "";
       }
     },
