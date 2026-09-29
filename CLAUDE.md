@@ -132,6 +132,7 @@ pnpm --filter @hamboom/canvas-sync test:e2e          # ۲۸ تست، بدونِ 
 pnpm --filter @hamboom/canvas-sync test:e2e:server   # گام ۶٫۱ — ★ داکر لازم دارد
 pnpm --filter @hamboom/web test:e2e:p2               # ★★ M6 ۸٫۳: P2 روی **باندلِ ساخته‌شده** پشتِ nginx (استکِ prodِ محلی لازم)
 pnpm --filter @hamboom/web test:e2e:csp              # ★★ M6 ۸٫۵: اندازه‌گیریِ CSP — ۹ پالیسی، دو کنترل، یک خودآزمون (همان استک)
+pnpm --filter @hamboom/web test:e2e:assets           # ★★ M6 ۸٫۶: زنجیره‌ی تصویر روی باندلِ واقعی — چهار حلقه + شکستنِ عمدی
 pnpm --filter @hamboom/web test:e2e                  # ★★ M6 ۸٫۱: پنلِ ادمین روی استکِ **واقعی** —
 #   دو webServer (api+web) را خودش بالا می‌آورد؛ Postgres باید بالا باشد. فیکسچرها از خودِ api،
 #   پرچمِ staff از `admin:grant-staff`، شماره‌ی تازه در هر اجرا + پاک‌سازیِ کامل ⇒ دوباره‌اجراپذیر
@@ -306,9 +307,11 @@ node scripts/verify.mjs > verify.log 2>&1; grep -ic "out of memory" verify.log; 
   `connect-src 'self'` وب‌سوکتِ هم‌مبدأ را می‌پذیرد؛ `'unsafe-eval'` لازم نیست. ⚠️ `font-src 'self'` کار می‌کند ولی
   **۲۳۰ تخلف در هر بورد** (fallbackِ `esm.sh`ِ خودِ excalidraw — که هیچ‌کدام fetch **نمی‌شوند**: `duration=0`). سند در
   [`security-headers.conf`](infra/nginx/security-headers.conf)؛ **enforce نشد** (تصمیمِ ردیف).
-  ◑ **۸٫۶ — باگِ تصویر:** سه نامزد با اندازه‌گیری **حذف** شد (ری‌دایرکتِ بین‌مبدأ `Origin`ِ واقعی می‌فرستد نه `null` ·
-  CORSِ باکتِ آروان روی `GET`ِ **واقعی** هم هست · `/assets` درست پروکسی می‌شود) و **سکوتِ `resolve` رفع شد**
-  (`catch {}`ِ خاموش ⇒ حالا علت را چاپ می‌کند؛ ۳ تستِ واحد). ⏳ مانده: یک بازِ زنده + یک `SELECT status FROM files` روی VM.
+  ◑ **۸٫۶ — باگِ تصویر:** **چهار** نامزد با اندازه‌گیری حذف شد (ری‌دایرکتِ بین‌مبدأ `Origin`ِ واقعی می‌فرستد نه `null` ·
+  CORSِ باکتِ آروان روی `GET`ِ **واقعی** هم هست · `/assets` درست پروکسی می‌شود · و کلِ زنجیره روی **باندلِ production**
+  سبز است: presign ۲۰۰ / آپلود ۲۰۴ / commit ۲۰۰ / `GET` **۳۰۲** / بایت‌ها **۲۰۰**) و **سکوتِ `resolve` رفع شد**
+  (`catch {}`ِ خاموش ⇒ حالا علت را چاپ می‌کند؛ ۳ تستِ واحد + شکستنِ عمدیِ دائمی در E2E).
+  ⏳ مانده: یک بازِ زنده با کنسولِ باز + یک `SELECT status FROM files` روی VM — جدولِ تصمیم در PROGRESS.
   ⚠️⚠️ **فاز ۸ نُه سبزِ دروغینِ خودم را گرفت** (جدول‌ها در [PROGRESS](PROGRESS-M6-admin.md) §فاز ۸) — بیش از هر فازِ دیگری در این ریپو؛
   سه‌تای آخر همه در **خودِ ابزارِ ۸٫۵** بودند.
   ★ و ADR-070 (کارت‌به‌کارت) **پذیرفته و پیاده** شد؛ `PAYMENT_PROVIDER` عمداً هنوز `mock` است.
