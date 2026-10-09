@@ -229,23 +229,38 @@ export async function restoreAndVerify(input: RestoreInput): Promise<StorageChec
         );
       }
     }
+    // ★★ کاتالوگِ تهی در برابرِ آینه‌ی ناتهی = «از دیتابیسِ اشتباه پرسیدیم»، نه «همه‌چیز سالم است».
+    //
+    // ⚠️ این شاخه یک **سبزِ دروغین** بود و فقط با اجرای واقعیِ رویه‌ی RUNBOOK روی یک حادثه‌ی ترکیبی
+    //    (دیتابیس **و** باکت با هم رفته) پیدا شد (M6 ۹٫۲): `--to-live` بدونِ `--database` کاتالوگ را از
+    //    دیتابیسِ **خراب** می‌خوانَد؛ صفر ردیف ⇒ «۰ ردیف، همه با بایت» و «۰ سند بازخوانی شد»، هر دو ✔.
+    //    یعنی دقیقاً چکی که باید جفتِ ناهم‌خوانِ dump↔آینه را بگیرد، وقتی بیشترین نیاز به آن هست
+    //    هیچ‌چیز را نمی‌سنجید. همان قاعده‌ی چکِ `vacuous`، یک لایه پایین‌تر: «هیچ» اثبات نیست.
+    const emptyCatalog = inScope.length === 0 && entries.length > 0;
+    const emptyCatalogDetail =
+      `مانیفست ${String(entries.length)} شیء برای این باکت دارد ولی دیتابیسی که کاتالوگ از آن خوانده شد ` +
+      "**هیچ** snapshotی نمی‌شناسد — دیتابیسِ اشتباه؟ اگر دیتابیس هم بازیابی شده: --database=hamboom_restore_drill";
     add(
       "catalog",
       "★ هر snapshotی که دیتابیس می‌شناسد، در مقصد بایت دارد",
-      noBytes.length === 0,
-      noBytes.length === 0
-        ? `${String(inScope.length)} ردیف، همه با بایت`
-        : `${String(noBytes.length)} ردیف بی‌بایت: ${noBytes.slice(0, 3).join("، ")} — کلیدی که dump می‌شناسد و آینه ندیده`,
+      noBytes.length === 0 && !emptyCatalog,
+      emptyCatalog
+        ? emptyCatalogDetail
+        : noBytes.length === 0
+          ? `${String(inScope.length)} ردیف، همه با بایت`
+          : `${String(noBytes.length)} ردیف بی‌بایت: ${noBytes.slice(0, 3).join("، ")} — کلیدی که dump می‌شناسد و آینه ندیده`,
     );
     add(
       "opens",
       "★ بایت‌های هر snapshot یک Y.Docِ معتبر با همان state vectorِ ردیف می‌سازند",
-      badDoc.length === 0 && noBytes.length === 0,
-      badDoc.length === 0 && noBytes.length === 0
-        ? `${String(inScope.length)} سند بازخوانی شد`
-        : badDoc.length === 0
-          ? "به‌خاطرِ ردیف‌های بی‌بایت سنجیده نشد"
-          : `${String(badDoc.length)} سندِ خراب: ${badDoc.slice(0, 3).join(" · ")}`,
+      badDoc.length === 0 && noBytes.length === 0 && !emptyCatalog,
+      emptyCatalog
+        ? "هیچ ردیفی نبود که بازخوانی شود — «صفر سند» چیزی را اثبات نمی‌کند"
+        : badDoc.length === 0 && noBytes.length === 0
+          ? `${String(inScope.length)} سند بازخوانی شد`
+          : badDoc.length === 0
+            ? "به‌خاطرِ ردیف‌های بی‌بایت سنجیده نشد"
+            : `${String(badDoc.length)} سندِ خراب: ${badDoc.slice(0, 3).join(" · ")}`,
     );
   }
 

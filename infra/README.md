@@ -265,5 +265,5 @@ pnpm infra:check-proxy -- --write   # بازتولید بعد از افزودن�
 | انتخابِ منبعِ گواهی (آروان یا certbot) | روزِ استقرار — nginx به هر دو بی‌اعتناست (ADR-064)؛ فقط دو فایل |
 | CDN جلوی WebSocket | باید از VM اندازه گرفته شود؛ پیشنهاد: WS مستقیم روی VM، CDN فقط جلوی فایلِ ایستا |
 | CSP | بومِ Excalidraw استایلِ inline/workerِ blob: دارد — فقط با E2E در مرورگر تنظیم می‌شود |
-| بازیابیِ Object Storage | ✅ M6 فاز ۲: `restore-storage` (۶ چک، خودآزمون با ۵ شکستنِ عمدی) — [`RUNBOOK §۴٫۱`](RUNBOOK.md)؛ ⏳ `--to-live` روی داده‌ی واقعی هنوز اجرا نشده |
+| بازیابیِ Object Storage | ✅ M6 فاز ۲: `restore-storage` (۶ چک، خودآزمون با ۶ شکستنِ عمدی) — [`RUNBOOK §۴٫۱`](RUNBOOK.md)؛ ✅ `--to-live` در تمرینِ حادثه‌ی ترکیبی روی استکِ productionِ محلی اجرا شد (۱۴۰۵/۰۷/۱۷)؛ ⏳ روی داده‌ی واقعیِ VM هنوز نه |
 

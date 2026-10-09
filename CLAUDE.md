@@ -110,7 +110,7 @@ pnpm infra:restore-drill     # ★★★ M5 فاز ۷ / M6: **گیتِ اصلی*
 #   -- --self-test   پنج شکستنِ عمدی، هرکدام باید چکِ **درستش** را قرمز کند
 #   -- --key=… --keep --prune=N
 pnpm infra:restore-storage   # ★★★ M6 فاز ۲: آینه را روی باکت‌های <bucket>-restore-drill برمی‌گرداند — ۶ چک (count/size/integrity/catalog/opens/vacuous)
-#   -- --self-test   هفت سناریو، پنج شکستنِ عمدی · --to-live ⚠️ بازیابیِ واقعی · --prefix=<boardId>/ · --database=<db>
+#   -- --self-test   هشت سناریو، شش شکستنِ عمدی · --to-live ⚠️ بازیابیِ واقعی · --prefix=<boardId>/ · --database=<db>
 pnpm sms:probe -- --to=09XXXXXXXXX   # ★★ M5 فازِ ۴٫۵: یک پیامکِ **واقعی** (بدنه‌ی خام را چاپ می‌کند)
 #   -- --dry-run   بدنه‌ی درخواست را می‌سازد و چیزی نمی‌فرستد
 pnpm infra:ship              # ★★ M5-D10/ADR-063: docker save → ssh → راستی‌آزمایی در مقصد

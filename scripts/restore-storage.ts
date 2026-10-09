@@ -8,7 +8,7 @@
  * pnpm infra:restore-storage -- --to-live             # ⚠️ روی باکت‌های زنده می‌نویسد (بازیابیِ واقعی)
  * pnpm infra:restore-storage -- --database=hamboom_restore_drill   # کاتالوگ از دیتابیسِ مشق (بعد از restore-drill --keep)
  * pnpm infra:restore-storage -- --keep                # اشیاءِ drill پاک نشوند (بازرسیِ دستی)
- * pnpm infra:restore-storage -- --self-test           # ★★ هفت سناریو، پنج شکستنِ عمدی
+ * pnpm infra:restore-storage -- --self-test           # ★★ هشت سناریو، شش شکستنِ عمدی
  * ```
  *
  * ── چرا این اسکریپت جدی‌تر از «تصاویرِ آپلودی» است ────────────────────────
