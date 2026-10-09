@@ -256,7 +256,7 @@ pnpm --filter @hamboom/web test:e2e:csp # ۸٫۵ — اندازه‌گیریِ C
   «مدیریت») فقط با `isStaff`.
 - **step-up:** «درخواستِ کد» → `POST /admin/step-up/request` (کد به شماره‌ی خودِ staff، mock در dev = لاگِ api) →
   کد → `verify` → `stepUpVerifiedAt` تازه در کشِ `adminMe` (بدونِ refetch). «تازه بودن» را سرور تصمیم می‌گیرد (۴۲۸
-  `STEP_UP_REQUIRED` روی عملِ مخرب)؛ عددِ پنجره به کلاینت نمی‌رسد.
+  `STEP_UP_REQUIRED` روی عملِ مخرب)؛ رابط عددِ پنجره را **نمی‌خوانَد** (۴۲۸ آن را در `details.stepUpSeconds` می‌فرستد، ولی تصمیم همیشه مالِ سرور است).
 - **صفحه‌بندیِ cursor — [`PanelAudit`](src/panel/PanelAudit.tsx) (فاز ۴٫۳):** `useInfiniteQuery` با `nextCursor`ِ سرور به‌عنوانِ
   `pageParam` (keyset، نه offset)؛ «بیشتر» صفحه‌ی بعد را می‌چسبانَد، `null` = پایان. فیلترِ پیشوندیِ action کلیدِ کوئری را
   عوض می‌کند و از نو شروع می‌شود. `ipMasked` همان‌طور که از سرور می‌آید — این صفحه IPِ کامل را نمی‌بیند. ⚠️ فرمِ فیلتر دکمه‌ی

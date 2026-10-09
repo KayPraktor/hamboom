@@ -1,0 +1,349 @@
+# پنلِ ادمین — مرجع (M6)
+
+> **این سند چه هست:** مرجعِ «پنل چه می‌کند و چرا این‌طور» — گاردها، step-up، واژگانِ ممیزی، جریان‌های مخرب، و
+> محدودیت‌هایی که **دانسته** باقی مانده‌اند. هر عدد و نام از **کدِ فعلی** برداشته شده، نه از نقشه.
+> **چه نیست:** رویه‌ی اپراتور (آن [`infra/RUNBOOK.md`](../infra/RUNBOOK.md) است) و دلیلِ تصمیم‌ها
+> (آن [ADR-065…070](../ARCHITECTURE_DECISIONS.md#adr-065) است).
+
+رابط در `apps/web` زیرِ **`/panel`** است و API در `apps/api` زیرِ **`/admin`** — دو پیشوندِ متفاوت، عمداً
+([ADR-065](../ARCHITECTURE_DECISIONS.md#adr-065)): `/admin` در dev و nginx به api پروکسی می‌شود، پس یک صفحه‌ی SPA
+با همان نام هرگز به مرورگر نمی‌رسید.
+
+---
+
+## ۱. سه گارد، به همین ترتیب
+
+هر مسیرِ `/admin` این زنجیره را دارد ([`admin-guard.ts`](../apps/api/src/admin-guard.ts)):
+
+| گارد | چه می‌سنجد | رد |
+|---|---|---|
+| `requireAuth` | access-token | **۴۰۱** `UNAUTHORIZED` |
+| `requireStaff` | `is_staff` و `status='active'` از **دیتابیس**، در **هر** درخواست | **۴۰۳** `FORBIDDEN` |
+| `requireStepUp` (فقط عملِ مخرب) | `now − users.step_up_verified_at ≤ ADMIN_STEP_UP_SECONDS` | **۴۲۸** `STEP_UP_REQUIRED` |
+
+★ **چرا دیتابیس و نه توکن:** access-token هیچ نقشی حمل نمی‌کند (ADR-012) و اگر می‌کرد هم ۱۵ دقیقه کهنه می‌مانْد.
+سلبِ staff یا تعلیق باید در **همان درخواستِ بعدی** اثر کند. هزینه‌اش اندازه‌گیری شد: p50 ۰٫۴۶ms، p99 ۰٫۸۸ms.
+
+★ **هر سه ردِ `requireStaff` یک‌شکل‌اند.** غیرِ staff، staffِ معلق و کاربرِ حذف‌شده همه همان ۴۰۳ را می‌گیرند؛
+علت فقط در لاگِ api است (`staffDenied: not_staff | status_suspended | not_found`)، بدونِ شناسه.
+
+⚠️ **گاردِ رابط گارد نیست.** `RequireStaff` در `apps/web` فقط `User.isStaff`ِ نشست را می‌خوانَد تا غیرِ staff حتی
+chunkِ lazyِ پنل را دانلود نکند. گیتِ واقعی همان ۴۰۳ی سرور است.
+
+### staff روی بوردها **viewer** است، نه owner
+
+`is_staff` تا M6 یعنی `owner` روی هر بورد. از [ADR-066](../ARCHITECTURE_DECISIONS.md#adr-066) §۱ یعنی **viewer**:
+می‌بیند، نمی‌نویسد — و این را **سرور** اعمال می‌کند (`effectiveBoardRole` در `auth-core`، مشترکِ api و realtime)،
+نه فقط رابط. نوشتنِ staff روی سیم رد می‌شود و سوکتش باز می‌مانَد.
+
+---
+
+## ۲. staff‌شدن و سلبش
+
+**تنها** نویسنده‌ی `is_staff` اسکریپتِ [`admin-grant-staff`](../scripts/admin-grant-staff.ts) است — نه SQL، نه env:
+
+```bash
+pnpm admin:grant-staff -- --phone=09XXXXXXXXX            # اعطا
+pnpm admin:grant-staff -- --phone=09XXXXXXXXX --revoke   # سلب
+```
+
+- پرچم و ردیفِ ممیزی (`staff.grant` / `staff.revoke`) در **یک تراکنش**: یکی بشکند، دیگری هم نمی‌مانَد.
+- `actor_user_id` عمداً `NULL` است — اپراتورِ CLI کاربرِ محصول نیست؛ `metadata.source = "admin-grant-staff"`.
+- سلب، `step_up_verified_at` را هم پاک می‌کند: staffِ سابق پنجره‌ی باز به ارث نمی‌بَرد.
+- بدونِ `--phone` بالا نمی‌آید. کاربر باید **قبلاً یک‌بار وارد شده باشد** (ردیفش باید وجود داشته باشد).
+
+فرمِ productionِ همین دستور در RUNBOOK §۱٫۵ (ردیفِ ۱۰) و §۷٫۱ است.
+
+---
+
+## ۳. step-up
+
+عملِ مخرب OTPِ **تازه** می‌خواهد. جریان:
+
+۱. عمل ۴۲۸ `STEP_UP_REQUIRED` می‌دهد.
+۲. `POST /admin/step-up/request` — کد به شماره‌ی **خودِ staff** می‌رود (از ردیفش خوانده می‌شود، نه از بدنه؛
+   کسی نمی‌تواند کد را به شماره‌ی دیگری بفرستد).
+۳. `POST /admin/step-up/verify` با `{ code }` — موفقیت `users.step_up_verified_at = now()` می‌نویسد.
+۴. staff **همان عمل را دوباره** می‌زند.
+
+| ویژگی | مقدار |
+|---|---|
+| پنجره | `ADMIN_STEP_UP_SECONDS` — پیش‌فرض **۶۰۰** ثانیه |
+| دامنه | ⚠️ **per-user**، نه per-session: تایید در یک مرورگر، همان staff را در مرورگرِ دیگر هم باز می‌کند |
+| سقفِ نرخ | همان `RATE_LIMIT_OTP_MAX`ِ ورود — این مسیر پیامک می‌فرستد |
+| رواداریِ ساعت | **۲ ثانیه** به سمتِ آینده (پایین) |
+
+**آنچه step-up نمی‌کند:** نشستِ نو، توکنِ نو یا خانواده‌ی refreshِ نو نمی‌سازد — تفاوتِ عمدی با `/auth/otp/verify`.
+چالشش روی یک storeِ جدا (`purpose='admin_step_up'`) می‌نشیند و چالشِ ورودِ در جریانِ همان شماره را نمی‌کُشد.
+
+⚠️ **رواداریِ ۲ ثانیه یک رفعِ باگ است، نه سلیقه.** مهر را **Postgres** می‌زند و تازگی را **Node** می‌سنجد؛ با
+`age >= 0`ِ قبلی، جلوبودنِ حتی ۱msِ ساعتِ دیتابیس (اندازه‌گیری روی این ماشین: ۰–۲ms) step-upِ تازه را «کهنه»
+می‌کرد و staff در حلقه‌ی بی‌پایانِ ۴۲۸ می‌افتاد. اختلافِ بزرگ‌تر از ۲ ثانیه دیگر skew نیست، خرابیِ ساعت است —
+و `GET /admin/system` خودِ عدد را نشان می‌دهد.
+
+⊕ بدنه‌ی ۴۲۸ عددِ پنجره را در `details.stepUpSeconds` دارد؛ رابط از آن استفاده نمی‌کند و «تازه بودن» را همیشه سرور
+تصمیم می‌گیرد.
+
+---
+
+## ۴. مسیرها
+
+۲۱ مسیر، ۱۲ تایشان جهشی. `S` = فقط staff · `S+` = staff با step-up.
+
+| متد و مسیر | گارد | عملِ ممیزی | صفحه |
+|---|---|---|---|
+| `GET /admin/me` | S | — | `/panel` |
+| `POST /admin/step-up/request` | S | `staff.step_up.request` | `/panel` |
+| `POST /admin/step-up/verify` | S | `staff.step_up` | `/panel` |
+| `GET /admin/audit` | S | — | `/panel/audit` |
+| `POST /admin/search` | S | `user.search` | `/panel/users` |
+| `GET /admin/users/:id` | S | — | `/panel/users/:id` |
+| `GET /admin/users/:id/boards` | S | — | `/panel/users/:id` |
+| `POST /admin/users/:id/phone/reveal` | S | `user.phone.reveal` | `/panel/users/:id` |
+| `POST /admin/users/:id/suspend` | **S+** | `user.suspend` | `/panel/users/:id` |
+| `POST /admin/users/:id/unsuspend` | **S+** | `user.unsuspend` | `/panel/users/:id` |
+| `GET /admin/teams/:id` | S | — | `/panel/teams/:id` |
+| `POST /admin/payments/search` | S | `payment.search` | `/panel/payments` |
+| `GET /admin/payments/:id` | S | — | `/panel/payments/:id` |
+| `POST /admin/payments/:id/verify` | **S+** | `payment.verify` | `/panel/payments/:id` |
+| `POST /admin/payments/:id/expire` | **S+** | `payment.expire` | `/panel/payments/:id` |
+| `POST /admin/payments/:id/approve-transfer` | **S+** | `payment.approveTransfer` | `/panel/payments/:id` |
+| `POST /admin/payments/:id/refund` | **S+** | `payment.refund` | `/panel/payments/:id` |
+| `POST /admin/payments/reconcile` | **S+** | `payment.reconcile` | `/panel/payments` |
+| `GET /admin/stats` | S | — | `/panel/stats` |
+| `GET /admin/system` | S | — | `/panel/system` |
+| `GET /admin/feature-flags` | S | — | `/panel/system` |
+
+★ **سه مسیر POST‌اند با اینکه چیزی عوض نمی‌کنند — عمداً.** `search`، `payments/search` و `phone/reveal`:
+شماره‌ی کاملِ یک شخص یا شماره‌ی پیگیریِ بانکی در query string یعنی نشستن در لاگِ دسترسیِ nginx و api و تاریخچه‌ی
+مرورگر. POST با بدنه هیچ‌کدام را ندارد، کش نمی‌شود، و زیرِ گیتِ ممیزی می‌افتد.
+
+★ این مسیرها در OpenAPI با `internal: true` ثبت‌اند ([ADR-067](../ARCHITECTURE_DECISIONS.md#adr-067) §۵): گاردِ
+دریفت می‌بیندشان، ولی در `openapi.json`ِ عمومی نیستند.
+
+---
+
+## ۵. واژگانِ ممیزی
+
+`audit_logs` یک نویسنده در api دارد — [`recordAudit(tx, …)`](../apps/api/src/audit.ts) — و همیشه executorِ **همان
+تراکنشِ عمل** را می‌گیرد. ردیفی که بیرونِ تراکنش نوشته شود یا عملی را ثبت می‌کند که رخ نداد، یا عملی را ثبت
+نمی‌کند که رخ داد؛ هر دو برای پرونده‌ی تعلیق و استرداد از نداشتنِ ممیزی بدترند.
+
+نام‌ها یک **union**ِ بسته‌اند (`AuditAction`)، نه رشته‌ی آزاد — تا نامی که در پنل فیلتر می‌شود با نامی که نوشته
+می‌شود یکی بماند.
+
+| عمل | هدف | `metadata` | عامل |
+|---|---|---|---|
+| `staff.step_up.request` | — | — | staff |
+| `staff.step_up` | `user` (خودش) | — | staff |
+| `staff.grant` · `staff.revoke` | `user` | `source`، `phone` (**ماسک**) | **`NULL`** — CLI |
+| `user.search` | — | `kind` (`phone`/`id`/`text`)، `users`، `teams` — **بدونِ خودِ عبارت** | staff |
+| `user.phone.reveal` | `user` | — | staff |
+| `user.suspend` | `user` | `reason`، `sessionsRevoked`، `challengesConsumed`، `from` | staff |
+| `user.unsuspend` | `user` | `from` | staff |
+| `support.board.view` | `board` | `role`، `windowMinutes` | staff |
+| `payment.search` | — | `byTeam`، `byRefId`، `byAuthority`، `status`، `results` — **بدونِ خودِ شماره‌ها** | staff |
+| `payment.verify` | `payment` | `outcome`، و اگر پرداخت‌نشده `gatewayCode`؛ یا `via` + `outcome` | staff **یا سیستم** |
+| `payment.expire` | `payment` | `reason`، `lastGatewayCode` | staff **یا سیستم** |
+| `payment.refund` | `payment` | `channel`، `reason`، `refundRef`، `amountRial`، `couponCode`، `subscriptionCanceled`، `subscriptionRestored` | staff |
+| `payment.adopt` | `payment` | `authority` | staff **یا سیستم** |
+| `payment.reconcile` | — | `dryRun`، `adoptOrphans`، `batchSize` و شمارنده‌های گزارش | staff |
+| `payment.approveTransfer` | `payment` | `outcome`، `amountRial`، `transferRef`، `note` | staff |
+
+⚠️ **«سیستم» یعنی `actor_user_id = NULL`.** آشتی‌دهیِ خودکار همان `payment.expire` / `payment.adopt` /
+`payment.verify` را می‌نویسد که staff می‌نویسد: همان عمل، دو فراخوان. پرونده‌ی «چه کسی این پرداخت را باطل کرد»
+باید هر دو را داشته باشد، و `NULL` جوابِ «هیچ‌کس — تایمر» است، نه داده‌ی گم‌شده.
+
+⚠️ **`payment.verify` سه نویسنده دارد.** دکمه‌ی verify · ابطالی که به‌جای ابطال به **فعال‌سازی** رسید
+(`via: "expire"` — پایین، §۶٫۴) · و sweepی که پرداختی را فعال کرد. `via` می‌گوید از کدام راه.
+
+### چه چیزی در ممیزی **نمی‌نشیند**
+
+- عبارتِ جست‌وجو، شماره‌ی موبایل، ایمیل — هرگز در `metadata`.
+- ۴ رقمِ کارتِ مبدأ در `payment.approveTransfer` — چیزی به پاسخ‌گویی اضافه نمی‌کند.
+- ★ ولی **`transferRef` می‌نشیند**: ممیزیِ مالی بدونِ شماره‌ی مرجعِ بانک بی‌معنی است.
+
+### IP و user-agent — یک استثنای ثبت‌شده از P7
+
+هر دو در ردیف **ذخیره می‌شوند** (forensics) ولی هرگز به لاگ نمی‌روند، و در پاسخِ `GET /admin/audit` IP فقط
+**ماسک‌شده** برمی‌گردد: `a.b.x.x` برای IPv4، دو گروهِ اول برای IPv6. IPِ نامعتبر `null` می‌شود — ردِ forensics
+نباید خودِ عمل را بیندازد.
+
+### خواندن
+
+`GET /admin/audit` — صفحه‌بندیِ keyset (`nextCursor`؛ cursorِ خراب **۴۰۰** است، نه «از اول»). فیلترها با AND:
+`actor` · `action` (**پیشوندی**: `payment.` همه‌ی عمل‌های پرداخت را می‌دهد) · `targetType` · `targetId` · `from` · `to`.
+
+### نگهداشت
+
+`AUDIT_RETENTION_DAYS` — تصمیمِ مالک **۳۶۵**، و عمداً **بدونِ پیش‌فرض** در schema: بدونِ عدد،
+[`purge-audit`](../scripts/purge-audit.ts) اصلاً بالا نمی‌آید. پیش‌فرضِ اسکریپت **فقط گزارش** است؛ حذف فقط با
+`--delete`.
+
+### گیتِ ۱۶ — «هر جهشِ `/admin` ممیزی‌شده»
+
+[`check-admin-audit.ts`](../scripts/check-admin-audit.ts) داخلِ `pnpm verify`: هر `POST/PATCH/PUT/DELETE` زیرِ
+`/admin` که `audited(action)` نداشته باشد قرمز می‌شود. ⚠️ این گیت **اعلام** را می‌سنجد، نه نوشتن را — نوشتن در
+همان تراکنش را `sdk:contract` روی Postgresِ زنده اثبات می‌کند («عمل می‌شکند ⇒ هیچ ردیفی»).
+
+---
+
+## ۶. جریان‌ها
+
+### ۶٫۱ تعلیق و رفعِ تعلیق
+
+`POST /admin/users/:id/suspend` با `{ reason }` (۳ تا ۲۰۰ کاراکتر) — **یک تراکنش**:
+
+۱. `SELECT … FOR UPDATE` روی کاربر.
+۲. `status = 'suspended'`.
+۳. سوزاندنِ **همه‌ی** خانواده‌های نشست (`revokeAllForUser`).
+۴. مصرفِ چالشِ ورودِ در جریانِ همان شماره — کدی که پیش از تعلیق فرستاده شده نباید بعدش نشست بسازد.
+۵. ردیفِ `user.suspend`.
+
+| رد | یعنی |
+|---|---|
+| **۴۰۹** `CONFLICT` | هدف staff است — از پنل معلق نمی‌شود |
+| **۴۰۹** `INVALID_TRANSITION` | حساب `active` نیست |
+| **۴۰۴** `USER_NOT_FOUND` | نیست یا حذف شده |
+
+⛔ **staff از پنل معلق نمی‌شود.** اول `--revoke` از ایمیج، بعد تعلیق — تا یک staffِ لو‌رفته نتواند بقیه را بیرون
+بیندازد.
+
+**اثر در نقاطِ ورود** (fail-closed، [ADR-066](../ARCHITECTURE_DECISIONS.md#adr-066) §۴):
+
+| نقطه | رفتار |
+|---|---|
+| درخواستِ OTP | **۲۰۰** ولی بی‌پیامک و بی‌چالش |
+| `otp/verify` و refresh | **۴۰۱** `USER_SUSPENDED` + پاک‌شدنِ کوکی (چکِ status **داخلِ تراکنش** با `FOR SHARE`) |
+| rt-token | **۴۰۳** |
+| دست‌دادنِ WSِ نو | رد |
+| `/admin` | **۴۰۳** (staffِ معلق هم) |
+
+رفعِ تعلیق (`unsuspend`) فقط `status` را برمی‌گرداند. **نشست‌ها برنمی‌گردند** — کاربر دوباره با پیامک وارد می‌شود.
+
+### ۶٫۲ نمای پشتیبانی
+
+`GET /admin/users/:id/boards` بوردهای کاربر را با نقشِ **خودِ کاربر** می‌دهد («اگر فعال بود چه داشت»)، و «بازکردن
+(فقط‌خواندنی)» همان `/b/:id` است با نقشِ viewerِ staff.
+
+هر بار staff بوردی را می‌بیند که **بدونِ staff به آن راه نداشت**، یک ردیفِ `support.board.view` نوشته می‌شود —
+حداکثر یکی به‌ازای هر **۱۰ دقیقه** برای همان staff و بورد (کلاینت هر ۴۵ ثانیه rt-token می‌گیرد؛ بدونِ این سقف،
+یک ساعت نگاه‌کردن ۸۰ ردیف می‌شد).
+
+★ ردیف از داخلِ `requireBoardRole` نوشته می‌شود، یعنی روی **هر** خواندنِ RESTِ بورد (متادیتا، snapshot، اعضا،
+دارایی) — نه فقط گرفتنِ rt-token. وگرنه staff می‌توانست محتوا را با `GET /boards/:id/snapshot` بخوانَد بی‌آنکه
+ردی بماند.
+
+### ۶٫۳ شماره‌ی موبایل
+
+شماره در همه‌ی پاسخ‌های پنل **ماسک** است (`phoneMasked`). شماره‌ی کامل فقط از `POST …/phone/reveal`، که ردیفِ
+`user.phone.reveal` می‌نویسد.
+
+⚠️ جست‌وجو با شماره فقط با **۱۱ رقمِ کامل** کار می‌کند. پیشوند عمداً شماره حساب نمی‌شود: با آن، پنج رقمِ ماسک در
+حداکثر ۵۰ جست‌وجو رقم‌به‌رقم بازسازی می‌شد، بی‌آنکه یک ردیفِ `user.phone.reveal` بماند.
+
+### ۶٫۴ پرداخت‌ها
+
+هر پنج **عملِ** پرداخت (verify · ابطال · استرداد · تاییدِ کارت‌به‌کارت · آشتی‌دهی) پشتِ step-up‌اند: هیچ‌کدام
+«فقط خواندن» نیست. جست‌وجو (`payments/search`) فقط staff می‌خواهد.
+
+**verify** — همان `settlePayment`ِ مسیرِ کاربر ([ADR-055](../ARCHITECTURE_DECISIONS.md#adr-055))، با ممیزی در همان
+تراکنش. ⚠️ برای **هر** نتیجه ۲۰۰ می‌دهد و `outcome` را برمی‌گردانَد: «درگاه گفت هنوز پرداخت نشده» برای اپراتور
+یک **جواب** است، نه خطا.
+
+**ابطال (expire)** — دکمه فقط وقتی فعال است که سرور بگوید؛ دلیلِ غیرفعال‌بودن (`expireBlocked`) از خودِ سرور
+می‌آید، چون سقفش configی است:
+
+| مانع | چرا |
+|---|---|
+| وضعیت `pending` نیست | فقط pending باطل می‌شود |
+| ردیفِ **یتیم** (بدونِ authority) | شاید پولش گرفته شده — راهش فرزندخواندگیِ sweep است |
+| درگاه هنوز **یک‌بار هم** پاسخ نداده | اول verify ([ADR-056](../ARCHITECTURE_DECISIONS.md#adr-056)) |
+| جوان‌تر از `BILLING_PENDING_EXPIRE_HOURS` (پیش‌فرض ۷۲) | کاربر هنوز می‌تواند پرداخت را کامل کند |
+
+★★ **ابطال اول می‌پرسد، بعد باطل می‌کند.** زیرِ همان قفل یک verifyِ **تازه** می‌زند. اگر درگاه بگوید پول گرفته
+شده، اشتراک **فعال** می‌شود (`outcome: activated`)، هیچ ابطالی رخ نمی‌دهد، و ردیفِ ممیزی `payment.verify` با
+`via: "expire"` است — چون کاری که واقعاً رخ داد همان پرسش بود.
+
+**استرداد (refund)** — `refundPayment(tx)` تنها نویسنده‌ی وضعیتِ `refunded` است
+([ADR-068](../ARCHITECTURE_DECISIONS.md#adr-068)). دو کانالِ صریح:
+
+- `manual` با `refundRef` — staff پول را بیرون از سیستم برگردانده و مرجع را ثبت می‌کند. **امروز تنها مسیرِ اجرایی.**
+- `gateway` — زرین‌پال `REFUND_UNAVAILABLE` می‌دهد تا کانالِ واقعی بیاید.
+
+اثر: پرداخت و فاکتور `refunded` (ولی `paid_at` **می‌مانَد**)، اشتراکی که همین پرداخت فعالش کرده `canceled`، و اگر
+تمدید بوده، دوره‌ی قبلیِ پرداخت‌شده **برمی‌گردد**. ⚠️ کوپن با استرداد آزاد نمی‌شود؛ `metadata.couponCode` می‌گوید
+کدامش بود.
+
+**تاییدِ کارت‌به‌کارت (approve-transfer)** — فقط وقتی `PAYMENT_PROVIDER=card_transfer` است؛ وگرنه ۴۰۹
+([ADR-070](../ARCHITECTURE_DECISIONS.md#adr-070)). بدنه: `ref`، `last4` (اختیاری)، `observedAmountRial`، `note`.
+★ این **تنها** جهشِ ادمینی است که پول را بدونِ هیچ طرفِ سومی به سرویس تبدیل می‌کند. فعال‌سازی را بازنویسی
+نمی‌کند — دو ستون می‌نویسد و همان `settleLocked` را صدا می‌زند. رویه‌ی اپراتور: RUNBOOK §۷٫۳الف.
+
+**آشتی‌دهیِ دستی (reconcile)** — همان `runReconcile`ِ تایمر، زیرِ همان advisory lock. بدنه: `dryRun`،
+`adoptOrphans`، `batchSize`.
+
+| عدد | مقدار |
+|---|---|
+| `batchSize` | پیش‌فرض **۵**، سقف **۱۰** |
+| قفل گرفته نشد | **۴۰۹** — تایمر یا نودِ دیگر در حالِ اجراست |
+
+⚠️ سقفِ ۱۰ از اندازه می‌آید: هر ردیف تا ۱۵ ثانیه انتظارِ درگاه دارد و `proxy_read_timeout`ِ nginx ۶۰ ثانیه است.
+و حتی این هم تضمین نیست — ۵۰۴ گرفتن **sweep را متوقف نمی‌کند** (هر ردیف تراکنشِ خودش را دارد)؛ فقط گزارشش از
+دست می‌رود و ردیف‌های `payment.expire` / `payment.adopt` در ممیزی می‌مانند.
+
+### ۶٫۵ آمار و وضعیتِ سیستم
+
+هر سه `GET`‌اند، بدونِ ممیزی — خواندن ممیزی نمی‌خواهد.
+
+- **`/admin/stats`** (`?days=` ۷ تا ۹۰، پیش‌فرض ۳۰) — SQLِ خالص و زنده، بدونِ جدولِ شمارنده. ★ سطلِ روزانه
+  **روزِ تهران** است، نه UTC.
+- **`/admin/system`** — هشت چکِ **موازی** با مهلتِ per-probe (`ADMIN_SYSTEM_TIMEOUT_MS`، پیش‌فرض ۲۰۰۰ms):
+  دیتابیس، سه باکت، Redis، سنِ پشتیبان (آستانه `ADMIN_BACKUP_STALE_HOURS`، پیش‌فرض ۳۰)، اختلافِ ساعتِ PG↔api، و
+  آشتی‌دهی. ⚠️ حالتِ **«نامعلوم»** یعنی «نپرسیدیم» (متغیرش به api داده نشده)، نه «خراب».
+- **`/admin/feature-flags`** — نمای فقط‌خواندنی؛ جدول امروز **خالی** است و هیچ پرچمی پشتِ هیچ قابلیتی نیست.
+
+★ `/admin/system` برای نقاطِ کورِ `/readyz` ساخته شد و `/readyz` عمداً **دست‌نخورده** مانْد: یک وابستگیِ کُند آن
+را به «ناسالم»ِ دروغین تبدیل می‌کند و کلِ سرویس را از چرخه بیرون می‌اندازد.
+
+---
+
+## ۷. محدودیت‌های مستند
+
+هر کدام **دانسته** باقی مانده، و جایی که می‌شد، با یک سنجه assert شده تا بی‌صدا عوض نشود.
+
+| محدودیت | اثر | چه چیزی بسته‌اش می‌کند |
+|---|---|---|
+| ★★ **WSِ از-قبل-باز با تعلیق بسته نمی‌شود** | کاربرِ معلق تا reconnect **می‌نویسد** | رفرش، انقضای توکن، یا `restart realtime`. بستنِ سوکت تصمیمِ M2 است (ADR جدا) |
+| access-tokenِ ۱۵دقیقه‌ای تا انقضا پذیرفته می‌شود | REST تا ۱۵ دقیقه بعد از تعلیق جواب می‌دهد (به‌جز مسیرهایی که خودشان status را می‌خوانند) | — |
+| step-up **per-user** است | تایید در یک مرورگر، مرورگرِ دیگرِ همان staff را هم باز می‌کند | — |
+| زمانِ پاسخِ OTP برای کاربرِ معلق | شکل، کد و سقفِ نرخ با شماره‌ی ناشناخته یکی است؛ **زمان نه** (تک‌رقمی ms در برابرِ رفت‌وبرگشتِ پیامک) | ثبت‌شده، بسته نشده |
+| «خروج» نشست را در سرور نمی‌بندد | کوکیِ refresh می‌مانَد؛ بارگذاریِ بعدی همان کاربر را برمی‌گردانَد | ارثیه‌ی M3، بیرونِ M6 |
+| شمارنده‌های آشتی‌دهی در «وضعیتِ سیستم» فقط **تایمر** را می‌شمارند | sweepِ دستی به آن‌ها دست نمی‌زند | — |
+
+★★ **اولی را جدی بگیر، چون نقشه‌ی خودِ M6 درباره‌اش غلط بود.** نقشه‌ی فاز ۰ می‌گفت «تعلیق در ≤ ۶۰ ثانیه WSِ باز
+را قطع می‌کند». نمی‌کند: سرور روی refreshِ ردشده سوکت را نمی‌بندد (ADR-038) و کلاینت اگر توکنِ تازه نگیرد فقط لاگ
+می‌کند. سنجه‌ی `admin:access` **دقیقاً همین محدودیت را assert می‌کند** — اگر روزی بستنِ سوکت پذیرفته شد، آن
+انتظار عوض می‌شود، نه پنهان.
+
+---
+
+## ۸. چه چیزی کدام ادعا را اثبات می‌کند
+
+| دستور | چه | کجا |
+|---|---|---|
+| `pnpm verify` (گیتِ ۱۶) | هر جهشِ `/admin` اعلامِ ممیزی دارد | بدونِ دیتابیس |
+| `pnpm admin:access` | staff ⇒ viewer روی سیم · تعلیق در هر نقطه‌ی ورود · WSِ باز = محدودیت | api + realtime‌ی واقعی |
+| `pnpm admin:grant-staff -- --self-test` | پرچم و ممیزی اتمیک‌اند (شکستِ عمدیِ ممیزی ⇒ پرچم برنمی‌گردد) | Postgresِ زنده |
+| `pnpm infra:purge-audit -- --self-test` | مرزِ نگهداشت؛ بدونِ عدد بالا نمی‌آید | Postgresِ زنده |
+| `pnpm billing:refund` | استرداد ↔ تسویه‌ی هم‌زمان، بازگشتِ دوره‌ی تمدید | Postgresِ زنده |
+| `pnpm billing:transfer` | دو تاییدِ هم‌زمان، بازپخشِ شماره‌ی مرجع، ردیفِ ادعاشده هرگز باطل نمی‌شود | Postgresِ زنده |
+| `pnpm --filter @hamboom/web test:e2e` | ورودِ staff → جست‌وجو → تعلیق با step-up → نمای پشتیبانی → verify | مرورگر، استکِ واقعی |
+
+---
+
+## ۹. آنچه عمداً ساخته نشد
+
+کتابخانه‌ی قالب (صفر قالب) · استردادِ واقعیِ زرین‌پال (حساب نیست) · **حذفِ حساب** · ارزیاب و CRUDِ feature flag
+(صفر مصرف‌کننده) · بستنِ WS روی تعلیق (M2). هر کدام در [`TODO-M6-admin.md`](../TODO-M6-admin.md) §دامنه با دلیلش
+ثبت است.
