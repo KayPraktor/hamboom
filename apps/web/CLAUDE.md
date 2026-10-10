@@ -231,9 +231,12 @@ pnpm --filter @hamboom/web lint
 pnpm --filter @hamboom/web test
 pnpm --filter @hamboom/web build       # tsc --noEmit سپس vite build
 
-# ★★ E2Eهای فاز ۸ — هر دو **استکِ productionِ محلی** را از قبل بالا می‌خواهند (خودشان بالا نمی‌آورند)
-pnpm --filter @hamboom/web test:e2e:p2  # ۸٫۳ — P2 روی باندلِ ساخته‌شده پشتِ nginx + کنترلِ مثبت
-pnpm --filter @hamboom/web test:e2e:csp # ۸٫۵ — اندازه‌گیریِ CSP: ۹ پالیسی، دو کنترل، یک خودآزمون
+# ★★ E2E — چهار مجموعه، **هر کدام پیکربندیِ خودش** (specِ تازه باید در testMatchِ دقیقاً یکی باشد — M6 ۹٫۴)
+pnpm --filter @hamboom/web test:e2e        # ۸٫۱ — پنل؛ دو سرورِ **dev** را خودش بالا می‌آورد (فقط panel.spec.ts)
+# سه‌تای زیر **استکِ productionِ محلی** را از قبل بالا می‌خواهند (E2E_COMPOSE_ENV_FILE / E2E_COMPOSE_PROJECT)
+pnpm --filter @hamboom/web test:e2e:p2     # ۸٫۳ — P2 روی باندلِ ساخته‌شده پشتِ nginx + کنترلِ مثبت
+pnpm --filter @hamboom/web test:e2e:csp    # ۸٫۵ — اندازه‌گیریِ CSP: ۹ پالیسی، دو کنترل، یک خودآزمون
+pnpm --filter @hamboom/web test:e2e:assets # ۸٫۶ — زنجیره‌ی تصویر: چهار حلقه + شکستنِ عمدی
 ```
 
 > **پورتِ dev = 15380** (بیرونِ بازه‌ی dynamic portِ ویندوز؛ مثلِ canvas-core=15180،
