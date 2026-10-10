@@ -1287,7 +1287,8 @@ async function main(): Promise<void> {
   );
   await app.db.query("DELETE FROM otp_challenges WHERE destination = $1", [phone]);
 
-  // ── ★★ ۵۰–۵۲: کارت‌به‌کارت ([ADR-070](../ARCHITECTURE_DECISIONS.md#adr-070)) ──
+  // ── ★★ ۵۰–۵۵: کارت‌به‌کارت ([ADR-070](../ARCHITECTURE_DECISIONS.md#adr-070)) ──
+  //    (۵۳ تا ۵۵ از بازبینیِ خصمانه‌ی ۹٫۴ آمدند؛ ۵۳ و ۵۴ **پیش از** ۵۲ اجرا می‌شوند — ردیف باید هنوز `pending` باشد.)
   //
   // ★ روی یک اپِ **دوم** با `PAYMENT_PROVIDER=card_transfer`، و عمداً **بدونِ تزریقِ درگاه**:
   //   این‌طوری خودِ `createPaymentGateway` + گاردِ بوتِ مقصد هم از مسیر رد می‌شوند، نه فقط routeها.
@@ -1375,6 +1376,113 @@ async function main(): Promise<void> {
     await tSdk.admin.stepUp.request();
     await tSdk.admin.stepUp.verify({ code: "424242" });
 
+    // ── ★★ ۵۳: **محدودیتِ ثبت‌شده** — ردیفِ ادعاشده از پنل بسته نمی‌شود (بازبینیِ ۹٫۴) ──
+    //
+    // RUNBOOK می‌گفت «اگر پولش نیامد، با ابطالِ پرداخت ببندش». روی مسیرِ واقعی اندازه‌گیری شد:
+    // نمی‌شود. درگاه برای ردیفِ ادعاشده `gatewayError` می‌دهد ⇒ `failure_code` هرگز نوشته نمی‌شود
+    // ⇒ پله‌ی ۳ی ADR-056 دکمه را بسته نگه می‌دارد، و متنش («اول verify کن») راهی را نشان می‌دهد که
+    // هیچ‌وقت بازش نمی‌کند. ★ همان الگوی «WSِ باز» در `admin:access`: محدودیت assert می‌شود تا
+    // بی‌صدا عوض نشود — روزی که «ردِ ادعا» ساخته شد، این انتظار **برعکس** می‌شود، نه حذف.
+    //
+    // ⚠️ **ردیف باید کهنه‌تر از سقفِ ۷۲ ساعت باشد**، وگرنه این چک چیزی را که ادعا می‌کند نمی‌سنجد:
+    //    روی ردیفِ تازه، پله‌ی «جوان است» به‌تنهایی ۴۰۹ می‌دهد و برداشتنِ قاعده‌ی `failure_code` هم
+    //    سبز می‌مانْد. نگارشِ اولِ همین چک دقیقاً همین نقص را داشت — هنگامِ طراحیِ شکستنِ عمدی‌اش دیده شد،
+    //    پیش از آنکه به‌عنوانِ «سبز» ثبت شود. با ردیفِ کهنه، همان شکستن چک را **قرمز** کرد. سن بعدش برمی‌گردد.
+    const ageBack = async (id: string): Promise<Date> => {
+      const before = await transferApp.db.query<{ requested_at: Date }>(
+        "UPDATE payments p SET requested_at = now() - interval '100 hours' FROM payments old WHERE p.id = $1 AND old.id = p.id RETURNING old.requested_at",
+        [id],
+      );
+      return before.rows[0]!.requested_at;
+    };
+    const originalRequestedAt = await ageBack(co.paymentId);
+
+    // لایه‌ی ۱ — ادعا **داخلِ** پنجره: درگاه هرگز «پرداخت نشده» نگفته ⇒ نردبان دکمه را بسته نگه می‌دارد.
+    const blockedBefore = (await tSdk.admin.payments.get(co.paymentId)).expireBlocked;
+    let expireClaimed: unknown;
+    try {
+      await tSdk.admin.payments.expire(co.paymentId, { reason: "پول نیامد" });
+    } catch (e) {
+      expireClaimed = e;
+    }
+    const verifyClaimed = await tSdk.admin.payments.verify(co.paymentId);
+    const blockedAfter = (await tSdk.admin.payments.get(co.paymentId)).expireBlocked;
+    await transferApp.db.query("UPDATE payments SET requested_at = $2 WHERE id = $1", [
+      co.paymentId,
+      originalRequestedAt,
+    ]);
+
+    // لایه‌ی ۲ — ادعا **بعد از** پنجره: درگاه یک‌بار «پرداخت نشده» گفته (`failure_code` هست) ⇒ دکمه
+    //   **باز** است، ولی ابطال پیش از باطل‌کردن دوباره می‌پرسد و این‌بار «نمی‌دانم» می‌شنود ⇒ هیچ ابطالی.
+    const late = await tSdk.billing.checkout(teamId, { planCode: probePlan, period: "monthly", seats: 1 });
+    const lateAuthority = late.redirectUrl.slice(late.redirectUrl.lastIndexOf("/") + 1);
+    await ageBack(late.paymentId);
+    const lateVerify = await tSdk.admin.payments.verify(late.paymentId);
+    await tSdk.billing.claimTransfer(lateAuthority, { ref: "ادعای-دیرهنگام", last4: null });
+    const lateBlocked = (await tSdk.admin.payments.get(late.paymentId)).expireBlocked;
+    const lateExpire = await tSdk.admin.payments.expire(late.paymentId, { reason: "پول نیامد" });
+
+    check(
+      "53) ⚠️ محدودیتِ ثبت‌شده: ردیفِ **ادعاشده** از پنل باطل نمی‌شود — نه با دکمه‌ی بسته (۴۰۹)، نه با دکمه‌ی باز (unknown)",
+      () => {
+        paymentActionResult.parse(verifyClaimed);
+        paymentActionResult.parse(lateExpire);
+        // ── لایه‌ی ۱ ──
+        if (blockedBefore === null) throw new Error("دکمه‌ی ابطال روی ردیفِ ادعاشده‌ی بی‌پاسخ باز است");
+        if (!(expireClaimed instanceof SdkError)) {
+          throw new Error(`ابطال رد نشد: ${JSON.stringify(expireClaimed)}`);
+        }
+        if (expireClaimed.status !== 409 || expireClaimed.code !== "INVALID_TRANSITION") {
+          throw new Error(`status=${expireClaimed.status} code=${expireClaimed.code}`);
+        }
+        if (verifyClaimed.outcome !== "unknown") throw new Error(`verify: ${verifyClaimed.outcome}`);
+        if (verifyClaimed.payment.status !== "pending") throw new Error("ردیف دیگر pending نیست");
+        if (verifyClaimed.payment.failureCode !== null) {
+          throw new Error(`verify روی ردیفِ ادعاشده failure_code نوشت: ${verifyClaimed.payment.failureCode}`);
+        }
+        // ★ همان متن، بعد از همان کاری که متن می‌گوید بکن — یعنی راهنمای رابط بن‌بست است.
+        if (blockedAfter !== blockedBefore) {
+          throw new Error(`verify مانع را عوض کرد: «${String(blockedBefore)}» → «${String(blockedAfter)}»`);
+        }
+        // ── لایه‌ی ۲ ──
+        if (lateVerify.outcome !== "notPaid") throw new Error(`verifyِ بی‌ادعا: ${lateVerify.outcome}`);
+        if (lateBlocked !== null) throw new Error(`دکمه باید باز می‌بود: «${lateBlocked}»`);
+        if (lateExpire.outcome !== "unknown") throw new Error(`ابطال: ${lateExpire.outcome}`);
+        if (lateExpire.payment.status !== "pending") {
+          throw new Error(`ردیفِ ادعاشده بسته شد: ${lateExpire.payment.status}`);
+        }
+      },
+    );
+
+    // ── ★★ ۵۴: ردیفِ **درگاهِ دیگر** از این اپ دست‌نخوردنی است (۴۰۹ پیش از هر تماس با درگاه) ──
+    //
+    // `first` یک پرداختِ `mock` است که چک‌های بالا ساختند. روی نصبی که درگاهش عوض شده، هر عملِ
+    // پنل روی ردیف‌های درگاهِ قبلی همین را می‌گیرد — و sweep هم آن‌ها را نه می‌بیند نه می‌شمارد
+    // (هشدارِ «حالتِ دیگر» فقط همان درگاه را می‌شمارد). ⇒ ردیف‌های درگاهِ قبلی را **پیش از**
+    // تعویضِ `PAYMENT_PROVIDER` ببند (m7-handoff §۳).
+    // ⊕ چکِ ۴۱ همین قاعده را با یک ردیفِ دست‌کاری‌شده می‌سنجد؛ این یکی سناریوی **واقعیِ launch** را:
+    //   یک اپِ دوم که واقعاً با درگاهِ دیگری بوت شده.
+    const foreign: unknown[] = [];
+    for (const act of [
+      () => tSdk.admin.payments.verify(first.paymentId),
+      () => tSdk.admin.payments.expire(first.paymentId, { reason: "تعویضِ درگاه" }),
+    ]) {
+      try {
+        await act();
+        foreign.push("بدونِ خطا");
+      } catch (e) {
+        foreign.push(e);
+      }
+    }
+    check("54) ★★ ردیفِ درگاهِ دیگر (mock) از اپِ card_transfer ⇒ ۴۰۹ CONFLICT برای verify و ابطال", () => {
+      for (const e of foreign) {
+        if (!(e instanceof SdkError)) throw new Error(`SdkError نبود: ${String(e)}`);
+        if (e.status !== 409 || e.code !== "CONFLICT") {
+          throw new Error(`status=${e.status} code=${e.code}`);
+        }
+      }
+    });
+
     let mismatch: unknown;
     try {
       await tSdk.admin.payments.approveTransfer(co.paymentId, {
@@ -1393,6 +1501,23 @@ async function main(): Promise<void> {
       note: "دیده شد در صورت‌حساب",
     });
     const detail = await tSdk.admin.payments.get(co.paymentId);
+
+    // ── ۵۵: این درگاه کانالِ استرداد ندارد ⇒ «استرداد از درگاه» ۴۰۹ است و ردیف `paid` می‌مانَد ──
+    //    (RUNBOOK §۵ همین را می‌گوید؛ تا ۹٫۴ فقط برای زرین‌پال سنجیده شده بود — `billing:refund`.)
+    let gatewayRefund: unknown;
+    try {
+      await tSdk.admin.payments.refund(co.paymentId, { channel: "gateway", reason: "آزمونِ کانال" });
+    } catch (e) {
+      gatewayRefund = e;
+    }
+    const afterRefundAttempt = await tSdk.admin.payments.get(co.paymentId);
+    check("55) استردادِ **درگاهیِ** کارت‌به‌کارت ⇒ ۴۰۹ REFUND_UNAVAILABLE، و ردیف `paid` می‌مانَد", () => {
+      if (!(gatewayRefund instanceof SdkError)) throw new Error(`SdkError نبود: ${String(gatewayRefund)}`);
+      if (gatewayRefund.status !== 409 || gatewayRefund.code !== "REFUND_UNAVAILABLE") {
+        throw new Error(`status=${gatewayRefund.status} code=${gatewayRefund.code}`);
+      }
+      if (afterRefundAttempt.status !== "paid") throw new Error(`وضعیت ${afterRefundAttempt.status}`);
+    });
 
     check(
       "52) ★★ مبلغِ ناهم‌خوان ⇒ ۴۰۹ TRANSFER_AMOUNT_MISMATCH · تاییدِ درست ⇒ activated · و **ادعا و مشاهده دو فیلدِ جدا می‌مانند**",
@@ -1435,6 +1560,22 @@ async function main(): Promise<void> {
     const invoiceId = inv.rows[0]?.invoice_id ?? null;
     if (invoiceId !== null) {
       await transferApp.db.query("DELETE FROM invoices WHERE id = $1", [invoiceId]);
+    }
+    // ردیفِ دومِ چکِ ۵۳ (ادعای دیرهنگام) — همان قاعده: هیچ ردیفی جا نمی‌مانَد.
+    await transferApp.db.query("DELETE FROM audit_logs WHERE target_id = $1", [late.paymentId]);
+    // ⚠️ و ردیف‌هایی که چکِ ۵۴ **فقط وقتی قرمز است** می‌نویسد (verify/ابطالِ ردیفِ mock که نباید رد می‌شد).
+    //    در ۹٫۴ دیده شد: با شکستنِ عمدیِ `assertGatewayMatches` همین ردیف‌ها ماندند و **اجرای بعدی** را روی
+    //    چکِ ۲۴ قرمز کردند — یک چکِ قرمز نباید اجرای بعدی را هم آلوده کند.
+    await transferApp.db.query(
+      "DELETE FROM audit_logs WHERE target_id = $1 AND created_at >= $2",
+      [first.paymentId, blockStartedAt],
+    );
+    const lateInv = await transferApp.db.query<{ invoice_id: string | null }>(
+      "DELETE FROM payments WHERE id = $1 RETURNING invoice_id",
+      [late.paymentId],
+    );
+    if (lateInv.rows[0]?.invoice_id) {
+      await transferApp.db.query("DELETE FROM invoices WHERE id = $1", [lateInv.rows[0].invoice_id]);
     }
     await transferApp.db.query("UPDATE plans SET is_active = false WHERE code = $1", [probePlan]);
     // ⚠️⚠️ **حالتِ مشترک باید دقیقاً به جای اولش برگردد.** این بلوک `is_staff`، step-up، ردیف‌های

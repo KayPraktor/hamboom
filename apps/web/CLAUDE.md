@@ -209,6 +209,10 @@ file-based یک `routeTree.gen.ts` می‌سازد که هنگامِ `tsc` با�
 
 ## ★ اجرای محلیِ کاملِ زنجیره
 
+⚠️ **پورت‌های این بلوک مالِ M3‌اند و روی این ماشین جابه‌جا شده‌اند** (رنجِ excludedِ ویندوز): امروز postgres **۵۵۴۴** · redis
+**۷۶۰۰** · minio **۱۵۹۰۰** · api **۱۵۴۰۲** · realtime **۱۵۴۰۱**. منبعِ حقیقت `.env`ِ محلی و بخشِ پورت‌های
+[CLAUDE.mdِ ریشه](../../CLAUDE.md) است، نه عددهای پایین (یافته‌ی بازبینیِ M6 ۹٫۴).
+
 ```bash
 pnpm db:up                                   # postgres 5544 + redis 7379 + minio 9600 (پورت‌ها در .envِ محلی)
 APP_ENV=local node --env-file-if-exists=.env apps/api/src/server.ts            # api روی 3410 (SMS mock → کد در لاگ)

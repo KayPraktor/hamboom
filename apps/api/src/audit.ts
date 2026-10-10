@@ -47,6 +47,7 @@ export type AuditAction =
   // فاز ۶ — پرداخت‌ها (ADR-068): verifyِ دستی، انقضای دستی/خودکار، استرداد، فرزندخواندگی، sweepِ دستی.
   // ⚠️ `payment.expire`/`payment.adopt` را **آشتی‌دهی هم** می‌نویسد (actor = سیستم، `actor_user_id = NULL`):
   //    همان عمل، دو فراخوان — و پرونده‌ی «چه کسی این پرداخت را باطل کرد» باید هر دو را داشته باشد.
+  //    و `payment.verify` را هم، ولی **فقط وقتی فعال کرد** (`auditSweepSettle`، با `via`) — نه برای هر `notPaid`.
   | "payment.search"
   | "payment.verify"
   | "payment.expire"

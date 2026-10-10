@@ -9,7 +9,7 @@
  * پاسخِ `gatewayError`ِ درگاه، ستونِ `failure_code` که `settleLocked` دست نمی‌زند، و نردبانِ
  * `planSweep`. و دو نگهبانِ دیگر فقط در دیتابیس‌اند: `payments_transfer_ref_uq` و CHECKهای ۰۰۱۰.
  *
- * هفت چک:
+ * نُه چک:
  *   ۱. ★★ دو تاییدِ هم‌زمان با هم‌پوشانیِ **اجباری** ⇒ یک اشتراک، یک ردیفِ ممیزی.
  *   ۲. ★★ ردیفِ **ادعاشده** هرچقدر هم کهنه، با sweep باطل **نمی‌شود**.
  *   ۳. ★★ بازپخشِ شماره‌ی مرجع ⇒ `TRANSFER_REF_TAKEN`، و پرداختِ دوم دست‌نخورده.
@@ -18,6 +18,8 @@
  *   ۶. ★ ردیفِ **بی‌ادعا**ی کهنه **باطل می‌شود** — نردبان هنوز کار می‌کند، فقط کورکورانه نه.
  *   ۷. sweepِ درگاهِ دیگر ردیفِ `card_transfer` را **نمی‌بیند**.
  *   ۸. ★★ دو تاییدِ **هم‌زمان** با یک شماره روی دو پرداختِ متفاوت ⇒ ایندکسِ یکتا یکی را رد می‌کند.
+ *   ۹. ⚠️ **محدودیتِ ثبت‌شده** (۹٫۴): ردیف‌های ادعاشده‌ی بسته‌نشدنی دسته‌ی sweep را پر می‌کنند ⇒ ردیفِ
+ *      رهاشده‌ی بی‌ادعا دیده نمی‌شود؛ با دسته‌ی جادار همان ردیف باطل می‌شود (کنترلِ مثبت).
  *
  * ⚠️⚠️ **چکِ ۸ از یک سبزِ دروغینِ گرفته‌شده زاده شد.** نگارشِ اول فقط چکِ ۳ را داشت؛ با
  * `DROP INDEX payments_transfer_ref_uq` روی دیتابیسِ زنده **سبز مانْد** — چون پیش‌چکِ
@@ -553,6 +555,71 @@ async function main(): Promise<void> {
       //    دو زنده است، حذفِ آن کاربر روی `payments_transfer_approved_by_fkey` می‌شکند.
       await cleanup(pool, two.teamId, two.userId);
       await cleanup(pool, one.teamId, one.userId);
+    }
+  }
+
+  // ── ۹) ⚠️ محدودیتِ ثبت‌شده: ردیف‌های ادعاشده دسته‌ی sweep را پر می‌کنند ──
+  {
+    // ★★ این چک یک **محدودیت** را assert می‌کند، نه یک تضمین — همان الگوی «WSِ باز» در
+    //    `admin:access`. ردیفِ ادعاشده را نه sweep می‌بندد (عمداً — چکِ ۲) و نه «ابطالِ پرداخت»ِ
+    //    پنل (ناخواسته — `sdk:contract` چکِ ۵۳). پس برای همیشه `pending` می‌مانَد، و چون دسته‌ی
+    //    sweep «قدیمی‌ترین N ردیف» است، N ردیفِ این‌چنینی آشتی‌دهی را از دیدنِ **هر** ردیفِ دیگری
+    //    بازمی‌دارند — همان کلاسِ یافته‌ی ۶٫۵ (ردیف‌های حالتِ ناهم‌خوان)، این‌بار بدونِ راهِ خروج.
+    //    ⇒ روزی که این گپ بسته شد (ردِ ادعا از پنل، یا بیرون‌گذاشتنِ ادعاشده‌ها از دسته)، نیمه‌ی
+    //    اولِ این انتظار **برعکس** می‌شود، نه حذف. (یافته‌ی بازبینیِ خصمانه‌ی ۹٫۴.)
+    const { userId, teamId } = await seedTeam(pool, "سنجه‌ی گرسنگیِ دسته");
+    try {
+      const claimed = [
+        await pendingTransfer(pool, gateway, teamId, userId, planCode),
+        await pendingTransfer(pool, gateway, teamId, userId, planCode),
+      ];
+      for (const c of claimed) {
+        await withTransaction(pool, async (tx) =>
+          claimTransfer(tx, { paymentId: c.paymentId, ref: "ادعای بی‌پول", last4: null }),
+        );
+        // ★ ده سال: این دو ردیف قدیمی‌ترینِ کلِ جدول‌اند، پس دسته‌ی ۲تایی **دقیقاً** همین‌هاست.
+        await ageBy(pool, c.paymentId, 3650 * 24 * HOUR);
+      }
+      const abandoned = await pendingTransfer(pool, gateway, teamId, userId, planCode);
+      await ageBy(pool, abandoned.paymentId, 48 * HOUR); // بی‌ادعا و بیرونِ پنجره ⇒ **باید** باطل شود
+
+      const base = { staleAfterMs: 1, expireAfterMs: 2, adoptOrphans: false, dryRun: false };
+      const first = await runReconcile({ pool, gateway }, { ...base, batchSize: 2 });
+      await runReconcile({ pool, gateway }, { ...base, batchSize: 2 });
+      const seen = first.decisions.some((d) => d.paymentId === abandoned.paymentId);
+      const mid = await pool.query<{ status: string; failure_code: string | null }>(
+        "SELECT status, failure_code FROM payments WHERE id = $1",
+        [abandoned.paymentId],
+      );
+
+      // ★ کنترلِ مثبت: با دسته‌ای که **جا دارد**، همان ردیف با دو sweep باطل می‌شود. بدونِ این،
+      //   نیمه‌ی اول می‌توانست «هیچ‌چیز را نسنجیدن» باشد (ردیفی که به هر دلیلِ دیگری باطل‌نشدنی است).
+      const total = await pool.query<{ n: string }>(
+        "SELECT count(*)::bigint AS n FROM payments WHERE status = 'pending' AND gateway = $1 AND gateway_mode = $2",
+        [gateway.name, gateway.mode],
+      );
+      const wide = { ...base, batchSize: Number(total.rows[0]?.n ?? "0") + 1 };
+      await runReconcile({ pool, gateway }, wide);
+      await runReconcile({ pool, gateway }, wide);
+      const end = await statusOf(pool, abandoned.paymentId);
+
+      const starved = !seen && mid.rows[0]?.status === "pending" && mid.rows[0].failure_code === null;
+      const ok = starved && end !== "pending";
+      record(
+        "⚠️ محدودیتِ ثبت‌شده: دسته‌ای که با ردیفِ **ادعاشده** پر شود، ردیفِ رهاشده را نمی‌بیند",
+        ok,
+        `دسته‌ی ۲تایی: دیده‌شده=${String(first.scanned)} · ردیفِ رهاشده در تصمیم‌ها=${String(seen)} · ` +
+          `وضعیتش=${String(mid.rows[0]?.status)}/${String(mid.rows[0]?.failure_code)} · با دسته‌ی جادار: ${end}` +
+          (ok
+            ? " ⇒ ردیفِ ادعاشده‌ی بسته‌نشدنی sweep را گرسنه می‌کند (گپِ بازِ ADR-070)"
+            : starved
+              ? " ⇒ کنترلِ مثبت افتاد: ردیفِ رهاشده با دسته‌ی جادار هم باطل نشد"
+              : " ⇒ محدودیت دیگر برقرار نیست — اگر عمدی است، این انتظار را **برعکس** کن و سندها را به‌روز"),
+      );
+    } catch (error) {
+      failed("⚠️ گرسنگیِ دسته", error);
+    } finally {
+      await cleanup(pool, teamId, userId);
     }
   }
 
