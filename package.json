@@ -63,6 +63,7 @@
     "openapi:check": "node scripts/gen-openapi.ts --check",
     "p2:check": "node scripts/check-p2.ts --self-test && node scripts/check-p2.ts",
     "ci:wait": "node --env-file-if-exists=.env scripts/ci-wait-services.mjs",
+    "ci:seed-asset": "node --env-file-if-exists=.env scripts/ci-seed-asset.ts",
     "infra:probe-metrics": "node --expose-gc --env-file-if-exists=.env scripts/infra-probe-metrics.ts",
     "infra:probe-leader": "node --env-file-if-exists=.env scripts/infra-probe-leader.ts",
     "infra:backup": "node --env-file-if-exists=.env scripts/backup-db.ts",

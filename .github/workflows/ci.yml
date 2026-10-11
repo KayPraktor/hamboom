@@ -107,7 +107,11 @@ jobs:
       - name: billing — سنجه‌های تسویه/ظرفیت/آشتی‌دهی/استرداد
         # ★ M6 فاز ۶: `billing:refund` کنارِ بقیه — مدلِ استرداد کدِ پول است و یک مشقِ دستی
         #   همان `lint:css`ِ هیچ‌وقت-اجرانشده می‌شود.
-        run: pnpm billing:settle && pnpm billing:quota && pnpm billing:probe-reconcile && pnpm billing:refund
+        # ★ ۱۴۰۵/۰۷/۲۰: `billing:transfer` (کارت‌به‌کارت، ADR-070) با همان استدلال — از روزِ ساختش
+        #   جا افتاده بود و فقط دستی اجرا می‌شد.
+        run: >
+          pnpm billing:settle && pnpm billing:quota && pnpm billing:probe-reconcile &&
+          pnpm billing:refund && pnpm billing:transfer
       - name: قراردادِ sdk
         run: pnpm sdk:contract
       - name: advisory lock (ADR-060)
@@ -138,6 +142,12 @@ jobs:
       # ⚠️ M6: عمداً **بعد از** سنجه‌های realtime — `rt:compaction` اولین snapshotهای واقعی را
       #    می‌نویسد؛ پیش از آن `board_snapshots` خالی است و چکِ `bytes`ِ مشق و چکِ `catalog`ِ
       #    بازیابیِ storage روی «هیچ» vacuous می‌ماندند (یافته‌ی بازبینِ خصمانه‌ی نقشه‌ی M6).
+      # ⚠️⚠️ ۱۴۰۵/۰۷/۲۰ — و همان یافته برای باکتِ **assets** جا مانده بود: هیچ سنجه‌ای در آن چیزی
+      #    نمی‌گذارد (smokeها باکتِ خودشان را دارند)، پس روی استکِ تمیزِ CI خالی است و چکِ `vacuous`ِ
+      #    بازیابی درست قرمز می‌شود. این مرحله از روزِ اول نمی‌توانست این‌جا سبز شود؛ دیده نشد چون job
+      #    هرگز به آن نرسید. `ci:seed-asset` یک فیکسچر است (نه سنجه) و بیرون از CI بالا نمی‌آید.
+      - name: یک شیءِ واقعی در باکتِ assets (پیش‌نیازِ مشقِ بازیابی)
+        run: pnpm ci:seed-asset
       - name: ★ پشتیبانِ جفت (dump + آینه‌ی Object Storage) + خودآزمونِ آینه
         run: pnpm infra:backup-all && pnpm infra:backup-storage -- --self-test
       - name: ★★ مشقِ بازیابی (۶ چک) + خودآزمونش
