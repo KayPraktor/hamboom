@@ -116,12 +116,20 @@ jobs:
       # ★ M6 فاز ۳٫۴ — `admin-grant-staff` از داخلِ ایمیج بارگذاری می‌شود و **بدونِ --phone بالا
       #    نمی‌آید** (پیش از خواندنِ env، پس بدونِ DATABASE_URL هم همین پیام). exit ≠ 1 یا پیامِ
       #    دیگری (مثلاً ERR_MODULE_NOT_FOUND) یعنی ایمیج نمی‌تواند این ورودی را اجرا کند.
+      #
+      # ⚠️⚠️ **این مرحله از روزی که نوشته شد تا ۱۴۰۵/۰۷/۲۰ هرگز سبز نشد — و اسکریپت بی‌تقصیر بود.**
+      #    گیت‌هاب `run` را با `bash -e` اجرا می‌کند. نگارشِ اول `out=$(docker run …); code=$?` بود: کدِ
+      #    خروجِ **درستِ** ۱ همان‌جا شل را می‌کشت، پیش از `code=$?` و پیش از هر `echo` — پس لاگ فقط
+      #    «exit code 1» داشت، بی هیچ پیامی. محلی با `bash`ِ ساده آزموده شده بود (سبز)؛ با `bash -e`
+      #    همان متن بی‌صدا ۱ می‌دهد. `|| code=$?` کد را می‌گیرد بی‌آنکه errexit را بیدار کند.
+      #    ⊕ و چهار پوشِ پیاپی قرمز ماند و کسی ندید، چون بعد از پوش کسی CI را نگاه نمی‌کرد.
       - name: ★ admin-grant-staff از داخلِ ایمیج — گاردِ --phone
         run: |
           set -uo pipefail
-          out=$(docker run --rm hamboom/api:ci node scripts/admin-grant-staff.ts 2>&1); code=$?
+          code=0
+          out=$(docker run --rm hamboom/api:ci node scripts/admin-grant-staff.ts 2>&1) || code=$?
           [ "$code" = "1" ] || { echo "✖ exit=$code (انتظار ۱)"; echo "$out"; exit 1; }
-          echo "$out" | grep -q -- "--phone" || { echo "✖ بالا نیامد، ولی به دلیلِ دیگری"; echo "$out"; exit 1; }
+          grep -q -- "--phone" <<< "$out" || { echo "✖ بالا نیامد، ولی به دلیلِ دیگری"; echo "$out"; exit 1; }
           echo "✔ بدونِ --phone ⇒ exit 1 با پیامِ درست"
 
       # ★★ مسیرِ انتقالِ ADR-063 — یک گیت، نه یک اسکریپتِ دستی.
