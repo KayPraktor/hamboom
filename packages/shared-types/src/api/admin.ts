@@ -111,7 +111,7 @@ export const adminTeamSummary = z.object({
 });
 export type AdminTeamSummary = z.infer<typeof adminTeamSummary>;
 
-/** پاسخِ `GET /admin/search` — هر دو فهرست با هم؛ پیشوندِ شماره تیمی ندارد ⇒ `teams: []`. */
+/** پاسخِ `POST /admin/search` — هر دو فهرست با هم؛ جست‌وجو با شماره تیمی برنمی‌گردانَد ⇒ `teams: []`. */
 export const adminSearchResult = z.object({
   users: z.array(adminUserSummary),
   teams: z.array(adminTeamSummary),
@@ -336,8 +336,8 @@ export type RefundResult = z.infer<typeof refundResult>;
 /**
  * بدنه‌ی `POST /admin/payments/reconcile` — sweepِ **دستی**.
  *
- * ⚠️ `batchSize` سقفِ ۲۵ دارد و پیش‌فرضش ۱۰ است (نه ۵۰ی تایمر): هر ردیف یک رفت‌وبرگشتِ ۱۵ثانیه‌ایِ درگاه
- * می‌تواند باشد و `proxy_read_timeout`ِ nginx ۶۰ ثانیه است.
+ * ⚠️ `batchSize` سقفِ **۱۰** دارد و پیش‌فرضش **۵** است (نه ۵۰ی تایمر): هر ردیف یک رفت‌وبرگشتِ ۱۵ثانیه‌ایِ درگاه
+ * می‌تواند باشد و `proxy_read_timeout`ِ nginx ۶۰ ثانیه است — دلیلِ کامل کنارِ خودِ فیلد.
  */
 export const reconcileRequest = z.object({
   adoptOrphans: z.boolean().default(false),
