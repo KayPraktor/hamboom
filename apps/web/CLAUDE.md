@@ -240,7 +240,10 @@ pnpm --filter @hamboom/web test:e2e        # ۸٫۱ — پنل؛ دو سرورِ
 # سه‌تای زیر **استکِ productionِ محلی** را از قبل بالا می‌خواهند (E2E_COMPOSE_ENV_FILE / E2E_COMPOSE_PROJECT)
 pnpm --filter @hamboom/web test:e2e:p2     # ۸٫۳ — P2 روی باندلِ ساخته‌شده پشتِ nginx + کنترلِ مثبت
 pnpm --filter @hamboom/web test:e2e:csp    # ۸٫۵ — اندازه‌گیریِ CSP: ۹ پالیسی، دو کنترل، یک خودآزمون
-pnpm --filter @hamboom/web test:e2e:assets # ۸٫۶ — زنجیره‌ی تصویر: چهار حلقه + شکستنِ عمدی
+pnpm --filter @hamboom/web test:e2e:assets # ۸٫۶ — زنجیره‌ی تصویر: پنج حلقه + شکستنِ عمدی، روی انبارِ **سخت‌گیر**
+#   ★★ انبار باید از پشتِ `e2e/storage-cors-proxy.ts` بیاید (CORSِ اندازه‌گیری‌شده‌ی آروان؛ خودِ playwright بالا می‌آوردش):
+#      `S3_ENDPOINT`ِ استک = http://host.docker.internal:15977 · `STORAGE_PROXY_UPSTREAM` = MinIOی هاست.
+#      مستقیم روی MinIO این سنجه **قرمز** می‌شود («انبار سخت‌گیر نیست») — عمداً: MinIO با خودِ باگِ ۸٫۶ هم سبز می‌مانْد.
 ```
 
 > **پورتِ dev = 15380** (بیرونِ بازه‌ی dynamic portِ ویندوز؛ مثلِ canvas-core=15180،
