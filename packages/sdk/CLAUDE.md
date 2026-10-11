@@ -19,6 +19,11 @@
    هیچ‌کدام. sdk فقط قراردادِ سیم را می‌داند.
 4. ★ **access token در حافظه، نه localStorage** (فاز ۸/handoff). روی **۴۰۱** یک‌بار refresh + retryِ خودکار
    (کوکیِ HttpOnly با `credentials:include`)؛ refreshِ همزمان **یک‌بار** اجرا می‌شود (وعده‌ی مشترک).
+   ⚠️⚠️ **استثنا — هر درخواستی که از مبدأِ ما بیرون می‌رود `credentials: "same-origin"` می‌گیرد** (`Opts.credentials`،
+   M6 ردیفِ ۸٫۶). امروز فقط `assets.resolveBlob` است: ۳۰۲ به انبار. با `include`، مرورگر از انبار
+   `Access-Control-Allow-Credentials: true` می‌خواهد؛ MinIO می‌دهد و آروان نه ⇒ روی هر محیطِ ما سبز بود و روی
+   production `TypeError: Failed to fetch` (قابِ خالیِ تصویر). تستِ واحد فقط قرارداد را قفل می‌کند؛ رفتارِ مرورگر
+   را `apps/web` با `test:e2e:assets` روی انبارِ سخت‌گیر اثبات می‌کند.
 5. ★ **`process.env` نمی‌خواند** — `baseUrl`/`fetch` را param می‌گیرد (config کارِ apps/web است).
 
 ## ساختار

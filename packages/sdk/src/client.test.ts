@@ -125,6 +125,59 @@ describe("createClient", () => {
     const blob = await client.assets.resolveBlob("f1");
     await expect(blob.text()).resolves.toBe("PNGBYTES");
   });
+
+  // ★★ M6 ردیفِ ۸٫۶ — ریشه‌ی «قابِ خالی» روی آروان. `resolveBlob` تنها درخواستی است که از مبدأِ ما
+  //    بیرون می‌رود (۳۰۲ به انبار). با `credentials: "include"` مرورگر از انبار
+  //    `Access-Control-Allow-Credentials: true` می‌خواهد؛ MinIO می‌دهد، آروان نه ⇒ `TypeError`.
+  //    ⚠️ این تست فقط **قرارداد** را قفل می‌کند (کدام init به fetch می‌رسد)؛ خودِ رفتارِ مرورگر را
+  //    `test:e2e:assets` روی انبارِ سخت‌گیر اثبات می‌کند — fetchِ دروغین CORS ندارد.
+  it("★★ resolveBlob با `credentials: same-origin` می‌رود؛ بقیه‌ی درخواست‌ها همچنان `include`", async () => {
+    const seen: { url: string; credentials: unknown; redirect: unknown }[] = [];
+    const client = createClient({
+      baseUrl: "",
+      fetch: (url, init) => {
+        seen.push({ url, credentials: init.credentials, redirect: init.redirect });
+        return Promise.resolve(
+          url.startsWith("/assets/")
+            ? new Response(new Blob(["x"]), { status: 200 })
+            : json(200, { boards: [] }),
+        );
+      },
+    });
+    client.setAccessToken("t");
+    await client.assets.resolveBlob("f1");
+    await client.boards.list();
+
+    expect(seen[0]).toEqual({ url: "/assets/f1", credentials: "same-origin", redirect: "follow" });
+    // کوکیِ refresh برای مسیرهای خودِ api همچنان لازم است — این رفع نباید آن را بردارد.
+    expect(seen[1]?.credentials).toBe("include");
+  });
+
+  it("★ retryِ بعد از ۴۰۱ هم همان `same-origin` را نگه می‌دارد (refresh خودش `include` می‌ماند)", async () => {
+    const seen: { url: string; credentials: unknown }[] = [];
+    let assetHits = 0;
+    const client = createClient({
+      baseUrl: "",
+      fetch: (url, init) => {
+        seen.push({ url, credentials: init.credentials });
+        if (url.endsWith("/auth/refresh")) return Promise.resolve(json(200, { accessToken: "new" }));
+        assetHits += 1;
+        return Promise.resolve(
+          assetHits === 1
+            ? json(401, err("UNAUTHORIZED"))
+            : new Response(new Blob(["x"]), { status: 200 }),
+        );
+      },
+    });
+    client.setAccessToken("old");
+    await client.assets.resolveBlob("f1");
+
+    expect(seen.map((s) => `${s.url} ${String(s.credentials)}`)).toEqual([
+      "/assets/f1 same-origin",
+      "/auth/refresh include",
+      "/assets/f1 same-origin",
+    ]);
+  });
 });
 
 describe("billing — M4 فاز ۸", () => {

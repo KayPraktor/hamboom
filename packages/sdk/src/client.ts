@@ -131,6 +131,16 @@ interface Opts {
   noAuth?: boolean;
   redirect?: RequestInit["redirect"];
   /**
+   * حالتِ credentialsِ همین یک درخواست — پیش‌فرض `"include"` (کوکیِ refresh).
+   *
+   * ⚠️⚠️ **هر درخواستی که از مبدأِ ما بیرون می‌رود باید این را `"same-origin"` کند** (M6 ردیفِ ۸٫۶).
+   * با `"include"`، مرورگر پاسخِ بین‌مبدأ را فقط وقتی می‌پذیرد که
+   * `Access-Control-Allow-Credentials: true` داشته باشد. MinIO آن را به **هر** پاسخی می‌چسباند، آروان
+   * (و بیشترِ S3های واقعی) نه — پس همان `fetch` در همه‌ی محیط‌های ما سبز بود و روی production
+   * `TypeError: Failed to fetch` می‌داد. تنها مصرف‌کننده‌ی امروز `assets.resolveBlob` است.
+   */
+  credentials?: RequestInit["credentials"];
+  /**
    * ★★ `Idempotency-Key` — **تا M4 فاز ۸ اصلاً وجود نداشت**، و بدونش هیچ POSTی از این
    * کلاینت قابلِ idempotent کردن نبود؛ یعنی مسیرِ پرداخت **دقیقاً** چیزی را که سرور
    * ساخته بود نمی‌توانست استفاده کند.
@@ -167,7 +177,8 @@ export function createClient(options: ClientOptions) {
       method,
       headers,
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-      credentials: "include", // کوکیِ refreshِ HttpOnly در مرورگر
+      // کوکیِ refreshِ HttpOnly در مرورگر — مگر درخواستی که از مبدأِ ما بیرون می‌رود (`Opts.credentials`).
+      credentials: opts.credentials ?? "include",
       redirect: opts.redirect,
     });
   }
@@ -544,10 +555,21 @@ export function createClient(options: ClientOptions) {
        * بی‌هدر) می‌دهد و Location اصلاً خوانده نمی‌شود — در Node نه، پس تستِ mockـیِ قدیمی سبز بود ولی مرورگر
        * می‌شکست (کشفِ M3 گام ۱۱٫۲). با follow، مرورگر ۳۰۲ را دنبال می‌کند (Bearer روی ری‌دایرکتِ بین‌مبدأ حذف
        * می‌شود، URLِ امضاشده به auth نیاز ندارد) و **بایت‌ها** می‌رسند. مصرف‌کننده‌ی مرورگری از این یک
-       * `objectURL`ِ هم‌مبدأ می‌سازد (آنیْ لود، بی‌وابستگی به CORS/taintِ Object Storage).
+       * `data:` URI می‌سازد (آنیْ لود، بی‌وابستگی به taintِ Object Storage).
+       *
+       * ★★ **`credentials: "same-origin"`، نه پیش‌فرضِ `"include"`** — ریشه‌ی باگِ «قابِ خالی»ِ اولین استقرار
+       * (M6 ردیفِ ۸٫۶). هاپِ دوم بین‌مبدأ است؛ با `"include"` مرورگر از انبار
+       * `Access-Control-Allow-Credentials: true` می‌خواهد و بدونش پاسخ را دور می‌ریزد. MinIO آن هدر را
+       * می‌دهد، آروان نه — اندازه‌گیری‌شده روی هر دو، و در مرورگر بازتولیدشده با
+       * [`storage-cors-proxy.ts`](../../../apps/web/e2e/storage-cors-proxy.ts). هاپِ اول هم‌مبدأ است و با
+       * Bearer احراز می‌شود، پس به کوکی نیازی نیست. ⊕ و اصلِ درستش هم همین است: credentials هرگز نباید به
+       * مبدأِ یک طرفِ سوم پیشنهاد شود.
        */
       async resolveBlob(fileId: string): Promise<Blob> {
-        const res = await rawAuthed("GET", `/assets/${fileId}`, { redirect: "follow" });
+        const res = await rawAuthed("GET", `/assets/${fileId}`, {
+          redirect: "follow",
+          credentials: "same-origin",
+        });
         if (!res.ok) return parse<never>(res); // خطا (۴۰۴/۴۰۳) را می‌اندازد
         return res.blob();
       },
