@@ -75,8 +75,32 @@ jobs:
       #    runnerِ لینوکسی ندارد.
       - name: ساختِ .env از .env.example
         run: cp .env.example .env
+      # ★★ ADR-071 — MinIO دیگر از هیچ رجیستری‌ای کشیده نمی‌شود؛ `pnpm db:up` ایمیجش را از سورسِ سنجاق‌شده
+      #    **می‌سازد** (`minio-dev.Dockerfile`). این کش فقط دقیقه‌های build و وابستگی به پروکسیِ ماژولِ Go را در
+      #    هر پوش برمی‌دارد، نه درستی را: بدونش همین job همان ایمیج را می‌سازد (پس روی runnerِ دیگری هم کار
+      #    می‌کند). کلید = hashِ همان Dockerfile ⇒ هر تغییرِ نسخه یعنی buildِ تازه. `save` جداست تا اگر یکی از
+      #    سنجه‌های بعدی افتاد، کش باز هم نوشته شود.
+      - name: ★ ایمیجِ MinIOی توسعه از کش (ADR-071)
+        id: minio-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/minio-dev.tar
+          key: minio-dev-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('infra/docker/minio-dev.Dockerfile') }}
+      - name: بارگذاریِ ایمیجِ کش‌شده
+        if: steps.minio-cache.outputs.cache-hit == 'true'
+        run: docker load -i "$RUNNER_TEMP/minio-dev.tar"
       - name: بالاآوردنِ postgres + redis + minio
         run: pnpm db:up
+      - name: نگه‌داشتنِ ایمیجِ تازه‌ساخته برای اجرای بعد
+        if: steps.minio-cache.outputs.cache-hit != 'true'
+        run: >
+          docker save -o "$RUNNER_TEMP/minio-dev.tar"
+          $(docker compose -f infra/docker/docker-compose.yml --env-file .env config --images | grep minio-dev | sort -u)
+      - if: steps.minio-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/minio-dev.tar
+          key: ${{ steps.minio-cache.outputs.cache-primary-key }}
       # ⚠️ `pnpm ci:wait` و نه `node scripts/…` — اسکریپت باید `.env` را **بارگذاری**
       #    کند، نه فقط اینکه فایلش وجود داشته باشد. اولین اجرای واقعیِ CI دقیقاً همین‌جا
       #    قرمز شد: فایل ساخته شده بود ولی هیچ‌کس نخوانده بودش.

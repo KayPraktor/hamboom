@@ -15,6 +15,19 @@
 # آن‌ها می‌آید (P3: همه‌چیز لوکال اجرا می‌شود، بدون هیچ حسابِ ابری).
 name: hamboom
 
+# ★★ ADR-071 (۱۴۰۵/۰۷/۲۳): ایمیجِ MinIO **از سورس ساخته می‌شود** — `minio/minio` و `minio/mc` از Docker Hub
+#    رفته‌اند. `docker compose up` اگر ایمیج نباشد خودش می‌سازد (بارِ اول چند دقیقه؛ Docker Hub برای ایمیج‌های
+#    پایه و پروکسیِ ماژولِ Go لازم است). تگ = **نامِ release**، نه `latest`: `latest` سیزده ماه پنهان کرد که
+#    نسخه منجمد است، و بعد که مخزن رفت هم چیزی نگفت. هر دو سرویس همین یک ایمیج را دارند.
+# ⚠️⚠️ `pull_policy: never` روی هر دو **اجباری است**: بدونش compose پیش از ساخت اول سعی می‌کند همین نام را از
+#    Docker Hub بکشد (اندازه‌گیری‌شده: «pull access denied for hamboom/minio-dev» و بعد build). فضای نامِ
+#    `hamboom` در Docker Hub مالِ ما نیست — روزی که کسی آن را ثبت کند و همین تگ را push کند، هر ماشینِ تازه و
+#    هر اجرای CI ایمیجِ **او** را اجرا می‌کرد. با `never`: ایمیج هست ⇒ همان؛ نیست ⇒ build؛ هرگز pull.
+x-minio-dev-image: &minio-dev-image hamboom/minio-dev:RELEASE.2025-09-07T16-13-09Z
+x-minio-dev-build: &minio-dev-build
+  context: .
+  dockerfile: minio-dev.Dockerfile
+
 services:
   postgres:
     image: postgres:16-alpine # آروان Managed PostgreSQL هم 16 دارد
@@ -73,7 +86,9 @@ services:
   # دارد. ⚠️ عمداً **بدونِ healthcheck**: تصویرِ minio ابزارِ سلامتِ داخلِ کانتینر را
   # تضمین نمی‌کند؛ خودِ probe/کلاینت آمادگی را با retry می‌سنجد.
   minio:
-    image: minio/minio:latest
+    image: *minio-dev-image
+    build: *minio-dev-build
+    pull_policy: never
     container_name: hamboom-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -92,7 +107,9 @@ services:
   # آپلود/بوت می‌شکست. یک‌بار اجرا و خارج (`restart: no`). ⚠️ `$$VAR` تا **shell** بسطش
   # دهد از env کانتینر، نه compose. `--ignore-existing` idempotent است.
   minio-init:
-    image: minio/mc:latest
+    image: *minio-dev-image # همان ایمیج: `mc` و `sh` را دارد
+    build: *minio-dev-build
+    pull_policy: never
     container_name: hamboom-minio-init
     depends_on:
       - minio

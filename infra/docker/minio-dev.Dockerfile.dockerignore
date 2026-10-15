@@ -1,0 +1,3 @@
+# minio-dev.Dockerfile هیچ فایلی از context کپی نمی‌کند — پس هیچ‌چیز فرستاده نمی‌شود
+# (contextِ compose پوشه‌ی infra/docker است، که tls/ و acme/ِ محلی هم در آن‌اند).
+*
